@@ -34,6 +34,24 @@ pub enum Error {
         operation: &'static str,
     },
 
+    /// A repository-relative path that is unsafe (`..`, `.`, NUL, CR, LF) or that names the
+    /// repository root where a file is required.
+    #[error("invalid remote path '{0}'")]
+    InvalidPath(String),
+
+    /// The server refused an operation on a remote path (FTP reply, SFTP status, ...).
+    #[error("{operation} failed for remote path '{path}': {reason}")]
+    Remote {
+        operation: &'static str,
+        path: String,
+        reason: String,
+    },
+
+    /// The control connection could not be resynchronised after an interrupted transfer;
+    /// the transport must be reconnected.
+    #[error("connection lost after an interrupted transfer")]
+    ConnectionPoisoned,
+
     #[error("redirect from HTTPS to HTTP refused")]
     InsecureRedirect,
 
@@ -60,7 +78,9 @@ impl Error {
     /// Whether retrying with a new connection may help (Java: "connection lost").
     pub fn is_connection_lost(&self) -> bool {
         match self {
-            Self::Timeout | Self::Incomplete { .. } | Self::Ssh(_) => true,
+            Self::Timeout | Self::Incomplete { .. } | Self::Ssh(_) | Self::ConnectionPoisoned => {
+                true
+            }
             Self::Io(e) => !matches!(
                 e.kind(),
                 std::io::ErrorKind::NotFound | std::io::ErrorKind::PermissionDenied

@@ -1,7 +1,9 @@
 //! SFTP transport (`dao/connection/sftp/SftpDAO.java`), password authentication only.
 
+use std::future::Future;
 use std::io::SeekFrom;
 use std::path::Path;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -9,11 +11,18 @@ use a3s_types::Protocol;
 use russh::client::{AuthResult, Handle};
 use russh::keys::PublicKeyOrCertificate;
 use russh_sftp::client::SftpSession;
-use tokio::io::AsyncSeekExt as _;
+use russh_sftp::client::error::Error as SftpError;
+use russh_sftp::protocol::{OpenFlags, StatusCode};
+use tokio::io::{AsyncSeekExt as _, AsyncWriteExt as _};
 
-use crate::ctx::{TransferCtx, copy};
+use crate::ctx::{TransferCtx, copy, copy_upload};
 use crate::options::TransportOptions;
-use crate::{Error, Result, path};
+use crate::session::SessionState;
+use crate::{Error, RemoteKind, Result, UploadSource, path};
+
+/// Connection timeout used when the protocol's value is 0.
+// Mirrors dao/connection/sftp/SftpDAO.java:531-538.
+const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Accepts any host key, like the Java client (Apache MINA's default verifier), but logs its
 /// fingerprint.
@@ -39,34 +48,76 @@ impl russh::client::Handler for HostKeyLogger {
     }
 }
 
+/// Strips a leading `sftp://` (case-insensitive) and leading `/` from a stored URL.
+// Mirrors dao/connection/sftp/SftpDAO.java:430-439.
+pub(crate) fn normalize_url(value: &str) -> &str {
+    let mut normalized = value.trim();
+    const SCHEME: &str = "sftp://";
+    if normalized
+        .get(..SCHEME.len())
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case(SCHEME))
+    {
+        normalized = &normalized[SCHEME.len()..];
+    }
+    normalized.trim_start_matches('/')
+}
+
+/// `(host, configured path)` of a normalized URL; the path keeps its leading `/` or is empty.
+// Mirrors dao/connection/sftp/SftpDAO.java:441-449.
+pub(crate) fn split_url(normalized: &str) -> (&str, &str) {
+    match normalized.find('/') {
+        Some(i) => (&normalized[..i], &normalized[i..]),
+        None => (normalized, ""),
+    }
+}
+
+fn is_missing(err: &SftpError) -> bool {
+    matches!(err, SftpError::Status(s) if s.status_code == StatusCode::NoSuchFile)
+}
+
 pub struct SftpTransport {
     _session: Handle<HostKeyLogger>,
     sftp: SftpSession,
-    remote_path: String,
+
+    /// Absolute base directory of the repository.
+    base: String,
     read_timeout: Option<Duration>,
+    pub(crate) session: SessionState,
 }
 
 impl SftpTransport {
+    // Mirrors dao/connection/sftp/SftpDAO.java:96-186.
     pub async fn connect(protocol: &Protocol, options: &TransportOptions) -> Result<Self> {
-        let host = protocol.hostname().to_owned();
+        let (host, configured) = split_url(normalize_url(&protocol.url));
+        if host.is_empty() {
+            return Err(Error::InvalidProtocol(
+                "SFTP host is empty. Enter a host name before the optional remote path.".into(),
+            ));
+        }
+        let configured = path::normalize_relative(configured)?;
+        let host = host.to_owned();
         let port = protocol
             .port_number()
             .ok_or_else(|| Error::InvalidProtocol(format!("invalid port '{}'", protocol.port)))?;
+        let login = protocol.login.clone().unwrap_or_default();
+        let password = protocol.password.clone().unwrap_or_default();
+        if password.is_empty() {
+            return Err(Error::InvalidProtocol(
+                "SFTP password is empty. Key-based authentication is not configured yet.".into(),
+            ));
+        }
+
         let config = Arc::new(russh::client::Config {
             inactivity_timeout: options.read_timeout,
             ..Default::default()
         });
         let handler = HostKeyLogger { host: host.clone() };
         let connect = russh::client::connect(config, (host.as_str(), port), handler);
-        let mut session = match options.connect_timeout {
-            Some(t) => tokio::time::timeout(t, connect)
-                .await
-                .map_err(|_elapsed| Error::Timeout)??,
-            None => connect.await?,
-        };
+        let timeout = options.connect_timeout.unwrap_or(DEFAULT_CONNECT_TIMEOUT);
+        let mut session = tokio::time::timeout(timeout, connect)
+            .await
+            .map_err(|_elapsed| Error::Timeout)??;
 
-        let login = protocol.login.clone().unwrap_or_default();
-        let password = protocol.password.clone().unwrap_or_default();
         match session.authenticate_password(login, password).await? {
             AuthResult::Success => {}
             AuthResult::Failure { .. } => return Err(Error::Unauthorized),
@@ -74,30 +125,41 @@ impl SftpTransport {
         let channel = session.channel_open_session().await?;
         channel.request_subsystem(true, "sftp").await?;
         let sftp = SftpSession::new(channel.into_stream()).await?;
+
+        // Mirrors dao/connection/sftp/SftpDAO.java:414-423 (empty → home).
+        let base = if configured.is_empty() {
+            let home = sftp.canonicalize(".").await?;
+            if home.is_empty() {
+                return Err(Error::InvalidProtocol(
+                    "SFTP server did not provide a working directory.".into(),
+                ));
+            }
+            home
+        } else {
+            path::join_remote(&configured, "")
+        };
+        tracing::info!(host, base, "SFTP connected");
         Ok(Self {
             _session: session,
             sftp,
-            remote_path: protocol.remote_path().to_owned(),
+            base,
             read_timeout: options.read_timeout,
+            session: SessionState::default(),
         })
     }
 
     fn absolute(&self, relative: &str) -> String {
-        path::join_remote(&self.remote_path, relative)
+        path::join_remote(&self.base, relative)
     }
 
     async fn open(&self, relative: &str) -> Result<russh_sftp::client::fs::File> {
-        self.sftp
-            .open(self.absolute(relative))
-            .await
-            .map_err(|e| match e {
-                russh_sftp::client::error::Error::Status(ref s)
-                    if s.status_code == russh_sftp::protocol::StatusCode::NoSuchFile =>
-                {
-                    Error::NotFound(relative.to_owned())
-                }
-                other => Error::Sftp(other),
-            })
+        self.sftp.open(self.absolute(relative)).await.map_err(|e| {
+            if is_missing(&e) {
+                Error::NotFound(relative.to_owned())
+            } else {
+                Error::Sftp(e)
+            }
+        })
     }
 
     pub async fn fetch(&self, relative: &str, ctx: &TransferCtx) -> Result<Vec<u8>> {
@@ -124,7 +186,152 @@ impl SftpTransport {
         Ok(resume_from + written)
     }
 
+    /// `stat`: `NoSuchFile` → `false`.
+    async fn stat_exists(&self, absolute: &str) -> Result<bool> {
+        match self.sftp.metadata(absolute).await {
+            Ok(_) => Ok(true),
+            Err(e) if is_missing(&e) => Ok(false),
+            Err(e) => Err(Error::Sftp(e)),
+        }
+    }
+
+    // Mirrors dao/connection/sftp/SftpDAO.java:266-275, 390-400.
+    pub async fn exists(&self, relative: &str, _ctx: &TransferCtx) -> Result<bool> {
+        self.stat_exists(&self.absolute(relative)).await
+    }
+
+    /// Creates every missing component of `join(base, relative_dir)`, including missing
+    /// components of the configured base path (Java SFTP behaviour).
+    // Mirrors dao/connection/sftp/SftpDAO.java:372-388.
+    async fn mkdirs_absolute(&mut self, relative_dir: &str, ctx: &TransferCtx) -> Result<()> {
+        let target = self.absolute(relative_dir);
+        let mut current = String::new();
+        for segment in path::segments(&target) {
+            let parent = std::mem::take(&mut current);
+            current = format!("{parent}/{segment}");
+            if self.session.is_known_dir(&current) {
+                continue;
+            }
+            ctx.check_cancelled()?;
+            if self.stat_exists(&current).await? {
+                self.session.mark_known_dir(&current);
+                continue;
+            }
+            match self.sftp.create_dir(current.as_str()).await {
+                Ok(()) => self.session.mark_known_dir(&current),
+                // Another connection may have created it meanwhile.
+                Err(e) => {
+                    if self.stat_exists(&current).await? {
+                        self.session.mark_known_dir(&current);
+                    } else {
+                        return Err(Error::Sftp(e));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn mkdirs(&mut self, relative_dir: &str, ctx: &TransferCtx) -> Result<()> {
+        self.mkdirs_absolute(relative_dir, ctx).await
+    }
+
+    /// Opens with `Create | Write | Truncate`, writes in 64 KiB chunks and closes.
+    // Mirrors dao/connection/sftp/SftpDAO.java:277-327.
+    pub(crate) async fn upload(
+        &mut self,
+        mut source: UploadSource,
+        relative: &str,
+        ctx: &TransferCtx,
+    ) -> Result<u64> {
+        let (parent, _) = path::split_parent(relative);
+        self.mkdirs_absolute(parent, ctx).await?;
+        ctx.check_cancelled()?;
+        let target = self.absolute(relative);
+        let mut file = self
+            .sftp
+            .open_with_flags(
+                target,
+                OpenFlags::CREATE | OpenFlags::WRITE | OpenFlags::TRUNCATE,
+            )
+            .await?;
+        let written = copy_upload(&mut source.reader, &mut file, ctx, self.read_timeout).await;
+        // Close the handle even after an error; the partial file stays (like Java).
+        let closed = file.shutdown().await;
+        let written = written?;
+        closed?;
+        Ok(written)
+    }
+
+    // Mirrors dao/connection/sftp/SftpDAO.java:339-370.
+    pub async fn delete(
+        &mut self,
+        relative: &str,
+        kind: RemoteKind,
+        ctx: &TransferCtx,
+    ) -> Result<()> {
+        let target = self.absolute(relative);
+        if !self.stat_exists(&target).await? {
+            return Ok(());
+        }
+        self.delete_path(target.clone(), kind == RemoteKind::Directory, ctx)
+            .await?;
+        let (parent, name) = target.rsplit_once('/').unwrap_or(("", &target));
+        self.session.remove_entry(parent, name, &target);
+        Ok(())
+    }
+
+    fn delete_path<'a>(
+        &'a self,
+        target: String,
+        directory: bool,
+        ctx: &'a TransferCtx,
+    ) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>> {
+        Box::pin(async move {
+            ctx.check_cancelled()?;
+            if directory {
+                let entries = self.sftp.read_dir(target.as_str()).await?;
+                for entry in entries {
+                    let name = entry.file_name();
+                    if name == "." || name == ".." {
+                        continue;
+                    }
+                    let child = format!("{}/{name}", target.trim_end_matches('/'));
+                    self.delete_path(child, entry.metadata().is_dir(), ctx)
+                        .await?;
+                }
+                self.sftp.remove_dir(target).await?;
+            } else {
+                self.sftp.remove_file(target).await?;
+            }
+            Ok(())
+        })
+    }
+
     pub async fn close(self) {
         let _ignored = self.sftp.close().await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{normalize_url, split_url};
+
+    // Ported from src/test/java/fr/soe/a3s/dao/connection/sftp/SftpDAOTest.java.
+    #[test]
+    fn a2_sftp_url_normalisation() {
+        let url = normalize_url("sftp:///enterprise.vpzbrig21.de/arma3sync/workshop");
+        assert_eq!(url, "enterprise.vpzbrig21.de/arma3sync/workshop");
+        assert_eq!(
+            split_url(url),
+            ("enterprise.vpzbrig21.de", "/arma3sync/workshop")
+        );
+        assert_eq!(
+            split_url(normalize_url("enterprise.vpzbrig21.de")),
+            ("enterprise.vpzbrig21.de", "")
+        );
+        assert_eq!(split_url(normalize_url("SFTP://h/p")), ("h", "/p"));
+        assert_eq!(split_url(normalize_url("///h/p/q")), ("h", "/p/q"));
+        assert_eq!(split_url(normalize_url("sftp://")), ("", ""));
     }
 }
