@@ -44,17 +44,15 @@ impl Progress {
         Self::Determinate { value, min: 0, max }
     }
 
-    /// The fill fraction in `[0, 1]`; `None` when indeterminate.
+    /// The fill fraction in `[0, 1]`; `None` when indeterminate. Never overflows, even for the
+    /// full `i64` range.
     pub fn fraction(&self) -> Option<f32> {
         match *self {
             Self::Determinate { value, min, max } => {
-                let range = max.saturating_sub(min);
-                if range <= 0 {
-                    Some(0.0)
-                } else {
-                    let value = value.clamp(min, max);
-                    Some((value - min) as f32 / range as f32)
-                }
+                Some(span(value, min, max).map_or(0.0, |(done, range)| {
+                    // f64 keeps 53 bits; the quotient is in [0, 1] by construction.
+                    ((done as f64) / (range as f64)).clamp(0.0, 1.0) as f32
+                }))
             }
             Self::Indeterminate { .. } => None,
         }
@@ -76,14 +74,29 @@ impl Progress {
 ///
 /// Mirrors `ui/UiStyle.java:181-188`.
 pub fn percent_text(value: i64, min: i64, max: i64) -> String {
-    let range = max.saturating_sub(min);
-    let percent = if range <= 0 {
-        0
-    } else {
-        let value = value.clamp(min, max);
-        (((value - min) as f32 * 100.0) / range as f32 + 0.5).floor() as i64
-    };
+    let percent = span(value, min, max).map_or(0, |(done, range)| {
+        // Java: Math.round(((value - min) * 100f) / range), all float arithmetic.
+        let ratio = (done as f32 * 100.0) / range as f32;
+        java_round_float(ratio)
+    });
     format!("{percent}%")
+}
+
+/// `(value - min, max - min)` after clamping `value` into `[min, max]`, computed in `i128` so the
+/// full `i64` range cannot overflow; `None` when the range is empty or negative.
+fn span(value: i64, min: i64, max: i64) -> Option<(i128, i128)> {
+    let range = i128::from(max) - i128::from(min);
+    (range > 0).then(|| {
+        let value = value.clamp(min, max);
+        (i128::from(value) - i128::from(min), range)
+    })
+}
+
+/// Java `Math.round(float)` (JDK 7+): the exact `floor(x + 1/2)` of the float value, without
+/// the extra float rounding of `x + 0.5f` (`Math.round(0.49999997f) == 0`).
+fn java_round_float(x: f32) -> i64 {
+    // Every f32 is exact in f64, and x + 0.5 is exact in f64 for |x| < 2^52.
+    (f64::from(x) + 0.5).floor() as i64
 }
 
 /// A progress bar styled like `UiStyle.styleProgressBar` (`ui/UiStyle.java:72-89`).
@@ -249,6 +262,19 @@ fn paint_halo_text(ui: &Ui, clip: Rect, inner: Rect, text: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn java_round_float_is_exact() {
+        assert_eq!(java_round_float(0.499_999_97), 0);
+        assert_eq!(java_round_float(0.5), 1);
+        assert_eq!(java_round_float(99.5), 100);
+        assert_eq!(java_round_float(33.333_332), 33);
+        assert_eq!(
+            span(0, i64::MIN, i64::MAX),
+            Some((i128::from(i64::MAX) + 1, u64::MAX.into()))
+        );
+        assert_eq!(span(3, 5, 5), None);
+    }
 
     #[test]
     fn bounce_is_a_triangle_wave() {

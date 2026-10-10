@@ -119,15 +119,19 @@ fn a6_tint_for_follows_tone_and_state() {
                 IconTone::Primary => p.text_primary,
             });
             assert_eq!(icon::tint_for(p, icon, IconState::Normal), expected_normal);
+            // The app icon is always the untinted PNG (Java `Icons.image(APP)`).
+            let app = icon == UiIcon::App;
             assert_eq!(
                 icon::tint_for(p, icon, IconState::Disabled),
-                Some(p.text_disabled)
+                (!app).then_some(p.text_disabled)
             );
             assert_eq!(
                 icon::tint_for(p, icon, IconState::Selected),
                 icon.is_theme_aware().then_some(p.state_selection_fg)
             );
         }
+        assert_eq!(icon::tint_for(p, UiIcon::App, IconState::Normal), None);
+        assert_eq!(icon::tint_for(p, UiIcon::App, IconState::Disabled), None);
     }
 }
 

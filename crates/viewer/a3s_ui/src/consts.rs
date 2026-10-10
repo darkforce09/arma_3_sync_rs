@@ -36,3 +36,15 @@ pub const JAVA_RED: Color32 = Color32::from_rgb(0xFF, 0x00, 0x00);
 /// The sync tree uses it for deleted entries
 /// (`ui/repository/tree/CheckTreeCellRendererRepository.java:44`).
 pub const JAVA_BLUE: Color32 = Color32::from_rgb(0x00, 0x00, 0xFF);
+
+/// [`JAVA_BLUE`] adjusted for the theme (D-13).
+///
+/// Pure blue is unreadable on the dark surface, so the dark theme uses a lighter blue
+/// (`#7C9CFF`); light mode keeps Swing's `#0000FF`.
+pub fn java_blue_for(dark: bool) -> Color32 {
+    if dark {
+        Color32::from_rgb(0x7C, 0x9C, 0xFF)
+    } else {
+        JAVA_BLUE
+    }
+}

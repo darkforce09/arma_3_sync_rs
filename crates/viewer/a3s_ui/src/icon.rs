@@ -151,8 +151,12 @@ const SCALE_THRESHOLD: u32 = 64;
 /// Default of the icon scale (`ui/icon/Icons.java:117`).
 const DEFAULT_SCALE: f64 = 1.5;
 
+/// Upper bound of the icon scale; larger finite values are clamped to it.
+const MAX_SCALE: f64 = 8.0;
+
 /// The icon scale factor: env var `A3S_ICON_SCALE` (Java system property `a3s.iconScale`), read
-/// once. A missing, unparsable, non-finite or non-positive value gives 1.5.
+/// once. A missing, unparsable, non-finite or non-positive value gives 1.5; values above 8 are
+/// clamped to 8.
 pub fn icon_scale() -> f64 {
     static SCALE: OnceLock<f64> = OnceLock::new();
     *SCALE.get_or_init(|| parse_scale(std::env::var("A3S_ICON_SCALE").ok().as_deref()))
@@ -163,7 +167,7 @@ fn parse_scale(value: Option<&str>) -> f64 {
     value
         .and_then(|v| v.trim().parse::<f64>().ok())
         .filter(|v| v.is_finite() && *v > 0.0)
-        .unwrap_or(DEFAULT_SCALE)
+        .map_or(DEFAULT_SCALE, |v| v.min(MAX_SCALE))
 }
 
 /// Scales a Java icon size: sizes above 64 are kept, others become
@@ -184,10 +188,12 @@ pub(crate) fn scaled_size_with(size: u32, scale: f64) -> u32 {
 
 /// The tint applied to `icon` in `state`, or `None` when the original SVG colours are kept.
 ///
-/// Only theme-aware icons and disabled icons are tinted (`ui/icon/Icons.java:62-68`); the tint
+/// Only theme-aware icons and disabled icons are tinted (`ui/icon/Icons.java:62-68`), except
+/// [`UiIcon::App`], which is always the untinted `app-rendered.png` (Java `Icons.image(APP)`
+/// returns the PNG whatever the state, `ui/icon/Icons.java:44-50`). The tint
 /// colour follows `ui/icon/Icons.java:82-98`.
 pub fn tint_for(palette: &ThemePalette, icon: UiIcon, state: IconState) -> Option<Color32> {
-    if !icon.is_theme_aware() && state != IconState::Disabled {
+    if icon == UiIcon::App || (!icon.is_theme_aware() && state != IconState::Disabled) {
         return None;
     }
     Some(match state {
@@ -430,6 +436,7 @@ mod tests {
         assert_eq!(parse_scale(Some("0")), 1.5);
         assert_eq!(parse_scale(Some("-2")), 1.5);
         assert_eq!(parse_scale(Some("2")), 2.0);
+        assert_eq!(parse_scale(Some("100")), 8.0);
     }
 
     #[test]

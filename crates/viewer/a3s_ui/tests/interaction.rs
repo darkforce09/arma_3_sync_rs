@@ -69,13 +69,17 @@ fn a13_check_tree_hotspot_label_space_context_collapse() {
         [CheckTreeEvent::Toggled("@ace".to_owned())]
     );
 
+    let tfar_row = harness.get_by_role_and_label(Role::Button, "@tfar").rect();
     harness
         .get_by_role_and_label(Role::Button, "@tfar")
         .click_secondary();
     harness.run();
     assert_eq!(
         take_events(&mut harness),
-        [CheckTreeEvent::ContextMenu("@tfar".to_owned())]
+        [CheckTreeEvent::ContextMenu(
+            "@tfar".to_owned(),
+            tfar_row.center()
+        )]
     );
     assert!(harness.state().tree.is_selected(&"@tfar".to_owned()));
 

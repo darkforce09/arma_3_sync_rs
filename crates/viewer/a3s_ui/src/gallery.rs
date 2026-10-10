@@ -4,7 +4,7 @@
 
 use egui::{Color32, CornerRadius, RichText, Sense, Stroke, StrokeKind, Ui, vec2};
 
-use crate::consts::{JAVA_BLUE, JAVA_RED};
+use crate::consts::{JAVA_BLUE, JAVA_RED, java_blue_for};
 use crate::dialog::{Dialog, DialogAction, DialogButton, ProgressDialog, ProgressDialogAction};
 use crate::fonts::{self, FontFace};
 use crate::frames;
@@ -47,11 +47,15 @@ struct SampleNode {
 /// "@tfar" (none selected), a red (missing) leaf and a blue (deleted) leaf.
 pub struct SampleTree {
     nodes: Vec<SampleNode>,
+    dark: bool,
 }
 
 impl Default for SampleTree {
     fn default() -> Self {
-        let mut tree = Self { nodes: Vec::new() };
+        let mut tree = Self {
+            nodes: Vec::new(),
+            dark: true,
+        };
         let root = tree.add("@mods", None, false, None);
         let ace = tree.add("@ace", Some(root), true, None);
         tree.add("ace_common.pbo", Some(ace), true, None);
@@ -92,6 +96,12 @@ impl SampleTree {
 
     fn index(&self, key: &str) -> Option<usize> {
         self.nodes.iter().position(|node| node.name == key)
+    }
+
+    /// Selects the blue label colour for the dark (default) or light theme
+    /// ([`java_blue_for`]).
+    pub fn set_dark(&mut self, dark: bool) {
+        self.dark = dark;
     }
 
     /// Every key, depth first.
@@ -165,7 +175,12 @@ impl CheckTreeModel for SampleTree {
     }
 
     fn label_color(&self, key: &String) -> Option<Color32> {
-        self.index(key).and_then(|i| self.nodes[i].color)
+        let color = self.index(key).and_then(|i| self.nodes[i].color)?;
+        Some(if color == JAVA_BLUE {
+            java_blue_for(self.dark)
+        } else {
+            color
+        })
     }
 }
 
@@ -378,6 +393,7 @@ impl Gallery {
     /// The sample check tree; toggling flips a node and its descendants.
     pub fn check_tree_ui(&mut self, ui: &mut Ui) {
         Self::heading(ui, SECTIONS[5]);
+        self.sample.set_dark(ui.visuals().dark_mode);
         let events = self.tree.show(ui, &self.sample);
         for event in events {
             if let CheckTreeEvent::Toggled(key) = &event {

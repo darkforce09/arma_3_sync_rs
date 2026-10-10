@@ -12,7 +12,9 @@ use std::sync::LazyLock;
 
 use egui::{Color32, Context, Shadow};
 
-pub use self::style::{style_for, text_edit_corner_radius, visuals_for, widget_corner_radius};
+pub use self::style::{
+    style_before_fonts, style_for, text_edit_corner_radius, visuals_for, widget_corner_radius,
+};
 
 /// The 21 colour tokens of a theme, in `ThemePalette` constructor order
 /// (`ui/theme/ThemePalette.java:10-58`).

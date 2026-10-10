@@ -17,6 +17,10 @@ fn margin(value: i32) -> i8 {
 }
 
 /// Builds the complete egui style of a theme: visuals, spacing and text styles.
+///
+/// The heading text style uses the `Geist-SemiBold` font family, so the context must have the
+/// Geist fonts loaded (egui panics on unknown families). Prefer [`crate::install`], called
+/// before the first frame, which handles the one pass in which the fonts are not loaded yet.
 pub fn style_for(def: &ThemeDefinition) -> Style {
     let m = &def.metrics;
     let mut style = Style {
@@ -155,4 +159,15 @@ pub fn text_edit_corner_radius(m: &ThemeMetrics) -> CornerRadius {
 /// `Button.arc`, `ScrollBar.thumbArc` = radiusMd, halved): 6.
 pub fn widget_corner_radius(m: &ThemeMetrics) -> CornerRadius {
     arc_to_radius(m.radius_md)
+}
+
+/// [`style_for`] with a proportional (Geist Regular / egui default) heading: safe while the
+/// Geist fonts are not loaded yet. Used by [`crate::install`] for its first pass.
+pub fn style_before_fonts(def: &ThemeDefinition) -> Style {
+    let mut style = style_for(def);
+    style.text_styles.insert(
+        egui::TextStyle::Heading,
+        egui::FontId::proportional(fonts::HEADING_SIZE),
+    );
+    style
 }

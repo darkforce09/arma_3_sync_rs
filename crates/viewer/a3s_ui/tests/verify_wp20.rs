@@ -245,13 +245,18 @@ fn secondary_click_on_hotspot_does_not_toggle() {
             .any(|e| matches!(e, CheckTreeEvent::Toggled(_))),
         "{events:?}"
     );
-    assert!(events.contains(&CheckTreeEvent::ContextMenu(s("@ace"))));
+    // ContextMenu carries the pointer position since fix round 1 (orchestrator item 3).
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, CheckTreeEvent::ContextMenu(k, _) if k == "@ace")),
+        "{events:?}"
+    );
 }
 
 /// Java `JTree` moves the selection with the arrow keys, and Space then toggles the newly
 /// selected row (`ui/main/AddonsPanel.java:526`). Not required by spec B28.
 #[test]
-#[ignore = "Java JTree arrow navigation is not part of WP20 B28; run with --ignored for the gap report"]
 fn arrow_down_moves_selection_like_jtree() {
     let mut harness = tree_harness(SampleTree::default());
     harness.get_by_role_and_label(Role::Button, "@cba").click();
