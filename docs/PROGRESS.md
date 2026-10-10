@@ -41,7 +41,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 | 0 | WP20 | a3s_ui | — | SPEC_OK | | |
 | 0 | WP31 | a3s_updater core | — | SPEC_OK | | |
 | 1 | WP04 | a3s_repo_files local/legacy | WP02, WP03 | TODO | | |
-| 1 | WP05 | autoconfig url/export | WP03 | TODO | | |
+| 1 | WP05 | autoconfig url/export | WP03 | SPEC_OK | | |
 | 1 | WP07 | a3s_sync model/remote/status | WP02, WP03 | TODO | | critical path |
 | 1 | WP11 | a3s_admin build | WP03 | TODO | | wire-touching |
 | 1 | WP13 | a3s_addons | WP03 | TODO | | |
@@ -78,11 +78,12 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 - D-6 2026-10-10: SFTP accepts any host key and logs its fingerprint (mirrors Java/MINA default).
 - D-7 2026-10-10: Rust config/data dir name `arma3sync-rs` (user).
 - D-8 2026-10-10: orchestrator may approve local-only deviations that fix Java bugs/security; wire-visible changes go to the user (user).
-- D-9 2026-10-10: custom agent types need a session restart; until then spawn general-purpose/opus with a ROLE header.
+- D-9 2026-10-10: custom agent types need a session restart; until then spawn general-purpose/opus with a ROLE header. (Now registered in this session.)
 
 ## Follow-ups
 
 - F-1 WP03: confirm PROVISIONAL computed UID of `domain.AutoConfig` (and FileAttributes, configration.Proxy) with the JDK harness (WP01).
+- F-3 After WP06: `a3s_transport::is_local_test_host` delegates to `a3s_types::ssl_policy` (WP05 Q3).
 - F-2 CI: add mesa Vulkan drivers to rust.yml for egui_kittest snapshot tests (WP20 Q10).
 
 ## Live test log
