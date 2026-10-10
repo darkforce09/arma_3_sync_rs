@@ -14,7 +14,8 @@ import re
 import subprocess
 import sys
 
-ALWAYS_ALLOWED = ["Cargo.lock"]
+# Cargo.lock changes come from cargo; verify_* tests are added by the compat-verifier.
+ALWAYS_ALLOWED = ["Cargo.lock", "crates/*/*/tests/verify_*.rs", "crates/*/*/tests/verify_*/*"]
 
 
 def owned_patterns(spec: pathlib.Path) -> list[str]:
