@@ -1,17 +1,17 @@
 # Rewrite progress
 
-Mode: PAUSED (user request; all agents finished)            Updated: 2026-10-10
+Mode: RUNNING (resumed via /orchestrate)            Updated: 2026-10-10
 Current wave: 0          Next action: on resume — live-check WP06 FTP resume fix (`scripts/gate.sh --slot 3 live a3s_transport` in its worktree); rebase WP03 on main; verify+review+merge WP02, WP03, WP06; then start WP20, WP17, WP31; consider 2 compiling slots (HDD load)
-Waiting-on: none
+Waiting-on: verify+review WP03 (slot 1), WP02 (slot 2), WP06 (slot 3 + live)
 Blockers: WP12 Q7 needs user decision (nested `racine` folder upload paths); WP01 needs JDK 25 (`sudo dnf install java-25-openjdk-devel`) — non-blocking for others
 
 ## In flight
 
 | WP | Crate | State | Round | Agents | Slot | Branch | Worktree | HEAD | Since |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| WP03 | a3s_types local | IMPL_DONE (needs rebase on main for lock/typos fix; then verify/review — paused) | 0 | impl=a2f164b1 | 1 | worktree-agent-a2f164b17de56cb4f | .claude/worktrees/agent-a2f164b17de56cb4f | 89e1b7f | 2026-10-10 |
-| WP02 | utils | IMPL_DONE (awaiting verify/review — paused) | 0 | impl=a453ddf6 | 2 | worktree-agent-a453ddf686221e3c9 | .claude/worktrees/agent-a453ddf686221e3c9 | 9743c85 | 2026-10-10 |
-| WP06 | a3s_transport upload | IMPL_DONE (awaiting live check + verify/review — paused) | 0 | impl=a705b69e | 3 | worktree-agent-a705b69e5afea8b40 | .claude/worktrees/agent-a705b69e5afea8b40 | ac17e57 | 2026-10-10 |
+| WP03 | a3s_types local | VERIFY+REVIEW | 0 | impl=a2f164b1 ver=a37a9160 rev=ad4d74f3 | 1 | worktree-agent-a2f164b17de56cb4f | .claude/worktrees/agent-a2f164b17de56cb4f | f4b6711 (rebased) | 2026-10-10 |
+| WP02 | utils | VERIFY+REVIEW | 0 | impl=a453ddf6 ver=a1c5e2b5 rev=ae4b9fa7 | 2 | worktree-agent-a453ddf686221e3c9 | .claude/worktrees/agent-a453ddf686221e3c9 | 9743c85 | 2026-10-10 |
+| WP06 | a3s_transport upload | VERIFY(+live)+REVIEW | 0 | impl=a705b69e ver=a6af6dbc rev=a93321ae | 3 | worktree-agent-a705b69e5afea8b40 | .claude/worktrees/agent-a705b69e5afea8b40 | ac17e57 | 2026-10-10 |
 
 ## Done before orchestration
 
