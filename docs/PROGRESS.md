@@ -2,7 +2,7 @@
 
 Mode: RUNNING (resumed via /orchestrate)            Updated: 2026-10-10
 Current wave: 0/1          Next action: on resume — live-check WP06 FTP resume fix (`scripts/gate.sh --slot 3 live a3s_transport` in its worktree); rebase WP03 on main; verify+review+merge WP02, WP03, WP06; then start WP20, WP17, WP31; consider 2 compiling slots (HDD load)
-Waiting-on: impl WP20 (slot 1), impl WP07 (slot 2), fix WP06 (slot 3); spec WP01
+Waiting-on: impl WP20 (slot 1), impl WP07 (slot 2); slot 3 free
 Blockers: none
 
 ## In flight
@@ -11,7 +11,6 @@ Blockers: none
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | WP20 | a3s_ui | IMPL | 0 | impl=a2a77fc3 (egui) | 1 | (worktree) | | | 2026-10-10 |
 | WP07 | a3s_sync model/remote/status | IMPL (frozen API first) | 0 | impl=ad5742c0 | 2 | (worktree) | | | 2026-10-10 |
-| WP06 | a3s_transport upload | FIX round 2 (mkdirs vanished known dir; live PASS; review APPROVE) | 2 | impl=a705b69e | 3 | worktree-agent-a705b69e5afea8b40 | .claude/worktrees/agent-a705b69e5afea8b40 | ad54fec | 2026-10-10 |
 
 ## Done before orchestration
 
@@ -33,10 +32,10 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 | 0 | infra | .claude, scripts, docs | — | MERGED | 14d51f0 | |
 | 0 | transport-commit | a3s_transport | — | MERGED | 7770850 | download side, live WOG test |
 | 0 | descriptor-lock | a3s_types tests | — | MERGED | 575c386 | |
-| 0 | WP01 | java_fixture_harness | — | SPEC | | JDK 25 at ~/.local/share/jdk (scripts/java_env.sh) |
+| 0 | WP01 | java_fixture_harness | — | SPEC_OK | | JDK 25 via scripts/java_env.sh; javac only, commons-io stub |
 | 0 | WP02 | utils crates | — | MERGED | (see git log) | |
 | 0 | WP03 | a3s_types local | — | MERGED | cea732e | wire-touching |
-| 0 | WP06 | a3s_transport upload | transport-commit | IMPL_DONE | | |
+| 0 | WP06 | a3s_transport upload | transport-commit | MERGED | 9dc241f | |
 | 0 | WP17 | a3s_tools bikey/rpt/radio | — | SPEC_OK | | |
 | 0 | WP20 | a3s_ui | — | IMPL | | |
 | 0 | WP31 | a3s_updater core | — | SPEC_OK | | |
@@ -85,7 +84,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 
 ## Follow-ups
 
-- F-1 WP03: confirm PROVISIONAL computed UID of `domain.AutoConfig` (and FileAttributes, configration.Proxy) with the JDK harness (WP01).
+- F-1 RESOLVED by WP01 spec measurements (UIDs confirmed on JDK 25); fixture tests will pin them.
 - F-3 After WP06: `a3s_transport::is_local_test_host` delegates to `a3s_types::ssl_policy` (WP05 Q3).
 - F-4 OS keyring for repository passwords (WP04 Q1; TOML is plain text, 0600).
 - F-5 Optional `HttpTransport::probe_range` returning headers for the partial-transfer test dialog (WP07 Q2).

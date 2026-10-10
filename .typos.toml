@@ -22,3 +22,7 @@ Incompete = "Incompete"
 priviledges = "priviledges"
 LAF = "LAF"
 Laf = "Laf"
+# Java API names called by the fixture harness (WP01).
+Localy = "Localy"
+Builded = "Builded"
+Leafs = "Leafs"
