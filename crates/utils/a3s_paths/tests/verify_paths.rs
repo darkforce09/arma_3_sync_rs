@@ -72,7 +72,7 @@ fn verify_portable_var_follows_java_parse_boolean() {
         "1",
         "on",
         "false",
-        "truE1",
+        "trueX",
         "ｔｒｕｅ",
     ] {
         assert!(
@@ -552,7 +552,7 @@ fn verify_current_env_non_utf8_values() {
     // Non-UTF-8 XDG and override values are valid paths on Unix and must be kept byte-exact.
     let xdg = OsStr::from_bytes(b"/x\xff/cfg");
     let data = OsStr::from_bytes(b"/d\xfe");
-    let portable = OsStr::from_bytes(b"tru\xe9");
+    let portable = OsStr::from_bytes(b"true\xe9");
     let result = run_child(&[
         ("HOME", OsStr::new("/h")),
         ("XDG_CONFIG_HOME", xdg),
