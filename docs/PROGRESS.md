@@ -2,7 +2,7 @@
 
 Mode: RUNNING (resumed via /orchestrate)            Updated: 2026-10-10
 Current wave: 0/1          Next action: on resume — live-check WP06 FTP resume fix (`scripts/gate.sh --slot 3 live a3s_transport` in its worktree); rebase WP03 on main; verify+review+merge WP02, WP03, WP06; then start WP20, WP17, WP31; consider 2 compiling slots (HDD load)
-Waiting-on: impl WP20 (slot 1), impl WP07 (slot 2); slot 3 free
+Waiting-on: impl WP20 (slot 1), impl WP07 (slot 2), impl WP01 (slot 3)
 Blockers: none
 
 ## In flight
@@ -11,6 +11,7 @@ Blockers: none
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | WP20 | a3s_ui | IMPL | 0 | impl=a2a77fc3 (egui) | 1 | (worktree) | | | 2026-10-10 |
 | WP07 | a3s_sync model/remote/status | IMPL (frozen API first) | 0 | impl=ad5742c0 | 2 | (worktree) | | | 2026-10-10 |
+| WP01 | java_fixture_harness | IMPL | 0 | impl=ae232646 | 3 | (worktree) | | | 2026-10-11 |
 
 ## Done before orchestration
 
@@ -32,7 +33,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 | 0 | infra | .claude, scripts, docs | — | MERGED | 14d51f0 | |
 | 0 | transport-commit | a3s_transport | — | MERGED | 7770850 | download side, live WOG test |
 | 0 | descriptor-lock | a3s_types tests | — | MERGED | 575c386 | |
-| 0 | WP01 | java_fixture_harness | — | SPEC_OK | | JDK 25 via scripts/java_env.sh; javac only, commons-io stub |
+| 0 | WP01 | java_fixture_harness | — | IMPL | | JDK 25 via scripts/java_env.sh; javac only, commons-io stub |
 | 0 | WP02 | utils crates | — | MERGED | (see git log) | |
 | 0 | WP03 | a3s_types local | — | MERGED | cea732e | wire-touching |
 | 0 | WP06 | a3s_transport upload | transport-commit | MERGED | 9dc241f | |
