@@ -44,7 +44,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 | 1 | WP05 | autoconfig url/export | WP03 | SPEC_OK | | |
 | 1 | WP07 | a3s_sync model/remote/status | WP02, WP03 | TODO | | critical path |
 | 1 | WP11 | a3s_admin build | WP03 | TODO | | wire-touching |
-| 1 | WP13 | a3s_addons | WP03 | TODO | | |
+| 1 | WP13 | a3s_addons | WP03 | SPEC_OK | | |
 | 1 | WP15 | a3s_platform | WP02 | TODO | | |
 | 2 | WP08 | a3s_sync plan | WP07 | TODO | | |
 | 2 | WP09 | a3s_sync download | WP07 | TODO | | |
