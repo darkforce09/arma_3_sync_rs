@@ -43,6 +43,6 @@ async fn verify_live_import_autoconfig_wog() {
     assert_eq!(
         err.to_string(),
         "Failed to connect to the FTP server on url: ftp://88.99.69.243:21/Repo/WOG/.a3s-missing\n\
-         Remote file not found: /autoconfig"
+         Remote directory not found: /Repo/WOG/.a3s-missing"
     );
 }

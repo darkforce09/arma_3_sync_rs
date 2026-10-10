@@ -67,10 +67,25 @@ impl RemoteError {
         if matches!(source, a3s_transport::Error::Cancelled) {
             return Self::Cancelled;
         }
+        // `ConnectionService.init` rejects other protocol types before any DAO exists.
+        // Mirrors service/ConnectionService.java:85-86
+        if !is_repository_protocol(protocol.protocol_type)
+            && matches!(source, a3s_transport::Error::InvalidProtocol(_))
+        {
+            return Self::Connect {
+                message: UNSUPPORTED_PROTOCOL.to_owned(),
+                source,
+            };
+        }
         let core = connect_core(protocol);
         let kind = transport_kind(&source);
         let detail = match &source {
             a3s_transport::Error::Unauthorized => messages::WRONG_LOGIN_PASSWORD.to_owned(),
+            // FTP and SFTP change into the repository folder while connecting.
+            // Mirrors dao/connection/ftp/FtpDAO.java:186-190
+            a3s_transport::Error::NotFound(_) if is_ftp_like(protocol.protocol_type) => {
+                format!("Remote directory not found: {}", protocol.remote_path())
+            }
             other => other.to_string(),
         };
         Self::Connect {
@@ -173,6 +188,23 @@ pub(crate) fn remote_a3s_file(file: A3sFile) -> RemoteA3sFile {
         A3sFile::AutoConfig => RemoteA3sFile::AutoConfig,
         A3sFile::Events => RemoteA3sFile::Events,
     }
+}
+
+// Mirrors service/ConnectionService.java:86
+const UNSUPPORTED_PROTOCOL: &str = "Unknown or unsupported protocol.";
+
+/// Whether a DAO exists for the protocol (`ConnectionService.init`).
+fn is_repository_protocol(protocol_type: ProtocolType) -> bool {
+    matches!(
+        protocol_type,
+        ProtocolType::Ftp
+            | ProtocolType::Ftps
+            | ProtocolType::Sftp
+            | ProtocolType::Http
+            | ProtocolType::Https
+            | ProtocolType::HttpWebdav
+            | ProtocolType::HttpsWebdav
+    )
 }
 
 /// Whether the protocol is served by the FTP or SFTP DAO (as opposed to HTTP or WebDAV).
@@ -411,6 +443,26 @@ mod tests {
             "Failed to connect to the HTTP server on url: http://127.0.0.1:8080/repo\n\
              SOCKS5 cannot be used"
         );
+
+        let mut socks = http();
+        socks.protocol_type = ProtocolType::Socks5;
+        let err = RemoteError::connect(
+            &socks,
+            a3s_transport::Error::InvalidProtocol("SOCKS5 cannot be used".to_owned()),
+        );
+        assert_eq!(err.to_string(), "Unknown or unsupported protocol.");
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
+
+        let err = RemoteError::connect(
+            &ftp(),
+            a3s_transport::Error::NotFound("/Repo/WOG".to_owned()),
+        );
+        assert_eq!(
+            err.to_string(),
+            "Failed to connect to the FTP server on url: ftp://88.99.69.243:21/Repo/WOG\n\
+             Remote directory not found: /Repo/WOG"
+        );
+        assert_eq!(err.kind(), ErrorKind::NotFound);
 
         let err = RemoteError::connect(&ftp(), a3s_transport::Error::Unauthorized);
         assert!(

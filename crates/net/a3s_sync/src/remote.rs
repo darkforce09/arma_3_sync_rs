@@ -337,8 +337,10 @@ impl RemoteConnection {
             () = ctx.cancel.cancelled() => None,
             res = self.transport.fetch_range(&path, 0..2, ctx) => Some(res),
         };
-        let Some(probed) = probed else {
+        if matches!(probed, None | Some(Err(a3s_transport::Error::Cancelled))) {
             self.poisoned = true;
+        }
+        let Some(probed) = probed else {
             return Err(RemoteError::Cancelled);
         };
         match probed {
@@ -389,7 +391,7 @@ pub async fn check_repository(
         Ok(connection) => connection,
         Err(err) => {
             // Java connects inside `getServerInfo`, whose `finally` stores a null server info.
-            // Mirrors service/ConnectionService.java:100-106
+            // Mirrors service/ConnectionService.java:115-121
             if !matches!(err, RemoteError::Cancelled) {
                 metadata.server_info = None;
             }

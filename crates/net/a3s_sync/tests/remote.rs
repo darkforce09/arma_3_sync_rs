@@ -554,6 +554,7 @@ async fn fake_ftp_server() -> u16 {
                         "USER" => b"331 password please\r\n",
                         "PASS" => b"230 logged in\r\n",
                         "TYPE" => b"200 type set\r\n",
+                        "CWD" if line.contains("missing") => b"550 no such directory\r\n",
                         "CWD" => b"250 directory changed\r\n",
                         "PWD" => b"257 \"/\" is the current directory\r\n",
                         "QUIT" => b"221 bye\r\n",
@@ -617,6 +618,7 @@ async fn a6_connect_errors() {
             .expect("invalid protocol");
     assert_eq!(err.kind(), ErrorKind::InvalidInput);
     assert!(matches!(err, RemoteError::Connect { .. }));
+    assert_eq!(err.to_string(), "Unknown or unsupported protocol.");
 
     // Cancelled before connecting.
     protocol.protocol_type = ProtocolType::Http;
@@ -631,6 +633,35 @@ async fn a6_connect_errors() {
 
 // ---------------------------------------------------------------------------------------------
 // A7
+
+#[tokio::test]
+async fn a7_ftp_missing_directory_message() {
+    let port = fake_ftp_server().await;
+    let protocol = Protocol::new(
+        ProtocolType::Ftp,
+        "127.0.0.1/repo/.a3s-missing",
+        port.to_string(),
+        "anonymous",
+        "",
+        false,
+    );
+    let err = import_autoconfig(
+        &protocol,
+        &TransportOptions::from_protocol(&protocol),
+        &TransferCtx::new(),
+    )
+    .await
+    .expect_err("missing directory");
+    assert!(matches!(err, RemoteError::Connect { .. }), "{err:?}");
+    assert_eq!(err.kind(), ErrorKind::NotFound);
+    assert_eq!(
+        err.to_string(),
+        format!(
+            "Failed to connect to the FTP server on url: ftp://127.0.0.1:{port}/repo/.a3s-missing\n\
+             Remote directory not found: /repo/.a3s-missing"
+        )
+    );
+}
 
 #[tokio::test]
 async fn a7_import_autoconfig() {
