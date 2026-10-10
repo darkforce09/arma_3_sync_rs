@@ -502,7 +502,7 @@ async fn a6_probe_partial_transfer() {
     assert_eq!(err.kind(), ErrorKind::NotFound);
 }
 
-/// A minimal FTP control connection: enough for login, `TYPE I` and `QUIT`.
+/// A minimal FTP control connection: enough for login, `TYPE I`, `CWD`/`PWD` and `QUIT`.
 async fn fake_ftp_server() -> u16 {
     use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
@@ -526,6 +526,8 @@ async fn fake_ftp_server() -> u16 {
                         "USER" => b"331 password please\r\n",
                         "PASS" => b"230 logged in\r\n",
                         "TYPE" => b"200 type set\r\n",
+                        "CWD" => b"250 directory changed\r\n",
+                        "PWD" => b"257 \"/\" is the current directory\r\n",
                         "QUIT" => b"221 bye\r\n",
                         _ => b"502 not implemented\r\n",
                     };
