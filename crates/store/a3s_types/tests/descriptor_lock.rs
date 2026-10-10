@@ -28,7 +28,10 @@ const MAP: Option<&str> = Some("Ljava/util/Map;");
 /// Creates a class descriptor in a builder.
 type MakeDesc = fn(&mut Builder) -> NodeId;
 
-#[expect(clippy::too_many_lines, reason = "one literal table of all wire classes")]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one literal table of all wire classes"
+)]
 fn expected() -> Vec<(MakeDesc, Expected)> {
     vec![
         (
