@@ -25,7 +25,11 @@ const STR: Option<&str> = Some("Ljava/lang/String;");
 const LIST: Option<&str> = Some("Ljava/util/List;");
 const MAP: Option<&str> = Some("Ljava/util/Map;");
 
-fn expected() -> Vec<(fn(&mut Builder) -> NodeId, Expected)> {
+/// Creates a class descriptor in a builder.
+type MakeDesc = fn(&mut Builder) -> NodeId;
+
+#[expect(clippy::too_many_lines, reason = "one literal table of all wire classes")]
+fn expected() -> Vec<(MakeDesc, Expected)> {
     vec![
         (
             wire::sync_tree_directory_desc,
