@@ -49,7 +49,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 | 2 | WP08 | a3s_sync plan | WP07 | SPEC_OK | | |
 | 2 | WP09 | a3s_sync download | WP07 | SPEC_OK | | |
 | 2 | WP12 | a3s_admin upload/check/events | WP06, WP07, WP11 | TODO | | |
-| 2 | WP14 | app services | WP04, WP05 | TODO | | |
+| 2 | WP14 | app services | WP04, WP05 | SPEC_OK | | |
 | 2 | WP16 | a3s_launch | WP13, WP15 | SPEC_OK | | |
 | 2 | WP18 | presets | WP13, WP02, WP04 | SPEC_OK | | |
 | 2 | WP32 | updater apply | WP31, WP15 | TODO | | |
@@ -87,6 +87,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 - F-4 OS keyring for repository passwords (WP04 Q1; TOML is plain text, 0600).
 - F-5 Optional `HttpTransport::probe_range` returning headers for the partial-transfer test dialog (WP07 Q2).
 - F-6 Manual check: Linux `steam -applaunch 107410 -noLauncher` launch path and Steam argument prompt (WP16 A21).
+- F-7 SOCKS proxy for FTP/SFTP in a3s_transport (WP14 Q8).
 - F-2 CI: add mesa Vulkan drivers to rust.yml for egui_kittest snapshot tests (WP20 Q10).
 
 ## Live test log
