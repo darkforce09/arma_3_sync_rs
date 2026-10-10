@@ -11,7 +11,7 @@ Blockers: none
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | WP03 | a3s_types local | VERIFY (review APPROVE; fix round 1 queued: shared-node guard in legacy tree decoder) | 0 | impl=a2f164b1 ver=a37a9160 rev=ad4d74f3 | 1 | worktree-agent-a2f164b17de56cb4f | .claude/worktrees/agent-a2f164b17de56cb4f | f4b6711 (rebased) | 2026-10-10 |
 | WP02 | utils | VERIFY (review APPROVE, 8 MINOR → F-9) | 0 | impl=a453ddf6 ver=a1c5e2b5 rev=ae4b9fa7 | 2 | worktree-agent-a453ddf686221e3c9 | .claude/worktrees/agent-a453ddf686221e3c9 | 9743c85 | 2026-10-10 |
-| WP06 | a3s_transport upload | VERIFY(+live); review REQUEST_CHANGES (2 MAJOR: SFTP `/` base, REST guard without SIZE) → fix round 1 after verifier | 0 | impl=a705b69e ver=a6af6dbc rev=a93321ae | 3 | worktree-agent-a705b69e5afea8b40 | .claude/worktrees/agent-a705b69e5afea8b40 | ac17e57 | 2026-10-10 |
+| WP06 | a3s_transport upload | FIX round 1 (verifier FAIL: 8 tests; review 2 MAJOR) | 1 | impl=a705b69e ver=a6af6dbc rev=a93321ae | 3 | worktree-agent-a705b69e5afea8b40 | .claude/worktrees/agent-a705b69e5afea8b40 | ac17e57 | 2026-10-10 |
 
 ## Done before orchestration
 
@@ -100,6 +100,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 
 | Date | Crate | Test | Result |
 | --- | --- | --- | --- |
+| 2026-10-10 | a3s_transport (WP06 branch) | live_wog_ftp + verify_live resume | PASS: PASV→REST→RETR honoured by WOG |
 | 2026-10-10 | a3s_transport | live_wog_ftp | FAIL-LOGIC: FTP resume got whole file (REST before PASV); full download + SHA-1 OK. Routed to WP06. |
 
 ## Last reports
