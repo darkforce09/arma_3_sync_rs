@@ -3,7 +3,7 @@
 # run:      typos
 
 [files]
-extend-exclude = ["java_version/", "target/", "tests/fixtures/", "*.svg", "*.ttf"]
+extend-exclude = ["java_version/", "target/", "tests/fixtures/", "docs/specs/", "*.svg", "*.ttf"]
 
 [default.extend-words]
 # Names that are part of the Java wire format and must stay misspelled.
