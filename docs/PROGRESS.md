@@ -40,7 +40,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 | 0 | WP17 | a3s_tools bikey/rpt/radio | — | SPEC_OK | | |
 | 0 | WP20 | a3s_ui | — | SPEC_OK | | |
 | 0 | WP31 | a3s_updater core | — | SPEC_OK | | |
-| 1 | WP04 | a3s_repo_files local/legacy | WP02, WP03 | TODO | | |
+| 1 | WP04 | a3s_repo_files local/legacy | WP02, WP03 | SPEC_OK | | |
 | 1 | WP05 | autoconfig url/export | WP03 | SPEC_OK | | |
 | 1 | WP07 | a3s_sync model/remote/status | WP02, WP03 | TODO | | critical path |
 | 1 | WP11 | a3s_admin build | WP03 | TODO | | wire-touching |
@@ -51,7 +51,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 | 2 | WP12 | a3s_admin upload/check/events | WP06, WP07, WP11 | TODO | | |
 | 2 | WP14 | app services | WP04, WP05 | TODO | | |
 | 2 | WP16 | a3s_launch | WP13, WP15 | TODO | | |
-| 2 | WP18 | presets | WP13, WP02 | TODO | | |
+| 2 | WP18 | presets | WP13, WP02, WP04 | TODO | | |
 | 2 | WP32 | updater apply | WP31, WP15 | TODO | | |
 | 3 | WP10 | sync pipeline | WP08, WP09 | TODO | | |
 | 3 | WP21 | a3s_viewer_context | WP14, WP07 | TODO | | |
@@ -84,6 +84,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 
 - F-1 WP03: confirm PROVISIONAL computed UID of `domain.AutoConfig` (and FileAttributes, configration.Proxy) with the JDK harness (WP01).
 - F-3 After WP06: `a3s_transport::is_local_test_host` delegates to `a3s_types::ssl_policy` (WP05 Q3).
+- F-4 OS keyring for repository passwords (WP04 Q1; TOML is plain text, 0600).
 - F-2 CI: add mesa Vulkan drivers to rust.yml for egui_kittest snapshot tests (WP20 Q10).
 
 ## Live test log

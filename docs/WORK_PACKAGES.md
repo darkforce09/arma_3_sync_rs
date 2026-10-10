@@ -47,7 +47,7 @@ General notes:
 | WP12 | `a3s_admin::{check, upload, events}` | `service/administration/RepositoryCheckProcessor`, `FilesUploadManager`, `RepositoryUploadProcessor`, `service/connection/ConnectionCheckProcessor`, `ConnectionUploadProcessor`, `ConnectionDeleteProcessor`, `ConnectionService.uploadRepository/upLoadEvents`, `RepositoryService` events CRUD 979–1186 | WP06, WP07, WP11 | Metadata uploaded last; second upload transfers 0 files; parallel ≤ 10. |
 | WP14 | `a3s_repo_files::local::service`, `a3s_sync::proxy` | `J/service/ProfileService` (710), `ConfigurationService` (428), `PreferencesService`, `CommonService`, `RepositoryService` CRUD/setters | WP04, WP05 | All mutations persisted and tested; autoconfig export/import round trip; proxy → `ProxyConfig`. |
 | WP16 | `a3s_launch` | `J/service/LaunchService` (482), `J/dao/LauncherDAO` (455) | WP13, WP15 | Golden run-parameter table; `Arma3.cfg` ModLauncherList strip; PowerShell elevation quoting; autoRestart. |
-| WP18 | `a3s_tools::preset` | `J/service/Arma3LauncherPresetImporter`, `Arma3LauncherPresetExporter`, `WorkshopMetadataStore`, `docs/ARMA3_LAUNCHER_PRESET_EXPORT.md` | WP13, WP02 | Port 12 Java tests (`T/service/Arma3LauncherPreset*Test`). |
+| WP18 | `a3s_tools::preset` | `J/service/Arma3LauncherPresetImporter`, `Arma3LauncherPresetExporter`, `WorkshopMetadataStore`, `docs/ARMA3_LAUNCHER_PRESET_EXPORT.md` | WP13, WP02, WP04 (workshop store) | Port 12 Java tests (`T/service/Arma3LauncherPreset*Test`). |
 | WP32 | `a3s_updater::{apply, elevation}` | `U/.../service/Service`, `ElevationSupport` (454), `main/ArmA3SyncUpdater`, `console/Console`, `J/service/UpdaterProcess` | WP31, WP15 | Port `ElevationSupportTest` (10). Self-replace on Linux/Windows; check exit codes match Java. |
 
 ## Wave 3
