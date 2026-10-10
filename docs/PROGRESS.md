@@ -1,6 +1,6 @@
 # Rewrite progress
 
-Mode: RUNNING            Updated: 2026-10-10
+Mode: PAUSING (user: pause after current agents finish; spawn nothing new)            Updated: 2026-10-10
 Current wave: 0          Next action: wait for W0 implementers (WP03, WP02, WP06) and W1 spec extractors; then verify/review/merge; start WP20, WP17, WP31 as slots free
 Waiting-on: impl WP03 (slot 1), impl WP02 (slot 2), impl WP06 (slot 3); specs WP04, WP05, WP07, WP11, WP13, WP15
 Blockers: WP01 needs JDK 25 (`sudo dnf install java-25-openjdk-devel`) — non-blocking for others
