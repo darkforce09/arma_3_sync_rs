@@ -50,7 +50,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 | 2 | WP09 | a3s_sync download | WP07 | TODO | | |
 | 2 | WP12 | a3s_admin upload/check/events | WP06, WP07, WP11 | TODO | | |
 | 2 | WP14 | app services | WP04, WP05 | TODO | | |
-| 2 | WP16 | a3s_launch | WP13, WP15 | TODO | | |
+| 2 | WP16 | a3s_launch | WP13, WP15 | SPEC_OK | | |
 | 2 | WP18 | presets | WP13, WP02, WP04 | SPEC_OK | | |
 | 2 | WP32 | updater apply | WP31, WP15 | TODO | | |
 | 3 | WP10 | sync pipeline | WP08, WP09 | TODO | | |
@@ -86,6 +86,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 - F-3 After WP06: `a3s_transport::is_local_test_host` delegates to `a3s_types::ssl_policy` (WP05 Q3).
 - F-4 OS keyring for repository passwords (WP04 Q1; TOML is plain text, 0600).
 - F-5 Optional `HttpTransport::probe_range` returning headers for the partial-transfer test dialog (WP07 Q2).
+- F-6 Manual check: Linux `steam -applaunch 107410 -noLauncher` launch path and Steam argument prompt (WP16 A21).
 - F-2 CI: add mesa Vulkan drivers to rust.yml for egui_kittest snapshot tests (WP20 Q10).
 
 ## Live test log
