@@ -111,7 +111,7 @@ impl ProtocolType {
             wire::SFTP => Self::Sftp,
             wire::HTTP => Self::Http,
             wire::WEBDAV => Self::HttpWebdav,
-            wire::SOCKS => Self::Socks5,
+            wire::SOCKS => Self::Socks4, // Mirrors domain/Socks.java:20-22
             _ => return None,
         })
     }
