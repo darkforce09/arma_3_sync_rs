@@ -14,3 +14,9 @@
 # Local scratch
 /scratch/
 *.log
+
+# Agent orchestration
+/.claude/worktrees/
+/.claude/logs/
+/.claude/settings.local.json
+.a3s-slot
