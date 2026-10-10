@@ -10,7 +10,8 @@ Blockers: none
 | WP | Crate | State | Round | Agents | Slot | Branch | Worktree | HEAD | Since |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-10-11 | a3s_sync (WP07 branch) | a19_live_wog_check, import_autoconfig WOG | PASS |
-| WP20 | a3s_ui | VERIFY ∥ REVIEW | 0 | impl=a2a77fc3 ver=aa213ac8 rev=aed0e51b | 1 | worktree-agent-a2a77fc3ddf0cff52 | .claude/worktrees/agent-a2a77fc3ddf0cff52 | 09b9b71 | 2026-10-10 |
+| WP20 | a3s_ui | VERIFY; review REQUEST_CHANGES (5 MAJOR) → fix round after verifier | 0 | impl=a2a77fc3 ver=aa213ac8 rev=aed0e51b | 1 | worktree-agent-a2a77fc3ddf0cff52 | .claude/worktrees/agent-a2a77fc3ddf0cff52 | 09b9b71 | 2026-10-10 |
+| WP08 | a3s_sync plan | IMPL | 0 | impl=a1349fd3 | 2 | (worktree) | | | 2026-10-11 |
 | WP01 | java_fixture_harness | IMPL | 0 | impl=ae232646 | 3 | (worktree) | | | 2026-10-11 |
 
 ## Done before orchestration
@@ -46,7 +47,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 | 1 | WP11 | a3s_admin build | WP03 | SPEC_OK | | wire-touching |
 | 1 | WP13 | a3s_addons | WP03 | SPEC_OK | | |
 | 1 | WP15 | a3s_platform | WP02 | SPEC_OK | | |
-| 2 | WP08 | a3s_sync plan | WP07 | SPEC_OK | | |
+| 2 | WP08 | a3s_sync plan | WP07 | IMPL | | |
 | 2 | WP09 | a3s_sync download | WP07 | SPEC_OK | | |
 | 2 | WP12 | a3s_admin upload/check/events | WP06, WP07, WP11 | SPEC_OK | | split WP12a → WP12b |
 | 2 | WP14 | app services | WP04, WP05 | SPEC_OK | | |
@@ -80,6 +81,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 - D-8 2026-10-10: orchestrator may approve local-only deviations that fix Java bugs/security; wire-visible changes go to the user (user).
 - D-11 2026-10-10: WP12 Q7 — fix nested `racine` folder upload paths (user).
 - D-12 2026-10-10: deny.toml ignores RUSTSEC-2023-0071 (rsa Marvin, private-key ops only; we only verify SFTP host keys). Re-evaluate if SFTP public-key auth is added.
+- D-13 2026-10-11: a3s_ui indeterminate mark = accent_primary, unchecked border = text_disabled, mode-aware JAVA_BLUE helper (readability on dark; local-only).
 - D-10 2026-10-10: JDK = user-local Temurin 25.0.4.1 (Bazzite, no dnf); harness sources scripts/java_env.sh; no Gradle — compile with javac.
 - D-9 2026-10-10: custom agent types need a session restart; until then spawn general-purpose/opus with a ROLE header. (Now registered in this session.)
 
