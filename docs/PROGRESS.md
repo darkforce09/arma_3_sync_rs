@@ -10,7 +10,7 @@ Blockers: none
 | WP | Crate | State | Round | Agents | Slot | Branch | Worktree | HEAD | Since |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-10-11 | a3s_sync (WP07 branch) | a19_live_wog_check, import_autoconfig WOG | PASS |
-| WP20 | a3s_ui | VERIFY; review REQUEST_CHANGES (5 MAJOR) → fix round after verifier | 0 | impl=a2a77fc3 ver=aa213ac8 rev=aed0e51b | 1 | worktree-agent-a2a77fc3ddf0cff52 | .claude/worktrees/agent-a2a77fc3ddf0cff52 | 09b9b71 | 2026-10-10 |
+| WP20 | a3s_ui | FIX round 1 (review 5 MAJOR, verifier 4 fails) | 1 | impl=a2a77fc3 ver=aa213ac8 rev=aed0e51b | 1 | worktree-agent-a2a77fc3ddf0cff52 | .claude/worktrees/agent-a2a77fc3ddf0cff52 | 09b9b71 | 2026-10-10 |
 | WP08 | a3s_sync plan | IMPL | 0 | impl=a1349fd3 | 2 | (worktree) | | | 2026-10-11 |
 | WP01 | java_fixture_harness | IMPL | 0 | impl=ae232646 | 3 | (worktree) | | | 2026-10-11 |
 
