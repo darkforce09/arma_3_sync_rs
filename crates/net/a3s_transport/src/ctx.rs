@@ -76,7 +76,8 @@ impl TransferCtx {
     }
 }
 
-const COPY_BUFFER: usize = 64 * 1024;
+/// Chunk size of transfers (also the SFTP write size, `SftpDAO.SFTP_WRITE_BUFFER_SIZE`).
+pub(crate) const COPY_BUFFER: usize = 64 * 1024;
 
 /// Copies `reader` to `writer`, honouring cancellation, read timeout, throttle and progress.
 pub(crate) async fn copy<R, W>(
@@ -84,6 +85,36 @@ pub(crate) async fn copy<R, W>(
     writer: &mut W,
     ctx: &TransferCtx,
     read_timeout: Option<Duration>,
+) -> Result<u64>
+where
+    R: AsyncRead + Unpin + ?Sized,
+    W: AsyncWrite + Unpin + ?Sized,
+{
+    copy_with_timeouts(reader, writer, ctx, read_timeout, None).await
+}
+
+/// Copies a local `reader` to a remote `writer` (uploads): the timeout guards each remote
+/// write instead of the local reads. Progress counts bytes handed to the remote side
+/// (`AbstractConnexionDAO.UploadProgressListener`).
+pub(crate) async fn copy_upload<R, W>(
+    reader: &mut R,
+    writer: &mut W,
+    ctx: &TransferCtx,
+    write_timeout: Option<Duration>,
+) -> Result<u64>
+where
+    R: AsyncRead + Unpin + ?Sized,
+    W: AsyncWrite + Unpin + ?Sized,
+{
+    copy_with_timeouts(reader, writer, ctx, None, write_timeout).await
+}
+
+async fn copy_with_timeouts<R, W>(
+    reader: &mut R,
+    writer: &mut W,
+    ctx: &TransferCtx,
+    read_timeout: Option<Duration>,
+    write_timeout: Option<Duration>,
 ) -> Result<u64>
 where
     R: AsyncRead + Unpin + ?Sized,
@@ -100,14 +131,25 @@ where
         if n == 0 {
             break;
         }
-        writer.write_all(&buf[..n]).await?;
+        let write = writer.write_all(&buf[..n]);
+        tokio::select! {
+            () = ctx.cancel.cancelled() => return Err(Error::Cancelled),
+            res = maybe_timeout(write_timeout, write) => res?,
+        }
         total += n as u64;
         ctx.progress.fetch_add(n as u64, Ordering::Relaxed);
         if let Some(throttle) = &ctx.throttle {
-            throttle.consume(n).await;
+            tokio::select! {
+                () = ctx.cancel.cancelled() => return Err(Error::Cancelled),
+                () = throttle.consume(n) => {}
+            }
         }
     }
-    writer.flush().await?;
+    let flush = writer.flush();
+    tokio::select! {
+        () = ctx.cancel.cancelled() => return Err(Error::Cancelled),
+        res = maybe_timeout(write_timeout, flush) => res?,
+    }
     Ok(total)
 }
 

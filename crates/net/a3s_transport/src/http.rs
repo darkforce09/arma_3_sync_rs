@@ -13,6 +13,7 @@ use tokio::io::AsyncWriteExt as _;
 
 use crate::ctx::{TransferCtx, maybe_timeout};
 use crate::options::{TransportOptions, is_local_test_host};
+use crate::session::SessionState;
 use crate::{Error, Result, path};
 
 /// User agent sent by Arma3Sync; some repository hosts filter on it.
@@ -20,16 +21,19 @@ pub const USER_AGENT: &str = "ArmA3Sync";
 
 pub struct HttpTransport {
     pub(crate) client: reqwest::Client,
-    base: Url,
-    remote_path: String,
-    auth: Option<HeaderValue>,
+    pub(crate) base: Url,
+    pub(crate) remote_path: String,
+    pub(crate) auth: Option<HeaderValue>,
     read_timeout: Option<Duration>,
+    pub(crate) session: SessionState,
 }
 
-/// Builds the shared client used by the HTTP and WebDAV transports.
+/// Builds the shared client used by the HTTP and WebDAV transports. Without
+/// `follow_redirects` every 3xx is returned to the caller (WebDAV write verbs).
 pub(crate) fn build_client(
     protocol: &Protocol,
     options: &TransportOptions,
+    follow_redirects: bool,
 ) -> Result<reqwest::Client> {
     let mut headers = HeaderMap::new();
     // Repository files are already gzip-compressed; transparent compression would break
@@ -44,10 +48,8 @@ pub(crate) fn build_client(
     );
     headers.insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
 
-    let mut builder = reqwest::Client::builder()
-        .user_agent(USER_AGENT)
-        .default_headers(headers)
-        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+    let redirect = if follow_redirects {
+        reqwest::redirect::Policy::custom(|attempt| {
             let downgrade = attempt.url().scheme() == "http"
                 && attempt
                     .previous()
@@ -60,7 +62,14 @@ pub(crate) fn build_client(
             } else {
                 attempt.follow()
             }
-        }));
+        })
+    } else {
+        reqwest::redirect::Policy::none()
+    };
+    let mut builder = reqwest::Client::builder()
+        .user_agent(USER_AGENT)
+        .default_headers(headers)
+        .redirect(redirect);
     if let Some(t) = options.connect_timeout {
         builder = builder.connect_timeout(t);
     }
@@ -136,6 +145,21 @@ pub(crate) fn url_for(base: &Url, absolute_path: &str) -> Url {
     url
 }
 
+/// Maps an existence probe status: 200 → `true`, 404/410 → `false`, other 2xx → `false`.
+// Mirrors dao/connection/http/HttpDAO.java:172-182, 395-399.
+fn exists_from_status(status: StatusCode, url: &Url) -> Result<bool> {
+    match status {
+        StatusCode::OK => Ok(true),
+        StatusCode::NOT_FOUND | StatusCode::GONE => Ok(false),
+        StatusCode::UNAUTHORIZED => Err(Error::Unauthorized),
+        s if s.is_success() => Ok(false),
+        s => Err(Error::HttpStatus {
+            status: s.as_u16(),
+            url: url.to_string(),
+        }),
+    }
+}
+
 pub(crate) fn check_status(status: StatusCode, url: &Url, path: &str) -> Result<()> {
     if status.is_success() {
         return Ok(());
@@ -153,12 +177,55 @@ pub(crate) fn check_status(status: StatusCode, url: &Url, path: &str) -> Result<
 impl HttpTransport {
     pub fn new(protocol: &Protocol, options: &TransportOptions) -> Result<Self> {
         Ok(Self {
-            client: build_client(protocol, options)?,
+            client: build_client(protocol, options, true)?,
             base: base_url(protocol)?,
             remote_path: protocol.remote_path().to_owned(),
             auth: basic_auth(protocol),
             read_timeout: options.read_timeout,
+            session: SessionState::default(),
         })
+    }
+
+    /// Request with the `Authorization` header (if any) on `client`.
+    pub(crate) fn request(
+        &self,
+        client: &reqwest::Client,
+        method: reqwest::Method,
+        url: Url,
+    ) -> reqwest::RequestBuilder {
+        let mut req = client.request(method, url);
+        if let Some(auth) = &self.auth {
+            req = req.header(header::AUTHORIZATION, auth.clone());
+        }
+        req
+    }
+
+    /// Sends `req`, aborting on cancellation.
+    pub(crate) async fn send_cancellable(
+        req: reqwest::RequestBuilder,
+        ctx: &TransferCtx,
+    ) -> Result<reqwest::Response> {
+        tokio::select! {
+            () = ctx.cancel.cancelled() => Err(Error::Cancelled),
+            res = req.send() => Ok(res?),
+        }
+    }
+
+    /// Whether a file exists: `HEAD`, or `GET` when the server refuses `HEAD`.
+    // Mirrors dao/connection/http/HttpDAO.java:172-182, 390-407 (`fileExists` = response 200).
+    pub async fn exists(&mut self, relative: &str, ctx: &TransferCtx) -> Result<bool> {
+        let url = self.url(relative);
+        let head = self.request(&self.client, reqwest::Method::HEAD, url.clone());
+        let mut response = Self::send_cancellable(head, ctx).await?;
+        if matches!(
+            response.status(),
+            StatusCode::METHOD_NOT_ALLOWED | StatusCode::NOT_IMPLEMENTED
+        ) {
+            let get = self.request(&self.client, reqwest::Method::GET, url.clone());
+            // The body is dropped unread with the response.
+            response = Self::send_cancellable(get, ctx).await?;
+        }
+        exists_from_status(response.status(), &url)
     }
 
     pub fn url(&self, relative: &str) -> Url {

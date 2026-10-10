@@ -40,5 +40,9 @@ url.workspace = true
 a3s_hash.workspace = true
 a3s_repo_files.workspace = true
 axum.workspace = true
+dav-server.workspace = true
+libunftp.workspace = true
+rcgen.workspace = true
 tempfile.workspace = true
+unftp-sbe-fs.workspace = true
 tokio = { workspace = true, features = ["full"] }
