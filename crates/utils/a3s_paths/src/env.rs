@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
+use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::{CACHE_DIR_VAR, CONFIG_DIR_VAR, DATA_DIR_VAR, Error, PORTABLE_VAR};
@@ -16,7 +17,7 @@ pub enum Os {
     /// macOS (`~/Library`; Java used XDG paths here).
     MacOs,
 
-    /// BSD and other Unix systems (XDG base directories).
+    /// BSD systems (XDG base directories).
     OtherUnix,
 
     /// Anything else.
@@ -25,14 +26,23 @@ pub enum Os {
 
 impl Os {
     /// The operating system this binary was compiled for.
+    ///
+    /// Only the families Java's `os.name` checks recognise (`win`, `linux`, `bsd`, `mac`) get a
+    /// dedicated variant; other Unix systems (Solaris/illumos, AIX, …) are [`Self::Other`].
+    // Mirrors dao/ApplicationPaths.java:204, 213-238
     pub fn current() -> Self {
         if cfg!(windows) {
             Self::Windows
         } else if cfg!(target_os = "macos") {
             Self::MacOs
-        } else if cfg!(target_os = "linux") {
+        } else if cfg!(any(target_os = "linux", target_os = "android")) {
             Self::Linux
-        } else if cfg!(unix) {
+        } else if cfg!(any(
+            target_os = "freebsd",
+            target_os = "openbsd",
+            target_os = "netbsd",
+            target_os = "dragonfly"
+        )) {
             Self::OtherUnix
         } else {
             Self::Other
@@ -84,11 +94,16 @@ pub struct PlatformEnv {
     home: Option<PathBuf>,
     vars: BTreeMap<String, OsString>,
     exe_dir: Option<PathBuf>,
+    /// Why the executable's directory is unknown (`current_exe` failure), for portable mode.
+    exe_error: Option<(io::ErrorKind, String)>,
 }
 
 impl PlatformEnv {
     /// Reads the current process: OS, `HOME` (Unix) / `USERPROFILE` (Windows), the relevant
     /// environment variables and the directory of the current executable.
+    ///
+    /// Currently never fails: an unknown executable path leaves [`Self::exe_dir`] empty and is
+    /// reported as [`Error::CurrentExe`] only if portable mode needs it.
     pub fn current() -> Result<Self, Error> {
         let os = Os::current();
         let home_var = if os == Os::Windows {
@@ -103,13 +118,17 @@ impl PlatformEnv {
             .iter()
             .filter_map(|&name| std::env::var_os(name).map(|value| (name.to_owned(), value)))
             .collect();
-        let exe = std::env::current_exe().map_err(Error::CurrentExe)?;
-        let exe_dir = exe.parent().map(Path::to_path_buf);
+        // A missing executable path only matters for portable mode, which reports it.
+        let (exe_dir, exe_error) = match std::env::current_exe() {
+            Ok(exe) => (exe.parent().map(Path::to_path_buf), None),
+            Err(err) => (None, Some((err.kind(), err.to_string()))),
+        };
         Ok(Self {
             os,
             home,
             vars,
             exe_dir,
+            exe_error,
         })
     }
 
@@ -128,6 +147,7 @@ impl PlatformEnv {
                 .map(|&(name, value)| (name.to_owned(), OsString::from(value)))
                 .collect(),
             exe_dir,
+            exe_error: None,
         }
     }
 
@@ -146,12 +166,25 @@ impl PlatformEnv {
         self.exe_dir.as_deref()
     }
 
-    /// An environment variable; `None` when unset, blank after trimming, or not valid UTF-8.
+    /// The executable's directory, or [`Error::CurrentExe`] explaining why it is unknown.
+    pub(crate) fn require_exe_dir(&self) -> Result<&Path, Error> {
+        self.exe_dir().ok_or_else(|| {
+            let (kind, message) = self.exe_error.clone().unwrap_or_else(|| {
+                (
+                    io::ErrorKind::NotFound,
+                    "the executable's directory is unknown".to_owned(),
+                )
+            });
+            Error::CurrentExe(io::Error::new(kind, message))
+        })
+    }
+
+    /// An environment variable; `None` when unset, blank (Java `isBlank`), or not valid UTF-8.
     pub fn var(&self, name: &str) -> Option<&str> {
         self.var_os(name).and_then(OsStr::to_str)
     }
 
-    /// An environment variable; `None` when unset or blank after trimming (Java `isBlank`).
+    /// An environment variable; `None` when unset or blank (Java `String.isBlank`).
     // Mirrors dao/ApplicationPaths.java:207, 232
     pub fn var_os(&self, name: &str) -> Option<&OsStr> {
         self.vars
@@ -171,8 +204,31 @@ impl PlatformEnv {
     }
 }
 
+/// Java `String.isBlank`: empty or only `Character.isWhitespace` code points.
 fn is_blank(value: &OsStr) -> bool {
-    value.to_string_lossy().trim().is_empty()
+    value.to_string_lossy().chars().all(is_java_whitespace)
+}
+
+/// Java `Character.isWhitespace`: the Unicode space, line and paragraph separators except the
+/// non-breaking ones (U+00A0, U+2007, U+202F), plus `\t`, `\n`, U+000B, `\f`, `\r` and
+/// U+001C–U+001F. U+0085 is not whitespace.
+fn is_java_whitespace(c: char) -> bool {
+    matches!(
+        c,
+        '\t' | '\n'
+            | '\u{0B}'
+            | '\u{0C}'
+            | '\r'
+            | '\u{1C}'..='\u{1F}'
+            | ' '
+            | '\u{1680}'
+            | '\u{2000}'..='\u{2006}'
+            | '\u{2008}'..='\u{200A}'
+            | '\u{2028}'
+            | '\u{2029}'
+            | '\u{205F}'
+            | '\u{3000}'
+    )
 }
 
 #[cfg(test)]
@@ -191,6 +247,41 @@ mod tests {
         assert_eq!(env.var("B"), None);
         assert_eq!(env.var("C"), Some(" x "));
         assert_eq!(env.var("D"), None);
+    }
+
+    #[test]
+    fn blank_matches_java_character_is_whitespace() {
+        for blank in [
+            "\u{0B}\u{0C}",
+            "\u{1C}\u{1D}\u{1E}\u{1F}",
+            "\u{1680}",
+            "\u{2000}\u{2006}\u{2008}\u{200A}",
+            "\u{2028}\u{2029}",
+            "\u{205F}\u{3000}",
+        ] {
+            assert!(is_blank(OsStr::new(blank)), "{blank:?}");
+        }
+        for not_blank in [
+            "\u{A0}", "\u{2007}", "\u{202F}", "\u{85}", "\u{200B}", "\u{FEFF}",
+        ] {
+            assert!(!is_blank(OsStr::new(not_blank)), "{not_blank:?}");
+        }
+    }
+
+    #[test]
+    fn missing_exe_dir_is_reported_as_current_exe() {
+        let env = PlatformEnv {
+            exe_error: Some((io::ErrorKind::PermissionDenied, "no /proc".to_owned())),
+            ..PlatformEnv::for_tests(Os::Linux, None, &[], None)
+        };
+        let Err(Error::CurrentExe(err)) = env.require_exe_dir() else {
+            panic!("expected CurrentExe");
+        };
+        assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
+        assert_eq!(err.to_string(), "no /proc");
+
+        let env = PlatformEnv::for_tests(Os::Linux, None, &[], None);
+        assert!(matches!(env.require_exe_dir(), Err(Error::CurrentExe(_))));
     }
 
     #[test]

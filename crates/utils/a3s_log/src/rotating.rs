@@ -67,6 +67,9 @@ impl RotatingFile {
         let incoming = buf.len() as u64;
         if state.len > 0 && state.len.saturating_add(incoming) > state.max_bytes {
             self.rotate(&mut state);
+        } else if state.file.is_none() {
+            // A previous reopen failed; try again.
+            self.reopen(&mut state);
         }
         if let Some(file) = state.file.as_mut()
             && file.write_all(buf).is_ok()
@@ -93,6 +96,11 @@ impl RotatingFile {
         } else {
             fs::remove_file(&self.path).ok();
         }
+        self.reopen(state);
+    }
+
+    /// (Re)opens the current file; on failure the file stays closed and the next write retries.
+    fn reopen(&self, state: &mut State) {
         state.file = open_append(&self.path).ok();
         state.len = state
             .file
@@ -188,6 +196,26 @@ mod tests {
         let mut expected = vec![b'6'; 50];
         expected.extend(b"tail");
         assert_eq!(fs::read(&path).expect("read"), expected);
+    }
+
+    #[test]
+    fn failed_reopen_is_retried_on_next_write() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = tmp.path().join("logs");
+        let path = dir.join("x.log");
+        let mut file = RotatingFile::open(path.clone(), 100, 3).expect("open");
+        file.write_all(&[b'a'; 60]).expect("write");
+
+        // The directory disappears: the rotation cannot reopen the file; the record is dropped
+        // without an error.
+        fs::remove_dir_all(&dir).expect("remove dir");
+        file.write_all(&[b'b'; 60]).expect("write is swallowed");
+        assert!(!path.exists());
+
+        // Once the directory is back, the next write reopens the file.
+        fs::create_dir(&dir).expect("recreate dir");
+        file.write_all(b"after").expect("write");
+        assert_eq!(fs::read(&path).expect("read"), b"after");
     }
 
     #[test]

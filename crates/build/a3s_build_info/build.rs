@@ -30,7 +30,8 @@ fn main() {
     rerun_if_head_changes(&manifest_dir);
 }
 
-/// Emits `rerun-if-changed` for `HEAD` and the ref it points at, when those files exist.
+/// Emits `rerun-if-changed` for `HEAD`, the ref it points at and `packed-refs` (where git
+/// moves refs on `git pack-refs`/`gc`), when those files exist.
 fn rerun_if_head_changes(manifest_dir: &Path) {
     let Some(head) = git_path(manifest_dir, "HEAD") else {
         return;
@@ -39,6 +40,12 @@ fn rerun_if_head_changes(manifest_dir: &Path) {
         return;
     }
     println!("cargo:rerun-if-changed={}", head.display());
+
+    if let Some(packed_refs) = git_path(manifest_dir, "packed-refs")
+        && packed_refs.is_file()
+    {
+        println!("cargo:rerun-if-changed={}", packed_refs.display());
+    }
 
     let Ok(contents) = std::fs::read_to_string(&head) else {
         return;

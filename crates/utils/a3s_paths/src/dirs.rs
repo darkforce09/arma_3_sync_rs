@@ -149,12 +149,7 @@ fn is_portable(env: &PlatformEnv) -> bool {
 }
 
 fn portable_root(env: &PlatformEnv, kind: Kind) -> Result<PathBuf, Error> {
-    let exe_dir = env.exe_dir().ok_or_else(|| {
-        Error::CurrentExe(io::Error::new(
-            io::ErrorKind::NotFound,
-            "the executable's directory is unknown",
-        ))
-    })?;
+    let exe_dir = env.require_exe_dir()?;
     let leaf = match kind {
         Kind::Config => "config",
         Kind::Data => "data",

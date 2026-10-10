@@ -126,15 +126,16 @@ pub fn init(config: &LogConfig) -> Result<LogHandle, Error> {
         .try_init()
         .map_err(|_already_set| Error::AlreadyInitialized)?;
 
-    if let Some(err) = filter_error {
-        tracing::warn!("{err}");
-    }
+    // The "enabled" line is always the first line of the debug file.
     let log_file = file.as_ref().map(|file| {
         let path = std::path::absolute(file.path()).unwrap_or_else(|_| file.path().to_path_buf());
         // Mirrors utils/DebugLogger.java:55
         tracing::info!("Debug logging enabled. Log file: {}", path.display());
         path
     });
+    if let Some(err) = filter_error {
+        tracing::warn!("{err}");
+    }
     Ok(LogHandle { file, log_file })
 }
 
