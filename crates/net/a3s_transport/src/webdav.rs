@@ -132,7 +132,7 @@ impl WebdavTransport {
                 status if status.is_success() => {
                     self.session.mark_created_dir(&current, &parent, segment);
                 }
-                other => check_status(other, &url, &current)?,
+                other => check_write_status(other, &url, &current)?,
             }
         }
         Ok(())
@@ -167,7 +167,7 @@ impl WebdavTransport {
                     err
                 }
             })?;
-        check_status(response.status(), &url, relative)?;
+        check_write_status(response.status(), &url, relative)?;
         Ok(len)
     }
 
@@ -187,6 +187,14 @@ impl WebdavTransport {
             .send_write(Method::DELETE, url.clone(), ctx, |req| req)
             .await?;
         let status = response.status();
+        if status == StatusCode::MULTI_STATUS {
+            // RFC 4918 §9.6.1: some members of the collection could not be deleted.
+            return Err(Error::Remote {
+                operation: "delete",
+                path: relative.to_owned(),
+                reason: "207 Multi-Status: the server could not delete every member".into(),
+            });
+        }
         if !matches!(status, StatusCode::NOT_FOUND | StatusCode::GONE) {
             check_status(status, &url, relative)?;
         }
@@ -194,6 +202,15 @@ impl WebdavTransport {
         self.session.remove_entry(parent, name, relative);
         Ok(())
     }
+}
+
+/// Status check for `PUT` and `MKCOL`: 409 Conflict means a missing parent collection.
+// Mirrors dao/connection/webdav/WebdavDAO.java:231-242, 295, 342.
+fn check_write_status(status: StatusCode, url: &Url, path: &str) -> Result<()> {
+    if status == StatusCode::CONFLICT {
+        return Err(Error::NotFound(path.to_owned()));
+    }
+    check_status(status, url, path)
 }
 
 /// Body stream of an upload: chunks of at most [`COPY_BUFFER`] bytes, counting progress and

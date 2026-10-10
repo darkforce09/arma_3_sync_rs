@@ -13,13 +13,22 @@ use tokio::net::{TcpListener, TcpStream};
 use super::ftp::AbortOnDrop;
 
 /// Behaviour switches of the stub.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct Behaviour {
     /// Answer `SIZE` (otherwise 502).
     pub size: bool,
 
+    /// Answer `MLST` with a `size=` fact (otherwise 502).
+    pub mlst: bool,
+
     /// Accept `REST` with 350 but always send the whole file.
     pub ignore_rest: bool,
+
+    /// Refuse the first `PASV` with 425.
+    pub refuse_first_pasv: bool,
+
+    /// Never send the completion reply (226) of a `RETR`.
+    pub withhold_completion: bool,
 }
 
 pub struct StrictFtp {
@@ -72,6 +81,7 @@ async fn session(
     write.write_all(b"220 strict stub\r\n").await?;
     let mut restart: u64 = 0;
     let mut passive: Option<TcpListener> = None;
+    let mut pasv_count = 0;
     while let Some(line) = lines.next_line().await? {
         log.lock().push(line.clone());
         let (verb, arg) = line.split_once(' ').unwrap_or((line.as_str(), ""));
@@ -88,6 +98,11 @@ async fn session(
             "NOOP" => "200 ok".to_owned(),
             "SIZE" if behaviour.size && arg == path => format!("213 {}", content.len()),
             "SIZE" if behaviour.size => "550 no such file".to_owned(),
+            "MLST" if behaviour.mlst && arg == path => format!(
+                "250-Listing {path}\r\n type=file;size={}; {path}\r\n250 End",
+                content.len()
+            ),
+            "MLST" if behaviour.mlst => "550 no such file".to_owned(),
             "REST" => match arg.parse() {
                 Ok(offset) => {
                     restart = offset;
@@ -95,7 +110,12 @@ async fn session(
                 }
                 Err(_) => "501 bad offset".to_owned(),
             },
+            "PASV" if behaviour.refuse_first_pasv && pasv_count == 0 => {
+                pasv_count += 1;
+                "425 no passive port today".to_owned()
+            }
             "PASV" => {
+                pasv_count += 1;
                 let listener = TcpListener::bind("127.0.0.1:0").await?;
                 let port = listener.local_addr()?.port();
                 passive = Some(listener);
@@ -124,6 +144,9 @@ async fn session(
                             .min(content.len());
                         let sent = data.write_all(&content[start..]).await;
                         drop(data);
+                        if behaviour.withhold_completion {
+                            continue;
+                        }
                         if sent.is_ok() {
                             "226 transfer complete".to_owned()
                         } else {

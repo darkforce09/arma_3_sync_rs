@@ -163,3 +163,41 @@ async fn a15_write_verbs_do_not_follow_redirects() {
     );
     assert_eq!(*hits.lock(), ["PUT /f.bin", "DELETE /f.bin"]);
 }
+
+/// 409 Conflict on `MKCOL`/`PUT` is a missing parent (`NotFound`); a 207 answer to `DELETE`
+/// is a partial failure, never success.
+#[tokio::test]
+async fn a14_conflict_and_partial_delete() {
+    let router = axum::Router::new().fallback(|req: axum::extract::Request| async move {
+        match (req.method().as_str(), req.uri().path()) {
+            ("PROPFIND", "/c/") => StatusCode::NOT_FOUND.into_response(),
+            ("MKCOL", "/c/") | ("PUT", "/put.bin") => StatusCode::CONFLICT.into_response(),
+            ("DELETE", "/tree/") => StatusCode::MULTI_STATUS.into_response(),
+            _ => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        }
+    });
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let _server = AbortOnDrop(tokio::spawn(async move {
+        let _ignored = axum::serve(listener, router).await;
+    }));
+    let protocol = Protocol::new(
+        ProtocolType::HttpWebdav,
+        "127.0.0.1",
+        port.to_string(),
+        "anonymous",
+        "",
+        false,
+    );
+    let options = TransportOptions::from_protocol(&protocol);
+    let mut t = Transport::connect(&protocol, &options).await.unwrap();
+    let ctx = TransferCtx::new();
+    let result = t.mkdirs("c", &ctx).await;
+    assert!(matches!(result, Err(Error::NotFound(_))), "{result:?}");
+    let result = t.upload_bytes(b"x", "put.bin", &ctx).await;
+    assert!(matches!(result, Err(Error::NotFound(_))), "{result:?}");
+    let result = t
+        .delete("tree", a3s_transport::RemoteKind::Directory, &ctx)
+        .await;
+    assert!(matches!(result, Err(Error::Remote { .. })), "{result:?}");
+}

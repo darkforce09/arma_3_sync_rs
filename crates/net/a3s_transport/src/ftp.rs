@@ -159,6 +159,30 @@ fn parse_pasv_port(reply: &str) -> Option<u16> {
     (numbers.len() == 6).then(|| numbers[4] * 256 + numbers[5])
 }
 
+/// A directory listing.
+enum Listing {
+    Entries(Vec<ListEntry>),
+
+    /// The directory cannot be entered (`CWD` refused).
+    Missing,
+
+    /// The listing was refused or its format is unknown.
+    Unusable,
+}
+
+/// `size=` fact of an `MLST` fact line (`type=file;size=123;modify=…; name`).
+fn mlst_size(facts: &str) -> Option<u64> {
+    let facts = facts.split_once(' ').map_or(facts, |(facts, _name)| facts);
+    facts.split(';').find_map(|fact| {
+        let (key, value) = fact.split_once('=')?;
+        if key.trim().eq_ignore_ascii_case("size") {
+            value.trim().parse().ok()
+        } else {
+            None
+        }
+    })
+}
+
 /// Result of a resumed download.
 enum Resume {
     /// Final size of the destination.
@@ -297,6 +321,15 @@ impl FtpTransport {
         }
     }
 
+    /// Marks the transport poisoned when a completion reply timed out: the reply may still
+    /// arrive later and desynchronise the control connection.
+    fn poison_on_timeout<T>(&mut self, result: Result<T>) -> Result<T> {
+        if matches!(result, Err(Error::Timeout)) {
+            self.poisoned = true;
+        }
+        result
+    }
+
     async fn retrieve<W>(
         &mut self,
         relative: &str,
@@ -316,7 +349,8 @@ impl FtpTransport {
         let copied = copy(&mut transfer, writer, ctx, self.read_timeout).await;
         match copied {
             Ok(n) => {
-                with_timeout(self.read_timeout, transfer.finish()).await?;
+                let finished = with_timeout(self.read_timeout, transfer.finish()).await;
+                self.poison_on_timeout(finished)?;
                 Ok(n)
             }
             Err(err) => {
@@ -353,7 +387,7 @@ impl FtpTransport {
                     tracing::warn!(
                         relative,
                         resume_from,
-                        "FTP server cannot resume this download; downloading from the start"
+                        "FTP download cannot be resumed safely; downloading from the start"
                     );
                 }
             }
@@ -364,18 +398,28 @@ impl FtpTransport {
         Ok(written)
     }
 
-    /// `SIZE` of a remote file; `None` when the server does not answer it.
-    async fn remote_size(&mut self, absolute: &str, relative: &str) -> Result<Option<u64>> {
+    /// Size of a remote file from `SIZE`, else from the `size=` fact of `MLST`; `None` when
+    /// the server answers neither (or the file is missing).
+    async fn remote_size(&mut self, absolute: &str) -> Result<Option<u64>> {
         match self
             .stream
             .custom_command(format!("SIZE {absolute}"), &[Status::File])
             .await
         {
-            Ok(response) => Ok(reply_text(&response)
-                .get(3..)
-                .and_then(|s| s.trim().parse().ok())),
-            Err(e) if reply_code(&e) == Some(550) => Err(Error::NotFound(relative.to_owned())),
-            Err(FtpError::UnexpectedResponse(_)) => Ok(None),
+            Ok(response) => {
+                if let Some(size) = reply_text(&response)
+                    .get(3..)
+                    .and_then(|s| s.trim().parse().ok())
+                {
+                    return Ok(Some(size));
+                }
+            }
+            Err(FtpError::UnexpectedResponse(_)) => {}
+            Err(e) => return Err(e.into()),
+        }
+        match self.stream.mlst(Some(absolute)).await {
+            Ok(facts) => Ok(mlst_size(&facts)),
+            Err(FtpError::UnexpectedResponse(_) | FtpError::BadResponse) => Ok(None),
             Err(e) => Err(e.into()),
         }
     }
@@ -385,8 +429,9 @@ impl FtpTransport {
     /// restart marker on any command between `REST` and the transfer (RFC 3659 §5.3), so
     /// suppaftp's `REST`-then-`PASV` order made them send the whole file.
     ///
-    /// When `SIZE` is known, a server that still sends more than the remaining bytes is
-    /// detected and the download restarts from 0.
+    /// Only resumes when the remote size is known (`SIZE` or `MLST`), so that a server that
+    /// still sends more than the remaining bytes is detected; otherwise, or when `PASV` or
+    /// `REST` is refused, the download restarts from 0.
     // Mirrors dao/connection/ftp/FtpDAO.java:161 (setRestartOffset), 330-424.
     async fn download_resumed(
         &mut self,
@@ -396,24 +441,31 @@ impl FtpTransport {
         ctx: &TransferCtx,
     ) -> Result<Resume> {
         let absolute = self.absolute(relative);
-        let size = self.remote_size(&absolute, relative).await?;
-        if let Some(size) = size {
-            if offset > size {
-                return Ok(Resume::Restart);
-            }
-            if offset == size {
-                let file = crate::open_destination(dest, size).await?;
-                file.sync_all().await?;
-                return Ok(Resume::Done(size));
-            }
+        let Some(size) = self.remote_size(&absolute).await? else {
+            return Ok(Resume::Restart);
+        };
+        if offset > size {
+            return Ok(Resume::Restart);
+        }
+        if offset == size {
+            let file = crate::open_destination(dest, size).await?;
+            file.sync_all().await?;
+            return Ok(Resume::Done(size));
         }
 
         // PASV, then connect the data socket.
-        let reply = self
+        let reply = match self
             .stream
             .custom_command("PASV", &[Status::PassiveMode])
-            .await?;
-        let port = parse_pasv_port(&reply_text(&reply)).ok_or(Error::Ftp(FtpError::BadResponse))?;
+            .await
+        {
+            Ok(reply) => reply,
+            Err(FtpError::UnexpectedResponse(_)) => return Ok(Resume::Restart),
+            Err(e) => return Err(e.into()),
+        };
+        let Some(port) = parse_pasv_port(&reply_text(&reply)) else {
+            return Ok(Resume::Restart);
+        };
         let connect = tokio::net::TcpStream::connect((self.peer_ip, port));
         let data = crate::ctx::maybe_timeout(Some(self.resync_timeout()), connect).await?;
 
@@ -446,17 +498,12 @@ impl FtpTransport {
             None => Box::new(data),
         };
 
-        let remaining = size.map(|s| s - offset);
+        let remaining = size - offset;
         let copied = async {
             let mut file = crate::open_destination(dest, offset).await?;
-            let n = match remaining {
-                // One byte more than expected reveals a server that ignored REST.
-                Some(remaining) => {
-                    let mut limited = (&mut reader).take(remaining + 1);
-                    copy(&mut limited, &mut file, ctx, self.read_timeout).await?
-                }
-                None => copy(&mut reader, &mut file, ctx, self.read_timeout).await?,
-            };
+            // One byte more than expected reveals a server that ignored REST.
+            let mut limited = (&mut reader).take(remaining + 1);
+            let n = copy(&mut limited, &mut file, ctx, self.read_timeout).await?;
             file.sync_all().await?;
             Ok::<_, Error>(n)
         }
@@ -464,7 +511,7 @@ impl FtpTransport {
         drop(reader);
 
         match copied {
-            Ok(n) if remaining.is_some_and(|remaining| n > remaining) => {
+            Ok(n) if n > remaining => {
                 self.drain_manual_reply().await;
                 self.ensure_usable()?;
                 ctx.progress
@@ -472,20 +519,19 @@ impl FtpTransport {
                 Ok(Resume::Restart)
             }
             Ok(n) => {
-                with_timeout(
+                let reply = with_timeout(
                     self.read_timeout,
                     self.stream.read_response_in(&[
                         Status::ClosingDataConnection,
                         Status::RequestedFileActionOk,
                     ]),
                 )
-                .await?;
+                .await;
+                self.poison_on_timeout(reply)?;
                 let total = offset + n;
                 // Mirrors dao/connection/ftp/FtpDAO.java:387-393 (size check after the
                 // transfer).
-                if let Some(size) = size
-                    && total != size
-                {
+                if total != size {
                     return Err(Error::Incomplete {
                         expected: size,
                         actual: total,
@@ -500,24 +546,50 @@ impl FtpTransport {
         }
     }
 
-    /// Names in the directory `absolute_dir`: `Some(empty)` when it is missing (450/550),
-    /// `None` when the listing is unusable.
-    // Mirrors dao/connection/ftp/FtpDAO.java:460-477.
-    async fn list_names(&mut self, absolute_dir: &str) -> Result<Option<HashSet<String>>> {
-        match self.stream.list(Some(absolute_dir)).await {
-            Ok(lines) => Ok(parse_listing(&lines)
-                .map(|entries| entries.iter().map(|e| e.name().to_owned()).collect())),
-            Err(e) if matches!(reply_code(&e), Some(450 | 550)) => Ok(Some(HashSet::new())),
+    /// Lists the directory `absolute_dir` like Java (`FtpDAO.java:460-462`): `CWD` into it,
+    /// `LIST` without argument (servers split `LIST` arguments on spaces), `CWD` back to the
+    /// base. With `all`, `LIST -a` is tried first so dot-files are included.
+    async fn list_dir(&mut self, absolute_dir: &str, all: bool) -> Result<Listing> {
+        if !self.try_cwd(absolute_dir).await? {
+            return Ok(Listing::Missing);
+        }
+        let mut lines = if all {
+            self.stream.list(Some("-a")).await
+        } else {
+            self.stream.list(None).await
+        };
+        if all && matches!(lines, Err(FtpError::UnexpectedResponse(_))) {
+            lines = self.stream.list(None).await;
+        }
+        let base = self.base.clone();
+        self.stream.cwd(&base).await?;
+        match lines {
+            Ok(lines) => Ok(parse_listing(&lines).map_or(Listing::Unusable, Listing::Entries)),
+            // The directory exists (CWD succeeded): some servers answer an empty one so.
+            Err(e) if matches!(reply_code(&e), Some(450 | 550)) => Ok(Listing::Entries(Vec::new())),
             Err(FtpError::UnexpectedResponse(response)) => {
                 tracing::warn!(
                     directory = absolute_dir,
                     reply = reply_text(&response),
-                    "FTP directory listing unavailable; falling back to MLST"
+                    "FTP directory listing unavailable"
                 );
-                Ok(None)
+                Ok(Listing::Unusable)
             }
             Err(e) => Err(e.into()),
         }
+    }
+
+    /// Names in the directory `absolute_dir`: empty when it is missing, `None` when the
+    /// listing is unusable.
+    // Mirrors dao/connection/ftp/FtpDAO.java:460-477.
+    async fn list_names(&mut self, absolute_dir: &str) -> Result<Option<HashSet<String>>> {
+        Ok(match self.list_dir(absolute_dir, false).await? {
+            Listing::Entries(entries) => {
+                Some(entries.iter().map(|e| e.name().to_owned()).collect())
+            }
+            Listing::Missing => Some(HashSet::new()),
+            Listing::Unusable => None,
+        })
     }
 
     // Mirrors dao/connection/ftp/FtpDAO.java:430-458.
@@ -545,14 +617,13 @@ impl FtpTransport {
                 _ => {}
             }
         }
-        self.exists_mlst(relative).await
+        self.exists_absolute(&self.absolute(relative)).await
     }
 
     /// `MLST`, or an uncached listing of the parent when the server has no `MLST`.
     // Mirrors dao/connection/ftp/FtpDAO.java:479-494.
-    async fn exists_mlst(&mut self, relative: &str) -> Result<bool> {
-        let absolute = self.absolute(relative);
-        let code = match self.stream.mlst(Some(&absolute)).await {
+    async fn exists_absolute(&mut self, absolute: &str) -> Result<bool> {
+        let code = match self.stream.mlst(Some(absolute)).await {
             // BadResponse: a 250 reply without a fact line.
             Ok(_) | Err(FtpError::BadResponse) => return Ok(true),
             Err(FtpError::UnexpectedResponse(response)) => response,
@@ -562,11 +633,12 @@ impl FtpTransport {
             MlstOutcome::Found => Ok(true),
             MlstOutcome::Missing => Ok(false),
             MlstOutcome::Fallback => {
-                let (parent, name) = path::split_parent(relative);
-                Ok(self
-                    .list_names(&self.absolute(parent))
-                    .await?
-                    .is_some_and(|names| names.contains(name)))
+                let (parent, name) = absolute.rsplit_once('/').unwrap_or(("", absolute));
+                let parent = if parent.is_empty() { "/" } else { parent };
+                Ok(match self.list_dir(parent, true).await? {
+                    Listing::Entries(entries) => entries.iter().any(|e| e.name() == name),
+                    Listing::Missing | Listing::Unusable => false,
+                })
             }
             MlstOutcome::Failed => Err(Error::Ftp(FtpError::UnexpectedResponse(code))),
         }
@@ -630,22 +702,18 @@ impl FtpTransport {
             );
         }
         let (parent, name) = path::split_parent(relative);
+        // A known directory may have vanished meanwhile: CWD into it before the transfer and
+        // recreate the whole chain if it is gone (FtpDAO.java:631-639).
+        if self.session.is_known_dir(parent) && !self.try_cwd(&self.absolute(parent)).await? {
+            self.session.forget_chain(parent);
+        }
         self.mkdirs(parent, ctx).await?;
-        let written = match self.store(&mut source, relative, ctx).await {
-            // A known directory vanished meanwhile: recreate it once (FtpDAO.java:631-639).
-            Err(Error::NotFound(_)) if self.session.is_known_dir(parent) => {
-                self.session.forget_tree(parent);
-                self.mkdirs(parent, ctx).await?;
-                self.store(&mut source, relative, ctx).await?
-            }
-            other => other?,
-        };
+        let written = self.store(&mut source, relative, ctx).await?;
         self.session.add_entry(parent, name);
         Ok(written)
     }
 
-    /// `STOR <absolute>` and copies `source` (nothing is read from it when `STOR` is
-    /// refused).
+    /// `STOR <absolute>` and copies `source`.
     async fn store(
         &mut self,
         source: &mut UploadSource,
@@ -661,7 +729,8 @@ impl FtpTransport {
             .map_err(|e| map_ftp_error(e, relative))?;
         match copy_upload(&mut source.reader, &mut transfer, ctx, self.read_timeout).await {
             Ok(n) => {
-                with_timeout(self.read_timeout, transfer.finish()).await?;
+                let finished = with_timeout(self.read_timeout, transfer.finish()).await;
+                self.poison_on_timeout(finished)?;
                 Ok(n)
             }
             Err(err) => {
@@ -690,16 +759,20 @@ impl FtpTransport {
         Ok(())
     }
 
-    /// `DELE`; 550 (missing) is not an error.
+    /// `DELE`; a 550 is only accepted when the file is confirmed missing.
     async fn delete_file(&mut self, absolute: &str) -> Result<()> {
         match self.stream.rm(absolute).await {
             Ok(()) => Ok(()),
-            Err(e) if reply_code(&e) == Some(550) => Ok(()),
+            Err(e) if reply_code(&e) == Some(550) && !self.exists_absolute(absolute).await? => {
+                Ok(())
+            }
             Err(e) => Err(remote_error(e, "delete file", absolute)),
         }
     }
 
-    /// Deletes the contents of `absolute` recursively, then `RMD`.
+    /// Deletes the contents of `absolute` recursively (`CWD` + `LIST -a`), then `RMD`. A
+    /// directory that cannot be entered is only treated as missing when `MLST` (or the
+    /// parent's listing) confirms it.
     fn delete_dir<'a>(
         &'a mut self,
         absolute: String,
@@ -707,16 +780,26 @@ impl FtpTransport {
     ) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>> {
         Box::pin(async move {
             ctx.check_cancelled()?;
-            let lines = match self.stream.list(Some(&absolute)).await {
-                Ok(lines) => lines,
-                Err(e) if matches!(reply_code(&e), Some(450 | 550)) => return Ok(()),
-                Err(e) => return Err(remote_error(e, "list directory", &absolute)),
+            let entries = match self.list_dir(&absolute, true).await? {
+                Listing::Entries(entries) => entries,
+                Listing::Missing => {
+                    if self.exists_absolute(&absolute).await? {
+                        return Err(Error::Remote {
+                            operation: "list directory",
+                            path: absolute,
+                            reason: "cannot enter the directory".into(),
+                        });
+                    }
+                    return Ok(());
+                }
+                Listing::Unusable => {
+                    return Err(Error::Remote {
+                        operation: "list directory",
+                        path: absolute,
+                        reason: "unrecognised listing format".into(),
+                    });
+                }
             };
-            let entries = parse_listing(&lines).ok_or_else(|| Error::Remote {
-                operation: "list directory",
-                path: absolute.clone(),
-                reason: "unrecognised listing format".into(),
-            })?;
             for entry in entries {
                 let child = format!("{}/{}", absolute.trim_end_matches('/'), entry.name());
                 if entry.is_directory() {
@@ -727,7 +810,9 @@ impl FtpTransport {
             }
             match self.stream.rmdir(&absolute).await {
                 Ok(()) => Ok(()),
-                Err(e) if reply_code(&e) == Some(550) => Ok(()),
+                // 550 is fine only if the directory is really gone (not, e.g., still holding
+                // entries hidden from the listing).
+                Err(e) if reply_code(&e) == Some(550) && !self.try_cwd(&absolute).await? => Ok(()),
                 Err(e) => Err(remote_error(e, "remove directory", &absolute)),
             }
         })
@@ -740,7 +825,17 @@ impl FtpTransport {
 
 #[cfg(test)]
 mod tests {
-    use super::{MlstOutcome, mlst_outcome, parse_listing, parse_pasv_port};
+    use super::{MlstOutcome, mlst_outcome, mlst_size, parse_listing, parse_pasv_port};
+
+    #[test]
+    fn parses_mlst_size() {
+        assert_eq!(
+            mlst_size("type=file;size=1033;modify=20201019151930; a b.pbo"),
+            Some(1033)
+        );
+        assert_eq!(mlst_size("Type=file;Size=7; x"), Some(7));
+        assert_eq!(mlst_size("type=dir;modify=1; d"), None);
+    }
 
     #[test]
     fn a10_mlst_reply_decision() {

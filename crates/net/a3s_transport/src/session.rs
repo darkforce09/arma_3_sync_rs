@@ -152,6 +152,19 @@ impl SessionState {
         self.forget_tree(path);
     }
 
+    /// A known directory vanished: forgets it, everything below it and all its ancestors
+    /// (they may be gone too), so that `mkdirs` checks the whole chain again.
+    pub(crate) fn forget_chain(&mut self, dir: &str) {
+        self.forget_tree(dir);
+        let mut ancestor = dir;
+        while let Some((parent, _)) = ancestor.rsplit_once('/') {
+            self.known_dirs.remove(parent);
+            self.listings.remove(parent);
+            ancestor = parent;
+        }
+        self.listings.remove("");
+    }
+
     /// Drops `path` and everything below it from the caches (a directory that vanished).
     pub(crate) fn forget_tree(&mut self, path: &str) {
         let below = |key: &String| {
@@ -170,6 +183,21 @@ mod tests {
     use std::collections::HashSet;
 
     use super::SessionState;
+
+    #[test]
+    fn forget_chain_drops_ancestors() {
+        let mut state = SessionState::default();
+        state.begin();
+        for dir in ["k", "k/l", "k/l/m", "k2", "x"] {
+            state.mark_known_dir(dir);
+        }
+        state.forget_chain("k/l");
+        assert!(!state.is_known_dir("k"));
+        assert!(!state.is_known_dir("k/l"));
+        assert!(!state.is_known_dir("k/l/m"));
+        assert!(state.is_known_dir("k2"));
+        assert!(state.is_known_dir("x"));
+    }
 
     #[test]
     fn caches_only_while_active() {

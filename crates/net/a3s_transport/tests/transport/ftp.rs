@@ -187,29 +187,44 @@ async fn resume_against_stub(behaviour: Behaviour) -> Vec<String> {
 /// `REST, PASV, RETR` and sent the whole file, which was appended to the first half.
 #[tokio::test]
 async fn a_resume_ftp_rest_immediately_before_retr() {
+    for behaviour in [
+        Behaviour {
+            size: true,
+            ..Behaviour::default()
+        },
+        // Size from the MLST `size=` fact when SIZE is not implemented.
+        Behaviour {
+            mlst: true,
+            ..Behaviour::default()
+        },
+    ] {
+        let commands = resume_against_stub(behaviour).await;
+        let rest = commands
+            .iter()
+            .position(|c| c == "REST 516")
+            .expect("REST sent");
+        assert_eq!(commands[rest - 1], "PASV", "{commands:?}");
+        assert_eq!(
+            commands[rest + 1],
+            format!("RETR {STUB_PATH}"),
+            "{commands:?}"
+        );
+    }
+}
+
+/// Without a known remote size a resume cannot be checked: the download restarts from 0
+/// (no REST), even against a server that would ignore REST.
+#[tokio::test]
+async fn a_resume_ftp_unknown_size_restarts() {
     let commands = resume_against_stub(Behaviour {
-        size: true,
-        ignore_rest: false,
+        ignore_rest: true,
+        ..Behaviour::default()
     })
     .await;
-    let rest = commands
-        .iter()
-        .position(|c| c == "REST 516")
-        .expect("REST sent");
-    assert_eq!(commands[rest - 1], "PASV", "{commands:?}");
-    assert_eq!(
-        commands[rest + 1],
-        format!("RETR {STUB_PATH}"),
+    assert!(
+        !commands.iter().any(|c| c.starts_with("REST")),
         "{commands:?}"
     );
-
-    // Without SIZE the order alone must be right.
-    let commands = resume_against_stub(Behaviour {
-        size: false,
-        ignore_rest: false,
-    })
-    .await;
-    assert!(commands.iter().any(|c| c == "REST 516"), "{commands:?}");
 }
 
 /// A server that acknowledges `REST` but sends the whole file anyway is detected through
@@ -219,9 +234,78 @@ async fn a_resume_ftp_server_ignoring_rest() {
     let commands = resume_against_stub(Behaviour {
         size: true,
         ignore_rest: true,
+        ..Behaviour::default()
     })
     .await;
     let retrs = commands.iter().filter(|c| c.starts_with("RETR")).count();
     // Resume attempt, restart from 0, then the final fetch.
     assert_eq!(retrs, 3, "{commands:?}");
+}
+
+/// A refused `PASV` during a resume falls back to a full download.
+#[tokio::test]
+async fn a_resume_ftp_refused_pasv_restarts() {
+    let commands = resume_against_stub(Behaviour {
+        size: true,
+        refuse_first_pasv: true,
+        ..Behaviour::default()
+    })
+    .await;
+    assert!(
+        !commands.iter().any(|c| c.starts_with("REST")),
+        "{commands:?}"
+    );
+}
+
+/// A missing file: 550 on `SIZE` is "size unknown", the download then reports `NotFound`.
+#[tokio::test]
+async fn a_resume_ftp_missing_file() {
+    let stub = strict_ftp::serve(
+        STUB_PATH,
+        random_bytes(10, 1),
+        Behaviour {
+            size: true,
+            ..Behaviour::default()
+        },
+    )
+    .await;
+    let options = TransportOptions::from_protocol(&stub.protocol);
+    let mut t = Transport::connect(&stub.protocol, &options).await.unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let dest = dir.path().join("x");
+    std::fs::write(&dest, b"half").unwrap();
+    let result = t
+        .download_file("other.pbo", &dest, 4, &TransferCtx::new())
+        .await;
+    assert!(matches!(result, Err(Error::NotFound(_))), "{result:?}");
+    // Still usable.
+    assert_eq!(
+        t.fetch("f.pbo", &TransferCtx::new()).await.unwrap().len(),
+        10
+    );
+}
+
+/// A completion reply that never arrives times out and poisons the transport.
+#[tokio::test]
+async fn a_ftp_missing_completion_reply_poisons() {
+    let stub = strict_ftp::serve(
+        STUB_PATH,
+        random_bytes(10, 1),
+        Behaviour {
+            withhold_completion: true,
+            ..Behaviour::default()
+        },
+    )
+    .await;
+    let mut options = TransportOptions::from_protocol(&stub.protocol);
+    options.read_timeout = Some(std::time::Duration::from_millis(300));
+    let mut t = Transport::connect(&stub.protocol, &options).await.unwrap();
+    let ctx = TransferCtx::new();
+    let result = t.fetch("f.pbo", &ctx).await;
+    assert!(matches!(result, Err(Error::Timeout)), "{result:?}");
+    let result = t.exists("f.pbo", &ctx).await;
+    assert!(
+        matches!(result, Err(ref e @ Error::ConnectionPoisoned) if e.is_connection_lost()),
+        "{result:?}"
+    );
 }

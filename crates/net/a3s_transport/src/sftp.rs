@@ -24,6 +24,9 @@ use crate::{Error, RemoteKind, Result, UploadSource, path};
 // Mirrors dao/connection/sftp/SftpDAO.java:531-538.
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Upper bound for closing a remote file handle (also after a cancelled upload).
+const CLOSE_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// Accepts any host key, like the Java client (Apache MINA's default verifier), but logs its
 /// fingerprint.
 struct HostKeyLogger {
@@ -37,12 +40,20 @@ impl russh::client::Handler for HostKeyLogger {
         &mut self,
         server_public_key: &PublicKeyOrCertificate,
     ) -> Result<bool, Self::Error> {
-        if let PublicKeyOrCertificate::PublicKey { key, .. } = server_public_key {
-            tracing::info!(
+        match server_public_key {
+            PublicKeyOrCertificate::PublicKey { key, .. } => tracing::info!(
                 host = self.host,
                 fingerprint = %key.fingerprint(russh::keys::HashAlg::Sha256),
                 "SFTP host key"
-            );
+            ),
+            PublicKeyOrCertificate::Certificate(certificate) => tracing::info!(
+                host = self.host,
+                fingerprint = %certificate
+                    .public_key()
+                    .fingerprint(russh::keys::HashAlg::Sha256),
+                key_id = certificate.key_id(),
+                "SFTP host certificate"
+            ),
         }
         Ok(true)
     }
@@ -71,8 +82,43 @@ pub(crate) fn split_url(normalized: &str) -> (&str, &str) {
     }
 }
 
+/// Base directory configured in the URL.
+#[derive(Debug, PartialEq, Eq)]
+enum ConfiguredBase {
+    /// No path: the login (home) directory.
+    Home,
+
+    /// An absolute path (`/` for the SFTP root).
+    Absolute(String),
+}
+
+/// Interprets the configured path: empty → home, only `/` → root, else the absolute path.
+/// Only `..`, NUL, CR and LF are rejected (Java accepts `.`).
+// Mirrors dao/connection/sftp/SftpDAO.java:414-423, 451-457.
+fn configured_base(raw: &str) -> Result<ConfiguredBase> {
+    let configured = raw.replace('\\', "/");
+    if configured.contains(['\0', '\r', '\n']) || path::segments(&configured).any(|s| s == "..") {
+        return Err(Error::InvalidPath(raw.escape_debug().to_string()));
+    }
+    if configured.is_empty() {
+        return Ok(ConfiguredBase::Home);
+    }
+    let segments: Vec<&str> = path::segments(&configured).filter(|s| *s != ".").collect();
+    Ok(ConfiguredBase::Absolute(path::join_remote(
+        &segments.join("/"),
+        "",
+    )))
+}
+
 fn is_missing(err: &SftpError) -> bool {
     matches!(err, SftpError::Status(s) if s.status_code == StatusCode::NoSuchFile)
+}
+
+fn ignore_missing(result: Result<(), SftpError>) -> Result<()> {
+    match result {
+        Err(e) if !is_missing(&e) => Err(Error::Sftp(e)),
+        _ => Ok(()),
+    }
 }
 
 pub struct SftpTransport {
@@ -94,7 +140,7 @@ impl SftpTransport {
                 "SFTP host is empty. Enter a host name before the optional remote path.".into(),
             ));
         }
-        let configured = path::normalize_relative(configured)?;
+        let configured = configured_base(configured)?;
         let host = host.to_owned();
         let port = protocol
             .port_number()
@@ -112,31 +158,36 @@ impl SftpTransport {
             ..Default::default()
         });
         let handler = HostKeyLogger { host: host.clone() };
-        let connect = russh::client::connect(config, (host.as_str(), port), handler);
+        // One timeout covers connect, authentication and the SFTP subsystem.
         let timeout = options.connect_timeout.unwrap_or(DEFAULT_CONNECT_TIMEOUT);
-        let mut session = tokio::time::timeout(timeout, connect)
+        let setup = async {
+            let mut session =
+                russh::client::connect(config, (host.as_str(), port), handler).await?;
+            match session.authenticate_password(login, password).await? {
+                AuthResult::Success => {}
+                AuthResult::Failure { .. } => return Err(Error::Unauthorized),
+            }
+            let channel = session.channel_open_session().await?;
+            channel.request_subsystem(true, "sftp").await?;
+            let sftp = SftpSession::new(channel.into_stream()).await?;
+            Ok::<_, Error>((session, sftp))
+        };
+        let (session, sftp) = tokio::time::timeout(timeout, setup)
             .await
             .map_err(|_elapsed| Error::Timeout)??;
 
-        match session.authenticate_password(login, password).await? {
-            AuthResult::Success => {}
-            AuthResult::Failure { .. } => return Err(Error::Unauthorized),
-        }
-        let channel = session.channel_open_session().await?;
-        channel.request_subsystem(true, "sftp").await?;
-        let sftp = SftpSession::new(channel.into_stream()).await?;
-
-        // Mirrors dao/connection/sftp/SftpDAO.java:414-423 (empty → home).
-        let base = if configured.is_empty() {
-            let home = sftp.canonicalize(".").await?;
-            if home.is_empty() {
-                return Err(Error::InvalidProtocol(
-                    "SFTP server did not provide a working directory.".into(),
-                ));
+        // Mirrors dao/connection/sftp/SftpDAO.java:414-423 (empty → home, `/` → root).
+        let base = match configured {
+            ConfiguredBase::Home => {
+                let home = sftp.canonicalize(".").await?;
+                if home.is_empty() {
+                    return Err(Error::InvalidProtocol(
+                        "SFTP server did not provide a working directory.".into(),
+                    ));
+                }
+                home
             }
-            home
-        } else {
-            path::join_remote(&configured, "")
+            ConfiguredBase::Absolute(base) => base,
         };
         tracing::info!(host, base, "SFTP connected");
         Ok(Self {
@@ -256,10 +307,15 @@ impl SftpTransport {
             )
             .await?;
         let written = copy_upload(&mut source.reader, &mut file, ctx, self.read_timeout).await;
-        // Close the handle even after an error; the partial file stays (like Java).
-        let closed = file.shutdown().await;
+        // Close the handle even after an error (bounded, the server may be stuck); the partial
+        // file stays (like Java).
+        let close_timeout = self
+            .read_timeout
+            .unwrap_or(CLOSE_TIMEOUT)
+            .min(CLOSE_TIMEOUT);
+        let closed = tokio::time::timeout(close_timeout, file.shutdown()).await;
         let written = written?;
-        closed?;
+        closed.map_err(|_elapsed| Error::Timeout)??;
         Ok(written)
     }
 
@@ -290,7 +346,12 @@ impl SftpTransport {
         Box::pin(async move {
             ctx.check_cancelled()?;
             if directory {
-                let entries = self.sftp.read_dir(target.as_str()).await?;
+                // Entries vanishing meanwhile (another client) are not an error.
+                let entries = match self.sftp.read_dir(target.as_str()).await {
+                    Ok(entries) => entries,
+                    Err(e) if is_missing(&e) => return Ok(()),
+                    Err(e) => return Err(e.into()),
+                };
                 for entry in entries {
                     let name = entry.file_name();
                     if name == "." || name == ".." {
@@ -300,11 +361,10 @@ impl SftpTransport {
                     self.delete_path(child, entry.metadata().is_dir(), ctx)
                         .await?;
                 }
-                self.sftp.remove_dir(target).await?;
+                ignore_missing(self.sftp.remove_dir(target).await)
             } else {
-                self.sftp.remove_file(target).await?;
+                ignore_missing(self.sftp.remove_file(target).await)
             }
-            Ok(())
         })
     }
 
@@ -315,7 +375,29 @@ impl SftpTransport {
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_url, split_url};
+    use super::{ConfiguredBase, configured_base, normalize_url, split_url};
+    use crate::Error;
+
+    #[test]
+    fn a12_configured_base() {
+        assert_eq!(configured_base("").unwrap(), ConfiguredBase::Home);
+        for root in ["/", "//", "/./"] {
+            assert_eq!(
+                configured_base(root).unwrap(),
+                ConfiguredBase::Absolute("/".into())
+            );
+        }
+        assert_eq!(
+            configured_base("/a/./b\\c").unwrap(),
+            ConfiguredBase::Absolute("/a/b/c".into())
+        );
+        for bad in ["/a/../b", "/..", "/a\nb"] {
+            assert!(
+                matches!(configured_base(bad), Err(Error::InvalidPath(_))),
+                "{bad:?}"
+            );
+        }
+    }
 
     // Ported from src/test/java/fr/soe/a3s/dao/connection/sftp/SftpDAOTest.java.
     #[test]

@@ -359,11 +359,11 @@ async fn verify_ftp_listing_invalidated_by_mkdir() {
     let mut t = fx.connect().await;
     let ctx = TransferCtx::new();
     let mut session = t.upload_session();
-    assert!(!session.exists("nd/f.bin", &ctx).await.unwrap());
-    session.mkdirs("nd", &ctx).await.unwrap();
+    assert!(!session.exists("new_dir/f.bin", &ctx).await.unwrap());
+    session.mkdirs("new_dir", &ctx).await.unwrap();
     // Another worker uploads into the fresh directory.
-    fx.put("nd/f.bin", b"other worker");
-    assert!(session.exists("nd/f.bin", &ctx).await.unwrap());
+    fx.put("new_dir/f.bin", b"other worker");
+    assert!(session.exists("new_dir/f.bin", &ctx).await.unwrap());
     drop(session);
     t.close().await;
 }
