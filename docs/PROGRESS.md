@@ -11,7 +11,7 @@ Blockers: none
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | WP20 | a3s_ui | IMPL | 0 | impl=a2a77fc3 (egui) | 1 | (worktree) | | | 2026-10-10 |
 | WP07 | a3s_sync model/remote/status | IMPL (frozen API first) | 0 | impl=ad5742c0 | 2 | (worktree) | | | 2026-10-10 |
-| WP06 | a3s_transport upload | RE-VERIFY(+live) ∥ RE-REVIEW after fix round 1 | 1 | impl=a705b69e ver=a4162f18 rev=a121c630 | 3 | worktree-agent-a705b69e5afea8b40 | .claude/worktrees/agent-a705b69e5afea8b40 | 3d5403b | 2026-10-10 |
+| WP06 | a3s_transport upload | FIX round 2 (mkdirs vanished known dir; live PASS; review APPROVE) | 2 | impl=a705b69e | 3 | worktree-agent-a705b69e5afea8b40 | .claude/worktrees/agent-a705b69e5afea8b40 | ad54fec | 2026-10-10 |
 
 ## Done before orchestration
 
@@ -102,6 +102,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 
 | Date | Crate | Test | Result |
 | --- | --- | --- | --- |
+| 2026-10-10 | a3s_transport (WP06 round 1) | live_wog_ftp, resume, session exists CWD+LIST | PASS |
 | 2026-10-10 | a3s_transport (WP06 branch) | live_wog_ftp + verify_live resume | PASS: PASV→REST→RETR honoured by WOG |
 | 2026-10-10 | a3s_transport | live_wog_ftp | FAIL-LOGIC: FTP resume got whole file (REST before PASV); full download + SHA-1 OK. Routed to WP06. |
 
