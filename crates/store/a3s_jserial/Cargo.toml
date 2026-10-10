@@ -18,3 +18,7 @@ workspace = true
 all-features = true
 
 [dependencies]
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
