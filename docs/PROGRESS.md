@@ -11,7 +11,7 @@ Blockers: none
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | WP03 | a3s_types local | VERIFY (review APPROVE; fix round 1 queued: shared-node guard in legacy tree decoder) | 0 | impl=a2f164b1 ver=a37a9160 rev=ad4d74f3 | 1 | worktree-agent-a2f164b17de56cb4f | .claude/worktrees/agent-a2f164b17de56cb4f | f4b6711 (rebased) | 2026-10-10 |
 | WP02 | utils | VERIFY (review APPROVE, 8 MINOR → F-9) | 0 | impl=a453ddf6 ver=a1c5e2b5 rev=ae4b9fa7 | 2 | worktree-agent-a453ddf686221e3c9 | .claude/worktrees/agent-a453ddf686221e3c9 | 9743c85 | 2026-10-10 |
-| WP06 | a3s_transport upload | VERIFY(+live)+REVIEW | 0 | impl=a705b69e ver=a6af6dbc rev=a93321ae | 3 | worktree-agent-a705b69e5afea8b40 | .claude/worktrees/agent-a705b69e5afea8b40 | ac17e57 | 2026-10-10 |
+| WP06 | a3s_transport upload | VERIFY(+live); review REQUEST_CHANGES (2 MAJOR: SFTP `/` base, REST guard without SIZE) → fix round 1 after verifier | 0 | impl=a705b69e ver=a6af6dbc rev=a93321ae | 3 | worktree-agent-a705b69e5afea8b40 | .claude/worktrees/agent-a705b69e5afea8b40 | ac17e57 | 2026-10-10 |
 
 ## Done before orchestration
 
@@ -93,6 +93,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 - F-8 Shared in-process test-server crate (FTP/SFTP/WebDAV/HTTP) instead of #[path] includes (WP12 Q2).
 - F-9 WP02 review MINORs: a3s_log invalid-A3S_LOG warning before the "Debug logging enabled" line; rotating file never reopens after a failed reopen; PlatformEnv::current fails when current_exe fails (make exe_dir optional); Os mapping of SunOS/AIX should be Other; legacy normalize canonical-vs-lexical mismatch; CreateDir message should use an absolute path; remove redundant crates/utils/a3s_error/_typos.toml; build.rs rerun-if-changed for packed-refs.
 - F-10 WP03 review MINORs: export tree depth > ~47 groups exceeds Java's reader depth limit (document or error); skipped invalid export elements = approved deviation (D-8).
+- F-11 suppaftp trace-logs `PASS <password>` via the `log` crate: keep `suppaftp` target at debug or above in app log filters (WP06 review).
 - F-2 CI: add mesa Vulkan drivers to rust.yml for egui_kittest snapshot tests (WP20 Q10).
 
 ## Live test log
