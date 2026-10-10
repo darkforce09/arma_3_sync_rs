@@ -9,8 +9,9 @@ Blockers: none
 
 | WP | Crate | State | Round | Agents | Slot | Branch | Worktree | HEAD | Since |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-10-11 | a3s_sync (WP07 branch) | a19_live_wog_check, import_autoconfig WOG | PASS |
 | WP20 | a3s_ui | IMPL | 0 | impl=a2a77fc3 (egui) | 1 | (worktree) | | | 2026-10-10 |
-| WP07 | a3s_sync model/remote/status | VERIFY(+live); review REQUEST_CHANGES (1 MAJOR transport_kind mapping) → fix round after verifier; FROZEN_API afb3cdc | 0 | impl=ad5742c0 ver=a4303258 rev=a4d7e3c7 | 2 | worktree-agent-ad5742c0deb10a381 | .claude/worktrees/agent-ad5742c0deb10a381 | 16c9dbb | 2026-10-10 |
+| WP07 | a3s_sync model/remote/status | FIX round 1 (verifier 3 fails; review 1 MAJOR; live PASS) | 1 | impl=ad5742c0 ver=a4303258 rev=a4d7e3c7 | 2 | worktree-agent-ad5742c0deb10a381 | .claude/worktrees/agent-ad5742c0deb10a381 | 16c9dbb | 2026-10-10 |
 | WP01 | java_fixture_harness | IMPL | 0 | impl=ae232646 | 3 | (worktree) | | | 2026-10-11 |
 
 ## Done before orchestration
@@ -97,6 +98,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 - F-11 suppaftp trace-logs `PASS <password>` via the `log` crate: keep `suppaftp` target at debug or above in app log filters (WP06 review).
 - F-12 WP06 re-review MINORs: fix webdav.rs:207 Mirrors comment (deviation); CWD-back refusal discards listing (ftp.rs:564); Unusable listing makes refused DELE look Ok (ftp.rs:765/815); skip CWD before STOR when dir unchanged (perf); MLST fallback trailing slash.
 - F-13 WP07 parity MINORs: Java texts for FTP missing remote dir and unsupported protocol on connect; HTTP status text 'Server response code is N Reason'; cancel during sync decode keeps decoded slot.
+- F-14 a3s_transport: FTP control replies (retr_as_stream / completion) are not cancel-aware; make every FTP command race the CancellationToken (WP07 verifier).
 - F-2 CI: add mesa Vulkan drivers to rust.yml for egui_kittest snapshot tests (WP20 Q10).
 
 ## Live test log
