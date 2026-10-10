@@ -3,7 +3,7 @@
 Mode: RUNNING (resumed via /orchestrate)            Updated: 2026-10-10
 Current wave: 0          Next action: on resume — live-check WP06 FTP resume fix (`scripts/gate.sh --slot 3 live a3s_transport` in its worktree); rebase WP03 on main; verify+review+merge WP02, WP03, WP06; then start WP20, WP17, WP31; consider 2 compiling slots (HDD load)
 Waiting-on: verify+review WP03 (slot 1), WP02 (slot 2), WP06 (slot 3 + live)
-Blockers: WP12 Q7 needs user decision (nested `racine` folder upload paths); WP01 needs JDK 25 (`sudo dnf install java-25-openjdk-devel`) — non-blocking for others
+Blockers: WP12 Q7 needs user decision (nested `racine` folder upload paths)
 
 ## In flight
 
@@ -33,7 +33,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 | 0 | infra | .claude, scripts, docs | — | MERGED | 14d51f0 | |
 | 0 | transport-commit | a3s_transport | — | MERGED | 7770850 | download side, live WOG test |
 | 0 | descriptor-lock | a3s_types tests | — | MERGED | 575c386 | |
-| 0 | WP01 | java_fixture_harness | — | BLOCKED | | needs JDK 25 |
+| 0 | WP01 | java_fixture_harness | — | SPEC | | JDK 25 at ~/.local/share/jdk (scripts/java_env.sh) |
 | 0 | WP02 | utils crates | — | IMPL_DONE | | |
 | 0 | WP03 | a3s_types local | — | IMPL_DONE | | wire-touching |
 | 0 | WP06 | a3s_transport upload | transport-commit | IMPL_DONE | | |
@@ -78,6 +78,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 - D-6 2026-10-10: SFTP accepts any host key and logs its fingerprint (mirrors Java/MINA default).
 - D-7 2026-10-10: Rust config/data dir name `arma3sync-rs` (user).
 - D-8 2026-10-10: orchestrator may approve local-only deviations that fix Java bugs/security; wire-visible changes go to the user (user).
+- D-10 2026-10-10: JDK = user-local Temurin 25.0.4.1 (Bazzite, no dnf); harness sources scripts/java_env.sh; no Gradle — compile with javac.
 - D-9 2026-10-10: custom agent types need a session restart; until then spawn general-purpose/opus with a ROLE header. (Now registered in this session.)
 
 ## Follow-ups
