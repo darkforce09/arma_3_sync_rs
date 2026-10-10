@@ -14,7 +14,14 @@ all-features = true
 
 [advisories]
 version = 2
-ignore = []
+ignore = [
+  # Marvin attack: timing side channel in RSA *private-key* operations (decrypt/sign).
+  # Pulled in by russh's default `rsa` feature. Arma3Sync only uses SFTP password auth and
+  # verifies server host-key signatures (public-key operations), so it never performs the
+  # affected operations. Keeping `rsa` is needed for servers with RSA host keys.
+  # Re-evaluate if client public-key authentication is ever added. (Decision D-12.)
+  { id = "RUSTSEC-2023-0071", reason = "only public-key RSA operations are used (SFTP host key verification)" },
+]
 
 [bans]
 multiple-versions = "warn"
