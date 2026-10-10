@@ -18,3 +18,4 @@ workspace = true
 all-features = true
 
 [dependencies]
+chrono.workspace = true

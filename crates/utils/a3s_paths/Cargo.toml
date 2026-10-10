@@ -18,3 +18,8 @@ workspace = true
 all-features = true
 
 [dependencies]
+a3s_error.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
