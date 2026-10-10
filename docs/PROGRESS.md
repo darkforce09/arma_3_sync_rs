@@ -11,7 +11,7 @@ Blockers: none
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | WP20 | a3s_ui | IMPL | 0 | impl=a2a77fc3 (egui) | 1 | (worktree) | | | 2026-10-10 |
 | WP07 | a3s_sync model/remote/status | IMPL (frozen API first) | 0 | impl=ad5742c0 | 2 | (worktree) | | | 2026-10-10 |
-| WP06 | a3s_transport upload | FIX round 1 (verifier FAIL: 8 tests; review 2 MAJOR) | 1 | impl=a705b69e ver=a6af6dbc rev=a93321ae | 3 | worktree-agent-a705b69e5afea8b40 | .claude/worktrees/agent-a705b69e5afea8b40 | ac17e57 | 2026-10-10 |
+| WP06 | a3s_transport upload | RE-VERIFY(+live) ∥ RE-REVIEW after fix round 1 | 1 | impl=a705b69e ver=a4162f18 rev=a121c630 | 3 | worktree-agent-a705b69e5afea8b40 | .claude/worktrees/agent-a705b69e5afea8b40 | 3d5403b | 2026-10-10 |
 
 ## Done before orchestration
 
