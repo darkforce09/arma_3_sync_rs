@@ -97,6 +97,19 @@ dependencies = [
 [[package]]
 name = "a3s_sync"
 version = "0.1.0-alpha.1"
+dependencies = [
+ "a3s_error",
+ "a3s_repo_files",
+ "a3s_transport",
+ "a3s_types",
+ "axum",
+ "futures",
+ "suppaftp",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
 
 [[package]]
 name = "a3s_tools"
