@@ -11,7 +11,7 @@ Blockers: none
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-10-11 | a3s_sync (WP07 branch) | a19_live_wog_check, import_autoconfig WOG | PASS |
 | WP20 | a3s_ui | VERIFY ∥ REVIEW | 0 | impl=a2a77fc3 ver=aa213ac8 rev=aed0e51b | 1 | worktree-agent-a2a77fc3ddf0cff52 | .claude/worktrees/agent-a2a77fc3ddf0cff52 | 09b9b71 | 2026-10-10 |
-| WP07 | a3s_sync model/remote/status | FIX round 1 (verifier 3 fails; review 1 MAJOR; live PASS) | 1 | impl=ad5742c0 ver=a4303258 rev=a4d7e3c7 | 2 | worktree-agent-ad5742c0deb10a381 | .claude/worktrees/agent-ad5742c0deb10a381 | 16c9dbb | 2026-10-10 |
+| WP07 | a3s_sync model/remote/status | FIX round 2 (Java 'Remote directory not found' on connect; round 1 re-review APPROVE) | 2 | impl=ad5742c0 ver=a4303258 rev=a4d7e3c7 | 2 | worktree-agent-ad5742c0deb10a381 | .claude/worktrees/agent-ad5742c0deb10a381 | 16c9dbb | 2026-10-10 |
 | WP01 | java_fixture_harness | IMPL | 0 | impl=ae232646 | 3 | (worktree) | | | 2026-10-11 |
 
 ## Done before orchestration
