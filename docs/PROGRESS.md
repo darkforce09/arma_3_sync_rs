@@ -1,15 +1,15 @@
 # Rewrite progress
 
 Mode: PAUSING (user: pause after current agents finish; spawn nothing new)            Updated: 2026-10-10
-Current wave: 0          Next action: wait for W0 implementers (WP03, WP02, WP06) and W1 spec extractors; then verify/review/merge; start WP20, WP17, WP31 as slots free
-Waiting-on: impl WP03 (slot 1), impl WP02 (slot 2), impl WP06 (slot 3); specs WP04, WP05, WP07, WP11, WP13, WP15
+Current wave: 0          Next action: on resume — rebase WP03 on main, verify+review+merge WP02, WP03, WP06; then start WP20, WP17, WP31; consider 2 compiling slots (HDD load)
+Waiting-on: impl WP06 (slot 3)
 Blockers: WP01 needs JDK 25 (`sudo dnf install java-25-openjdk-devel`) — non-blocking for others
 
 ## In flight
 
 | WP | Crate | State | Round | Agents | Slot | Branch | Worktree | HEAD | Since |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| WP03 | a3s_types local | IMPL | 0 | impl=a2f164b1 | 1 | (worktree) | | | 2026-10-10 |
+| WP03 | a3s_types local | IMPL_DONE (needs rebase on main for lock/typos fix; then verify/review — paused) | 0 | impl=a2f164b1 | 1 | worktree-agent-a2f164b17de56cb4f | .claude/worktrees/agent-a2f164b17de56cb4f | 89e1b7f | 2026-10-10 |
 | WP02 | utils | IMPL_DONE (awaiting verify/review — paused) | 0 | impl=a453ddf6 | 2 | worktree-agent-a453ddf686221e3c9 | .claude/worktrees/agent-a453ddf686221e3c9 | 9743c85 | 2026-10-10 |
 | WP06 | a3s_transport upload | IMPL | 0 | impl=a705b69e | 3 | (worktree) | | | 2026-10-10 |
 
@@ -35,7 +35,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 | 0 | descriptor-lock | a3s_types tests | — | MERGED | 575c386 | |
 | 0 | WP01 | java_fixture_harness | — | BLOCKED | | needs JDK 25 |
 | 0 | WP02 | utils crates | — | IMPL_DONE | | |
-| 0 | WP03 | a3s_types local | — | IMPL | | wire-touching |
+| 0 | WP03 | a3s_types local | — | IMPL_DONE | | wire-touching |
 | 0 | WP06 | a3s_transport upload | transport-commit | IMPL | | |
 | 0 | WP17 | a3s_tools bikey/rpt/radio | — | SPEC_OK | | |
 | 0 | WP20 | a3s_ui | — | SPEC_OK | | |
