@@ -9,10 +9,12 @@
 
 mod auto_config;
 mod changelog;
+pub mod constants;
 mod error;
 mod event;
 mod favorite_server;
 pub mod java_string;
+pub mod local;
 mod protocol;
 mod server_info;
 mod sync_tree;
