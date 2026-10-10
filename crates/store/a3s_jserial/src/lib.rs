@@ -6,8 +6,8 @@
 //! * [`Graph`] is an arena holding every handle-bearing item of a stream (class descriptors,
 //!   objects, strings, enum constants, arrays). Items refer to each other by [`NodeId`], which
 //!   makes shared references and cycles (e.g. a tree node's `parent`) explicit.
-//! * [`read`] parses a stream into a [`Graph`]; a node's [`NodeId`] equals its wire handle offset.
-//! * [`write`] serializes a [`Graph`] back. Reading and re-writing any supported stream
+//! * [`read()`] parses a stream into a [`Graph`]; a node's [`NodeId`] equals its wire handle offset.
+//! * [`write()`] serializes a [`Graph`] back. Reading and re-writing any supported stream
 //!   reproduces it byte for byte.
 //! * [`jdk`] knows the `writeObject` layouts of the JDK classes Arma3Sync uses
 //!   (`ArrayList`, `HashMap`, `HashSet`, `Date`, `Boolean`, …), both for decoding and for
