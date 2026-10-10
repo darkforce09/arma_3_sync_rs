@@ -94,3 +94,7 @@ Followed by an end-to-end parity pass (CLI + GUI vs. Java behaviour).
 
 - WP03 → WP07 → WP08/WP09 → WP10 → WP19 / WP26
 - WP14 → WP21 → WP22 → WP25 → WP26
+
+## Orchestrator amendments
+
+- 2026-10-10 (from WP09 Q5): unzip must accept both `.pbo.zip` and `.ebo.zip` (Java only extracted `.pbo.zip`, a bug).

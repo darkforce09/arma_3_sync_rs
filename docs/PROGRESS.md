@@ -47,7 +47,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 | 1 | WP13 | a3s_addons | WP03 | SPEC_OK | | |
 | 1 | WP15 | a3s_platform | WP02 | SPEC_OK | | |
 | 2 | WP08 | a3s_sync plan | WP07 | SPEC_OK | | |
-| 2 | WP09 | a3s_sync download | WP07 | TODO | | |
+| 2 | WP09 | a3s_sync download | WP07 | SPEC_OK | | |
 | 2 | WP12 | a3s_admin upload/check/events | WP06, WP07, WP11 | TODO | | |
 | 2 | WP14 | app services | WP04, WP05 | TODO | | |
 | 2 | WP16 | a3s_launch | WP13, WP15 | SPEC_OK | | |
