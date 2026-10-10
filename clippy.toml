@@ -1,0 +1,46 @@
+# There is also a `[workspace.lints]` section in `Cargo.toml`.
+
+msrv = "1.95"
+
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-print-in-tests = true
+
+# https://rust-lang.github.io/rust-clippy/master/index.html#large_include_file
+max-include-file-size = 1_000_000
+
+# https://rust-lang.github.io/rust-clippy/master/index.html#large_stack_frames
+stack-size-threshold = 512_000
+
+# https://rust-lang.github.io/rust-clippy/master/index.html#too_many_lines
+too-many-lines-threshold = 200
+
+disallowed-macros = [
+  'std::dbg',
+  'std::unimplemented',
+]
+
+disallowed-methods = [
+  { path = "std::env::temp_dir", reason = "Use the tempfile crate instead" },
+  { path = "std::thread::spawn", reason = "Use `std::thread::Builder` and name the thread" },
+]
+
+disallowed-names = []
+
+disallowed-types = [
+  { path = "std::sync::Mutex", reason = "Use parking_lot instead" },
+  { path = "std::sync::RwLock", reason = "Use parking_lot instead" },
+]
+
+doc-valid-idents = [
+  "Arma3Sync",
+  "ArmA3Sync",
+  "BattlEye",
+  "CDLC",
+  "FTPS",
+  "SFTP",
+  "WebDAV",
+  "zsync",
+  "jazsync",
+  "..",
+]

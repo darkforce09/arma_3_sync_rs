@@ -1,0 +1,5 @@
+# Keep in sync with rerun's style: default rustfmt, 2024 edition, field init shorthand.
+edition = "2024"
+style_edition = "2024"
+use_field_init_shorthand = true
+use_try_shorthand = true

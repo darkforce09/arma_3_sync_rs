@@ -1,0 +1,16 @@
+# Java reference implementation (has its own git repository).
+/java_version/
+
+# Rust
+/target/
+**/*.rs.bk
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Local scratch
+/scratch/
+*.log

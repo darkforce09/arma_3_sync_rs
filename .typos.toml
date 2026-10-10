@@ -1,0 +1,18 @@
+# https://github.com/crate-ci/typos
+# install:  cargo install typos-cli
+# run:      typos
+
+[files]
+extend-exclude = ["java_version/", "target/", "tests/fixtures/", "*.svg", "*.ttf"]
+
+[default.extend-words]
+# Names that are part of the Java wire format and must stay misspelled.
+configration = "configration"
+Protocole = "Protocole"
+protocole = "protocole"
+racine = "racine"
+hidddenFolderPaths = "hidddenFolderPaths"
+Synk = "Synk"
+Connexion = "Connexion"
+Zync = "Zync"
+hiddden = "hiddden"
