@@ -18,3 +18,8 @@ workspace = true
 all-features = true
 
 [dependencies]
+a3s_jserial.workspace = true
+a3s_types.workspace = true
+flate2.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
