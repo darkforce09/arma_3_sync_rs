@@ -179,3 +179,57 @@ fn protocol_paths() {
     assert_eq!(p.remote_path(), "");
     assert!(!p.is_anonymous());
 }
+
+/// A crafted stream whose directory lists the same child directory twice, nested, must be
+/// rejected instead of being expanded exponentially.
+#[test]
+fn shared_directory_nodes_are_rejected() {
+    use a3s_jserial::{ClassData, Value as V, jdk::Builder};
+    let mut b = Builder::new();
+    let class = a3s_types::wire::sync_tree_directory_desc(&mut b);
+    // Build 40 levels where each level's list holds the next level twice.
+    let mut inner = b.reserve_object(class);
+    let empty = b.array_list(vec![]);
+    let name = b.string("leaf-dir");
+    b.set_object_data(
+        inner,
+        vec![ClassData {
+            values: vec![
+                V::Boolean(false),
+                V::Boolean(false),
+                V::Boolean(false),
+                V::Boolean(false),
+                empty,
+                name,
+                V::Null,
+            ],
+            annotations: vec![],
+        }],
+    );
+    for level in 0..40 {
+        let outer = b.reserve_object(class);
+        let list = b.array_list(vec![V::Ref(inner), V::Ref(inner)]);
+        let name = b.string(&format!("level{level}"));
+        b.set_object_data(
+            outer,
+            vec![ClassData {
+                values: vec![
+                    V::Boolean(false),
+                    V::Boolean(false),
+                    V::Boolean(false),
+                    V::Boolean(false),
+                    list,
+                    name,
+                    V::Null,
+                ],
+                annotations: vec![],
+            }],
+        );
+        inner = outer;
+    }
+    let bytes = a3s_jserial::write(&b.finish(V::Ref(inner))).unwrap();
+    let start = std::time::Instant::now();
+    let result: Result<SyncTreeDirectory, _> = decode_stream(&bytes);
+    assert!(result.is_err());
+    assert!(start.elapsed() < std::time::Duration::from_secs(5));
+}

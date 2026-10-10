@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use a3s_jserial::jdk::Builder;
 use a3s_jserial::{ClassData, Graph, NodeId, Value};
 use serde::{Deserialize, Serialize};
@@ -140,7 +142,20 @@ impl SyncTreeDirectory {
         n
     }
 
-    fn decode_node(graph: &Graph, id: NodeId, depth: usize) -> Result<Self> {
+    /// Decodes a directory. `seen` holds every node decoded so far: a Java-built tree never
+    /// shares nodes, so a node referenced twice (or a cycle) is rejected instead of being
+    /// expanded again, which would let a crafted file blow up exponentially.
+    fn decode_node(
+        graph: &Graph,
+        id: NodeId,
+        depth: usize,
+        seen: &mut HashSet<NodeId>,
+    ) -> Result<Self> {
+        if !seen.insert(id) {
+            return Err(
+                a3s_jserial::Error::LimitExceeded("shared or cyclic sync tree node").into(),
+            );
+        }
         if depth > 1_000 {
             return Err(a3s_jserial::Error::LimitExceeded("sync tree depth").into());
         }
@@ -152,9 +167,15 @@ impl SyncTreeDirectory {
             };
             match graph.class_name_of(child)? {
                 wire::SYNC_TREE_DIRECTORY => children.push(SyncTreeNode::Directory(
-                    Self::decode_node(graph, child, depth + 1)?,
+                    Self::decode_node(graph, child, depth + 1, seen)?,
                 )),
                 wire::SYNC_TREE_LEAF => {
+                    if !seen.insert(child) {
+                        return Err(a3s_jserial::Error::LimitExceeded(
+                            "shared or cyclic sync tree node",
+                        )
+                        .into());
+                    }
                     children.push(SyncTreeNode::Leaf(SyncTreeLeaf::decode(graph, element)?));
                 }
                 other => {
@@ -272,7 +293,7 @@ impl JavaCodec for SyncTreeLeaf {
 impl JavaCodec for SyncTreeDirectory {
     fn decode(graph: &Graph, value: Value) -> Result<Self> {
         let id = wire::expect_object(graph, value, wire::SYNC_TREE_DIRECTORY)?;
-        Self::decode_node(graph, id, 0)
+        Self::decode_node(graph, id, 0, &mut HashSet::new())
     }
 
     fn encode(&self, b: &mut Builder) -> Value {
