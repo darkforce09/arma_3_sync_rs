@@ -10,7 +10,7 @@ Blockers: WP01 needs JDK 25 (`sudo dnf install java-25-openjdk-devel`) — non-b
 | WP | Crate | State | Round | Agents | Slot | Branch | Worktree | HEAD | Since |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | WP03 | a3s_types local | IMPL | 0 | impl=a2f164b1 | 1 | (worktree) | | | 2026-10-10 |
-| WP02 | utils | IMPL | 0 | impl=a453ddf6 | 2 | (worktree) | | | 2026-10-10 |
+| WP02 | utils | IMPL_DONE (awaiting verify/review — paused) | 0 | impl=a453ddf6 | 2 | worktree-agent-a453ddf686221e3c9 | .claude/worktrees/agent-a453ddf686221e3c9 | 9743c85 | 2026-10-10 |
 | WP06 | a3s_transport upload | IMPL | 0 | impl=a705b69e | 3 | (worktree) | | | 2026-10-10 |
 
 ## Done before orchestration
@@ -34,7 +34,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 | 0 | transport-commit | a3s_transport | — | MERGED | 7770850 | download side, live WOG test |
 | 0 | descriptor-lock | a3s_types tests | — | MERGED | 575c386 | |
 | 0 | WP01 | java_fixture_harness | — | BLOCKED | | needs JDK 25 |
-| 0 | WP02 | utils crates | — | IMPL | | |
+| 0 | WP02 | utils crates | — | IMPL_DONE | | |
 | 0 | WP03 | a3s_types local | — | IMPL | | wire-touching |
 | 0 | WP06 | a3s_transport upload | transport-commit | IMPL | | |
 | 0 | WP17 | a3s_tools bikey/rpt/radio | — | SPEC_OK | | |
