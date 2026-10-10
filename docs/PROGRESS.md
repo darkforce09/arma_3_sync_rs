@@ -10,7 +10,7 @@ Blockers: none
 | WP | Crate | State | Round | Agents | Slot | Branch | Worktree | HEAD | Since |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-10-11 | a3s_sync (WP07 branch) | a19_live_wog_check, import_autoconfig WOG | PASS |
-| WP20 | a3s_ui | IMPL | 0 | impl=a2a77fc3 (egui) | 1 | (worktree) | | | 2026-10-10 |
+| WP20 | a3s_ui | VERIFY ∥ REVIEW | 0 | impl=a2a77fc3 ver=aa213ac8 rev=aed0e51b | 1 | worktree-agent-a2a77fc3ddf0cff52 | .claude/worktrees/agent-a2a77fc3ddf0cff52 | 09b9b71 | 2026-10-10 |
 | WP07 | a3s_sync model/remote/status | FIX round 1 (verifier 3 fails; review 1 MAJOR; live PASS) | 1 | impl=ad5742c0 ver=a4303258 rev=a4d7e3c7 | 2 | worktree-agent-ad5742c0deb10a381 | .claude/worktrees/agent-ad5742c0deb10a381 | 16c9dbb | 2026-10-10 |
 | WP01 | java_fixture_harness | IMPL | 0 | impl=ae232646 | 3 | (worktree) | | | 2026-10-11 |
 
@@ -39,7 +39,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 | 0 | WP03 | a3s_types local | — | MERGED | cea732e | wire-touching |
 | 0 | WP06 | a3s_transport upload | transport-commit | MERGED | 9dc241f | |
 | 0 | WP17 | a3s_tools bikey/rpt/radio | — | SPEC_OK | | |
-| 0 | WP20 | a3s_ui | — | IMPL | | |
+| 0 | WP20 | a3s_ui | — | VERIFY | | |
 | 0 | WP31 | a3s_updater core | — | SPEC_OK | | |
 | 1 | WP04 | a3s_repo_files local/legacy | WP02, WP03 | SPEC_OK | | |
 | 1 | WP05 | autoconfig url/export | WP03 | SPEC_OK | | |
