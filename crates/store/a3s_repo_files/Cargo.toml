@@ -23,3 +23,5 @@ a3s_types.workspace = true
 flate2.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]

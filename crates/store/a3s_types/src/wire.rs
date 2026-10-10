@@ -281,9 +281,3 @@ pub(crate) fn object_list<T: JavaCodec>(graph: &Graph, value: Value) -> Result<V
         .map(|v| T::decode(graph, v))
         .collect()
 }
-
-/// Encodes strings as a `java.util.ArrayList<String>`.
-pub(crate) fn encode_string_list(b: &mut Builder, items: &[String]) -> Value {
-    let values = items.iter().map(|s| b.string(s)).collect();
-    b.array_list(values)
-}

@@ -64,11 +64,36 @@ impl JavaCodec for Changelog {
     fn encode(&self, b: &mut Builder) -> Value {
         let class = wire::changelog_desc(b);
         // Object fields in wire order: addons, buildDate, deletedAddons, newAddons, updatedAddons.
-        let addons = wire::encode_string_list(b, &self.addons);
+        //
+        // In Java the new/updated/deleted entries are the same `String` instances as the matching
+        // `addons` entries (observed in real repositories), so they are written as references.
+        let mut shared = std::collections::HashMap::new();
+        let addon_values: Vec<Value> = self
+            .addons
+            .iter()
+            .map(|name| {
+                *shared
+                    .entry(name.as_str())
+                    .or_insert_with(|| b.string(name))
+            })
+            .collect();
+        let addons = b.array_list(addon_values);
         let build_date = self.build_date.map_or(Value::Null, |d| b.date(d));
-        let deleted = wire::encode_string_list(b, &self.deleted_addons);
-        let new = wire::encode_string_list(b, &self.new_addons);
-        let updated = wire::encode_string_list(b, &self.updated_addons);
+        let reuse = |b: &mut Builder, names: &[String]| {
+            let values = names
+                .iter()
+                .map(|name| {
+                    shared
+                        .get(name.as_str())
+                        .copied()
+                        .unwrap_or_else(|| b.string(name))
+                })
+                .collect();
+            b.array_list(values)
+        };
+        let deleted = reuse(b, &self.deleted_addons);
+        let new = reuse(b, &self.new_addons);
+        let updated = reuse(b, &self.updated_addons);
         b.simple_object(
             class,
             vec![
