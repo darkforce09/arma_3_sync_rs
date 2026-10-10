@@ -18,3 +18,10 @@ workspace = true
 all-features = true
 
 [dependencies]
+parking_lot.workspace = true
+rayon.workspace = true
+serde.workspace = true
+sha1.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
