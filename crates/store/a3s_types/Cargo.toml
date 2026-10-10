@@ -21,3 +21,6 @@ all-features = true
 a3s_jserial.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+toml.workspace = true
