@@ -1,0 +1,5 @@
+# Java UI texts kept verbatim for parity (docs/specs/WP02.md, Q7). The root .typos.toml needs the
+# same entries for workspace-wide runs.
+[default.extend-words]
+occured = "occured"
+Incompete = "Incompete"
