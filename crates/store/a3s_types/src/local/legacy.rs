@@ -17,9 +17,11 @@
 //! * null elements of lists and sets are skipped.
 //!
 //! Hard errors are limited to an unreadable stream, a wrong root class, and a null
-//! `Repository.name`, `Repository.protocole` or `Profile.name`.
+//! `Repository.name`, `Repository.protocole` or `Profile.name`, and a profile, repository or
+//! addon-group tree node that is referenced twice or cyclically (Java never writes those; decoding
+//! them again would let a tiny hostile stream expand exponentially).
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fmt::Display;
 
 use a3s_jserial::{Graph, Node, NodeId, Value};
@@ -98,35 +100,35 @@ pub fn decode_legacy_stream<T: LegacyDecode>(bytes: &[u8]) -> Result<Legacy<T>> 
 impl LegacyDecode for LegacyConfiguration {
     fn decode_legacy(graph: &Graph, value: Value, warnings: &mut Vec<String>) -> Result<Self> {
         let id = wire::expect_object(graph, value, local_wire::CONFIGURATION)?;
-        Lenient { graph, warnings }.configuration(id)
+        Lenient::new(graph, warnings).configuration(id)
     }
 }
 
 impl LegacyDecode for Preferences {
     fn decode_legacy(graph: &Graph, value: Value, warnings: &mut Vec<String>) -> Result<Self> {
         let id = wire::expect_object(graph, value, local_wire::PREFERENCES)?;
-        Lenient { graph, warnings }.preferences(id)
+        Lenient::new(graph, warnings).preferences(id)
     }
 }
 
 impl LegacyDecode for Profile {
     fn decode_legacy(graph: &Graph, value: Value, warnings: &mut Vec<String>) -> Result<Self> {
         let id = wire::expect_object(graph, value, local_wire::PROFILE)?;
-        Lenient { graph, warnings }.profile(id)
+        Lenient::new(graph, warnings).profile(id)
     }
 }
 
 impl LegacyDecode for LegacyRepository {
     fn decode_legacy(graph: &Graph, value: Value, warnings: &mut Vec<String>) -> Result<Self> {
         let id = wire::expect_object(graph, value, local_wire::REPOSITORY)?;
-        Lenient { graph, warnings }.repository(id)
+        Lenient::new(graph, warnings).repository(id)
     }
 }
 
 impl LegacyDecode for AutoConfigExport {
     fn decode_legacy(graph: &Graph, value: Value, warnings: &mut Vec<String>) -> Result<Self> {
         let id = wire::expect_object(graph, value, local_wire::AUTO_CONFIG_EXPORT)?;
-        Lenient { graph, warnings }.auto_config_export(id)
+        Lenient::new(graph, warnings).auto_config_export(id)
     }
 }
 
@@ -134,9 +136,30 @@ impl LegacyDecode for AutoConfigExport {
 struct Lenient<'g, 'w> {
     graph: &'g Graph,
     warnings: &'w mut Vec<String>,
+
+    /// Profiles, repositories and tree nodes decoded so far. Java-built files never share them,
+    /// so a second reference (or a cycle) is rejected instead of being decoded again, which
+    /// would let a small hostile stream expand exponentially.
+    seen: HashSet<NodeId>,
 }
 
-impl<'g> Lenient<'g, '_> {
+impl<'g, 'w> Lenient<'g, 'w> {
+    fn new(graph: &'g Graph, warnings: &'w mut Vec<String>) -> Self {
+        Self {
+            graph,
+            warnings,
+            seen: HashSet::new(),
+        }
+    }
+
+    /// Marks `id` as decoded; a node reached twice is an error (see [`Self::seen`]).
+    fn visit(&mut self, id: NodeId, what: &'static str) -> Result<()> {
+        if self.seen.insert(id) {
+            Ok(())
+        } else {
+            Err(a3s_jserial::Error::LimitExceeded(what).into())
+        }
+    }
     // -----------------------------------------------------------------------------------------
     // Primitive access
 
@@ -740,6 +763,7 @@ impl<'g> Lenient<'g, '_> {
 
     // Mirrors domain/Profile.java:15-70
     fn profile(&mut self, id: NodeId) -> Result<Profile> {
+        self.visit(id, "shared profile")?;
         let name = self.string(id, "name")?.ok_or(Error::NullValue("name"))?;
         let tree = if let Some(tree) = self.object(id, "tree", &[local_wire::TREE_DIRECTORY])? {
             self.tree_directory(tree, 0)?
@@ -768,6 +792,7 @@ impl<'g> Lenient<'g, '_> {
     /// Keeps the stream order of the children (no re-sorting).
     // Mirrors domain/TreeDirectory.java:16-24
     fn tree_directory(&mut self, id: NodeId, depth: usize) -> Result<TreeDirectory> {
+        self.visit(id, "shared or cyclic profile tree node")?;
         if depth > MAX_TREE_DEPTH {
             return Err(a3s_jserial::Error::LimitExceeded("profile tree depth").into());
         }
@@ -797,6 +822,7 @@ impl<'g> Lenient<'g, '_> {
 
     // Mirrors domain/TreeLeaf.java:11-19
     fn tree_leaf(&mut self, id: NodeId) -> Result<TreeLeaf> {
+        self.visit(id, "shared or cyclic profile tree node")?;
         Ok(TreeLeaf {
             name: self.string_or(id, "name", "")?,
             selected: self.bool(id, "selected")?,
@@ -813,6 +839,7 @@ impl<'g> Lenient<'g, '_> {
     /// Connection counts stay raw (a missing field reads `0`; the getters return the defaults).
     // Mirrors domain/repository/Repository.java:30-89,171-258
     fn repository(&mut self, id: NodeId) -> Result<LegacyRepository> {
+        self.visit(id, "shared repository")?;
         let name = self.string(id, "name")?.ok_or(Error::NullValue("name"))?;
         let protocol = self.required_protocol(id, "protocole")?;
         let mut events_download_location = BTreeMap::new();

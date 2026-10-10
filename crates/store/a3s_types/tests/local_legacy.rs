@@ -1425,3 +1425,49 @@ fn a13_deprecated_configuration_fields() {
     assert_eq!(decoded.addon_search_directory_paths, None);
     assert_eq!(decoded.launcher_options, None);
 }
+
+// ---------------------------------------------------------------------------------------------
+// Shared and cyclic nodes
+
+/// A profile whose root group's `list` is replaced by `make_list(root, first_child)`.
+fn profile_with_list(make_list: fn(&mut Builder, Value, Value) -> Value) -> Vec<u8> {
+    let mut b = Builder::new();
+    let mut root = TreeDirectory::new_root();
+    root.children.push(TreeNode::Leaf(TreeLeaf::new("@a")));
+    let tree = enc_tree_dir(&mut b, &root, None, &[]);
+    let root_id = tree.as_ref().unwrap();
+    let list = b.graph().field(root_id, "list").unwrap();
+    let first = a3s_jserial::jdk::list(b.graph(), list).unwrap().unwrap()[0];
+    let replaced = make_list(&mut b, tree, first);
+    let fields = vec![
+        s(&mut b, "name", Some("P")),
+        obj("tree", TREE_DIRECTORY_SIG, tree),
+    ];
+    let profile = object(&mut b, PROFILE, -4_395_099_790_449_721_021, fields, &[]);
+    let mut graph = b.finish(profile);
+    let a3s_jserial::Node::Object(dir) = &mut graph.nodes[root_id.index()] else {
+        panic!("expected the tree object");
+    };
+    // TreeDirectory wire order: marked, optional, selected, list, ...
+    dir.class_data[0].values[3] = replaced;
+    a3s_jserial::write(&graph).unwrap()
+}
+
+#[test]
+fn a12_shared_or_cyclic_tree_nodes_are_rejected() {
+    let shared_leaf = profile_with_list(|b, _root, leaf| b.array_list(vec![leaf, leaf]));
+    let cycle = profile_with_list(|b, root, _leaf| b.array_list(vec![root]));
+    for bytes in [shared_leaf, cycle] {
+        let err = decode_legacy_stream::<Profile>(&bytes).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                Error::Serialization(a3s_jserial::Error::LimitExceeded(_))
+            ),
+            "{err:?}"
+        );
+    }
+    // Unchanged list: decodes.
+    let fine = profile_with_list(|b, _root, leaf| b.array_list(vec![leaf]));
+    assert!(decode_legacy_stream::<Profile>(&fine).is_ok());
+}
