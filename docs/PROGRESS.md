@@ -51,7 +51,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 | 2 | WP12 | a3s_admin upload/check/events | WP06, WP07, WP11 | TODO | | |
 | 2 | WP14 | app services | WP04, WP05 | TODO | | |
 | 2 | WP16 | a3s_launch | WP13, WP15 | TODO | | |
-| 2 | WP18 | presets | WP13, WP02, WP04 | TODO | | |
+| 2 | WP18 | presets | WP13, WP02, WP04 | SPEC_OK | | |
 | 2 | WP32 | updater apply | WP31, WP15 | TODO | | |
 | 3 | WP10 | sync pipeline | WP08, WP09 | TODO | | |
 | 3 | WP21 | a3s_viewer_context | WP14, WP07 | TODO | | |
