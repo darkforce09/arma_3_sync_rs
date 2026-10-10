@@ -99,9 +99,12 @@ name = "a3s_sync"
 version = "0.1.0-alpha.1"
 dependencies = [
  "a3s_error",
+ "a3s_format",
+ "a3s_hash",
  "a3s_repo_files",
  "a3s_transport",
  "a3s_types",
+ "a3s_zsync",
  "axum",
  "futures",
  "parking_lot",
