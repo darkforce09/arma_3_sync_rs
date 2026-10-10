@@ -1,16 +1,15 @@
 # Rewrite progress
 
 Mode: RUNNING (resumed via /orchestrate)            Updated: 2026-10-10
-Current wave: 0          Next action: on resume — live-check WP06 FTP resume fix (`scripts/gate.sh --slot 3 live a3s_transport` in its worktree); rebase WP03 on main; verify+review+merge WP02, WP03, WP06; then start WP20, WP17, WP31; consider 2 compiling slots (HDD load)
-Waiting-on: fix rounds WP03 (slot 1), WP02 (slot 2), WP06 (slot 3); spec WP01
+Current wave: 0/1          Next action: on resume — live-check WP06 FTP resume fix (`scripts/gate.sh --slot 3 live a3s_transport` in its worktree); rebase WP03 on main; verify+review+merge WP02, WP03, WP06; then start WP20, WP17, WP31; consider 2 compiling slots (HDD load)
+Waiting-on: impl WP20 (slot 1), fix WP06 (slot 3); spec WP01; slot 2 free
 Blockers: none
 
 ## In flight
 
 | WP | Crate | State | Round | Agents | Slot | Branch | Worktree | HEAD | Since |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| WP03 | a3s_types local | FIX round 1 (shared-node guard; verifier 1 fail, review APPROVE) | 1 | impl=a2f164b1 ver=a37a9160 rev=ad4d74f3 | 1 | worktree-agent-a2f164b17de56cb4f | .claude/worktrees/agent-a2f164b17de56cb4f | f4b6711 (rebased) | 2026-10-10 |
-| WP02 | utils | FIX round 1 (verifier 2 fails; review APPROVE) | 1 | impl=a453ddf6 ver=a1c5e2b5 rev=ae4b9fa7 | 2 | worktree-agent-a453ddf686221e3c9 | .claude/worktrees/agent-a453ddf686221e3c9 | 9743c85 | 2026-10-10 |
+| WP20 | a3s_ui | IMPL | 0 | impl=a2a77fc3 (egui) | 1 | (worktree) | | | 2026-10-10 |
 | WP06 | a3s_transport upload | FIX round 1 (verifier FAIL: 8 tests; review 2 MAJOR) | 1 | impl=a705b69e ver=a6af6dbc rev=a93321ae | 3 | worktree-agent-a705b69e5afea8b40 | .claude/worktrees/agent-a705b69e5afea8b40 | ac17e57 | 2026-10-10 |
 
 ## Done before orchestration
@@ -34,11 +33,11 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 | 0 | transport-commit | a3s_transport | — | MERGED | 7770850 | download side, live WOG test |
 | 0 | descriptor-lock | a3s_types tests | — | MERGED | 575c386 | |
 | 0 | WP01 | java_fixture_harness | — | SPEC | | JDK 25 at ~/.local/share/jdk (scripts/java_env.sh) |
-| 0 | WP02 | utils crates | — | IMPL_DONE | | |
-| 0 | WP03 | a3s_types local | — | IMPL_DONE | | wire-touching |
+| 0 | WP02 | utils crates | — | MERGED | (see git log) | |
+| 0 | WP03 | a3s_types local | — | MERGED | cea732e | wire-touching |
 | 0 | WP06 | a3s_transport upload | transport-commit | IMPL_DONE | | |
 | 0 | WP17 | a3s_tools bikey/rpt/radio | — | SPEC_OK | | |
-| 0 | WP20 | a3s_ui | — | SPEC_OK | | |
+| 0 | WP20 | a3s_ui | — | IMPL | | |
 | 0 | WP31 | a3s_updater core | — | SPEC_OK | | |
 | 1 | WP04 | a3s_repo_files local/legacy | WP02, WP03 | SPEC_OK | | |
 | 1 | WP05 | autoconfig url/export | WP03 | SPEC_OK | | |
@@ -79,6 +78,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 - D-7 2026-10-10: Rust config/data dir name `arma3sync-rs` (user).
 - D-8 2026-10-10: orchestrator may approve local-only deviations that fix Java bugs/security; wire-visible changes go to the user (user).
 - D-11 2026-10-10: WP12 Q7 — fix nested `racine` folder upload paths (user).
+- D-12 2026-10-10: deny.toml ignores RUSTSEC-2023-0071 (rsa Marvin, private-key ops only; we only verify SFTP host keys). Re-evaluate if SFTP public-key auth is added.
 - D-10 2026-10-10: JDK = user-local Temurin 25.0.4.1 (Bazzite, no dnf); harness sources scripts/java_env.sh; no Gradle — compile with javac.
 - D-9 2026-10-10: custom agent types need a session restart; until then spawn general-purpose/opus with a ROLE header. (Now registered in this session.)
 
