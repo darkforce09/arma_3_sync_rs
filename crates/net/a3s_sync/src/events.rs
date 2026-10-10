@@ -206,6 +206,7 @@ impl TransferProgress {
 
 /// How an operation ended.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Outcome {
     /// Everything succeeded (`ObserverEnd.end`).
     Success,

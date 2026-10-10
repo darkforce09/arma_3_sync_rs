@@ -50,7 +50,8 @@ impl PlanTree {
 
     /// The node at `relative_path`, comparing each segment case-sensitively.
     ///
-    /// `""` returns `None`: the root is a [`PlanDirectory`], use [`Self::root`].
+    /// Leading `/` are ignored, so `"/a"` and `"//a"` are `"a"`. `""` (or only slashes) returns
+    /// `None`: the root is a [`PlanDirectory`], use [`Self::root`].
     // Mirrors dto/sync/SyncTreeNodeDTOMethods.java:40-53 (paths come from the tree structure)
     pub fn get(&self, relative_path: &str) -> Option<&PlanNode> {
         let (parent, name) = split_path(relative_path)?;
@@ -77,9 +78,9 @@ impl PlanTree {
         dir.child_mut(name)
     }
 
-    /// The directory at `relative_path`; `""` is the root.
+    /// The directory at `relative_path`; `""` is the root. Leading `/` are ignored.
     pub fn directory_mut(&mut self, relative_path: &str) -> Option<&mut PlanDirectory> {
-        if relative_path.is_empty() {
+        if strip_leading_slashes(relative_path).is_empty() {
             return Some(&mut self.root);
         }
         match self.get_mut(relative_path)? {
@@ -161,7 +162,8 @@ impl PlanTree {
     }
 
     /// Sets `selected` on the node at `relative_path` and every node below it. `""` selects the
-    /// whole tree, root included. Returns `false` if there is no such node.
+    /// whole tree, root included. Leading `/` are ignored. Returns `false` if there is no such
+    /// node.
     pub fn set_selected_recursive(&mut self, relative_path: &str, selected: bool) -> bool {
         fn rec(node: &mut PlanNode, selected: bool) {
             node.set_selected(selected);
@@ -171,7 +173,7 @@ impl PlanTree {
                 }
             }
         }
-        if relative_path.is_empty() {
+        if strip_leading_slashes(relative_path).is_empty() {
             self.root.selected = selected;
             for child in &mut self.root.children {
                 rec(child, selected);
@@ -238,8 +240,14 @@ fn join_path(prefix: &str, name: &str) -> String {
     }
 }
 
+/// `relative_path` without any leading `/` (`"//a/b"` -> `"a/b"`, `"/"` -> `""`).
+fn strip_leading_slashes(relative_path: &str) -> &str {
+    relative_path.trim_start_matches('/')
+}
+
 /// Splits a non-empty relative path into its parent segments and its last segment.
 fn split_path(relative_path: &str) -> Option<(std::str::Split<'_, char>, &str)> {
+    let relative_path = strip_leading_slashes(relative_path);
     if relative_path.is_empty() {
         return None;
     }
@@ -563,6 +571,7 @@ pub struct DownloadTask {
 
 /// What a [`DownloadTask`] transfers.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum DownloadTaskKind {
     /// A folder to create.
     Directory,
@@ -842,6 +851,24 @@ mod tests {
         assert!(tree.get("missing").is_none());
         assert!(tree.get("readme.txt/x").is_none());
         assert!(tree.get("").is_none());
+        assert!(tree.get("/").is_none());
+        assert!(tree.get("//").is_none());
+        for path in [
+            "/@a/addons/x.pbo",
+            "//@a/addons/x.pbo",
+            "///@a/addons/x.pbo",
+        ] {
+            assert_eq!(tree.get(path).map(PlanNode::name), Some("x.pbo"), "{path}");
+            assert!(tree.get_mut(path).is_some(), "{path}");
+        }
+        assert_eq!(
+            tree.directory_mut("//").map(|d| d.name.clone()),
+            Some("racine".to_owned())
+        );
+        assert_eq!(
+            tree.directory_mut("//@a").map(|d| d.name.clone()),
+            Some("@a".to_owned())
+        );
         assert_eq!(
             tree.directory_mut("").map(|d| d.name.clone()),
             Some("racine".to_owned())
@@ -914,6 +941,10 @@ mod tests {
         assert!(!tree.get("@b/addons/z.pbo").is_some_and(PlanNode::selected));
         assert!(!tree.root.selected);
         assert!(!tree.set_selected_recursive("missing", true));
+        assert!(tree.set_selected_recursive("//@b", true));
+        assert!(tree.get("@b/addons/z.pbo").is_some_and(PlanNode::selected));
+        assert!(tree.set_selected_recursive("/@b", false));
+        assert!(!tree.root.selected);
 
         assert!(tree.set_selected_recursive("", true));
         assert!(tree.root.selected);

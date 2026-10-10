@@ -15,9 +15,13 @@ pub mod remote;
 pub mod status;
 
 pub use error::RemoteError;
-pub use events::{EventError, EventSender, Outcome, Phase, SyncEvent, TransferProgress};
-pub use model::{
-    DeleteTask, DownloadTask, DownloadTaskKind, PlanDirectory, PlanLeaf, PlanNode, PlanTree,
+pub use events::{
+    EventError, EventSender, Outcome, PercentCounter, Phase, RateLimiter, SyncEvent,
+    TransferProgress, WAITING_FOR_SERVER_THRESHOLD,
 };
-pub use options::{SyncOptions, SyncOptionsError};
+pub use model::{
+    DeleteTask, DownloadStatus, DownloadTask, DownloadTaskKind, PlanDirectory, PlanLeaf, PlanNode,
+    PlanTree, ROOT_NAME, file_name, parent_relative_path,
+};
+pub use options::{MAX_DOWNLOAD_ERRORS, SyncOptions, SyncOptionsError};
 pub use remote::{PartialTransferSupport, RemoteConnection, RemoteFile, RemoteMetadata};
