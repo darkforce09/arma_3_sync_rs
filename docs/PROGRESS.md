@@ -95,6 +95,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 - F-9 WP02 review MINORs: a3s_log invalid-A3S_LOG warning before the "Debug logging enabled" line; rotating file never reopens after a failed reopen; PlatformEnv::current fails when current_exe fails (make exe_dir optional); Os mapping of SunOS/AIX should be Other; legacy normalize canonical-vs-lexical mismatch; CreateDir message should use an absolute path; remove redundant crates/utils/a3s_error/_typos.toml; build.rs rerun-if-changed for packed-refs.
 - F-10 WP03 review MINORs: export tree depth > ~47 groups exceeds Java's reader depth limit (document or error); skipped invalid export elements = approved deviation (D-8).
 - F-11 suppaftp trace-logs `PASS <password>` via the `log` crate: keep `suppaftp` target at debug or above in app log filters (WP06 review).
+- F-12 WP06 re-review MINORs: fix webdav.rs:207 Mirrors comment (deviation); CWD-back refusal discards listing (ftp.rs:564); Unusable listing makes refused DELE look Ok (ftp.rs:765/815); skip CWD before STOR when dir unchanged (perf); MLST fallback trailing slash.
 - F-2 CI: add mesa Vulkan drivers to rust.yml for egui_kittest snapshot tests (WP20 Q10).
 
 ## Live test log
