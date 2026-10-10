@@ -562,7 +562,12 @@ impl FtpTransport {
             lines = self.stream.list(None).await;
         }
         let base = self.base.clone();
-        self.stream.cwd(&base).await?;
+        match self.stream.cwd(&base).await {
+            // Every command uses absolute paths: a refused CWD back does not invalidate the
+            // listing.
+            Ok(()) | Err(FtpError::UnexpectedResponse(_)) => {}
+            Err(e) => return Err(e.into()),
+        }
         match lines {
             Ok(lines) => Ok(parse_listing(&lines).map_or(Listing::Unusable, Listing::Entries)),
             // The directory exists (CWD succeeded): some servers answer an empty one so.
@@ -633,7 +638,8 @@ impl FtpTransport {
             MlstOutcome::Found => Ok(true),
             MlstOutcome::Missing => Ok(false),
             MlstOutcome::Fallback => {
-                let (parent, name) = absolute.rsplit_once('/').unwrap_or(("", absolute));
+                let trimmed = absolute.trim_end_matches('/');
+                let (parent, name) = trimmed.rsplit_once('/').unwrap_or(("", trimmed));
                 let parent = if parent.is_empty() { "/" } else { parent };
                 Ok(match self.list_dir(parent, true).await? {
                     Listing::Entries(entries) => entries.iter().any(|e| e.name() == name),
@@ -654,30 +660,49 @@ impl FtpTransport {
     }
 
     /// Creates the missing directories of `relative_dir` below the base, parents first.
+    ///
+    /// In a session the deepest known directory of the chain is re-checked with `CWD`: if it
+    /// vanished, the whole known chain is forgotten and every segment is checked again
+    /// (`FtpDAO.java:631-639`), so missing directories are recreated.
     // Mirrors dao/connection/ftp/FtpDAO.java:621-660.
     pub async fn mkdirs(&mut self, relative_dir: &str, ctx: &TransferCtx) -> Result<()> {
         self.ensure_usable()?;
-        let mut current = String::new();
+        let mut prefixes: Vec<String> = Vec::new();
         for segment in path::segments(relative_dir) {
-            let parent = std::mem::take(&mut current);
-            current = path::join_relative(&parent, segment);
-            if self.session.is_known_dir(&current) {
-                continue;
-            }
+            let parent = prefixes.last().map_or("", String::as_str);
+            prefixes.push(path::join_relative(parent, segment));
+        }
+        let mut start = 0;
+        if let Some(known) = prefixes
+            .iter()
+            .rposition(|dir| self.session.is_known_dir(dir))
+        {
             ctx.check_cancelled()?;
-            let absolute = self.absolute(&current);
+            if self.try_cwd(&self.absolute(&prefixes[known])).await? {
+                // Its ancestors exist too.
+                start = known + 1;
+            } else {
+                self.session.forget_chain(&prefixes[known]);
+            }
+        }
+        for index in start..prefixes.len() {
+            let current = &prefixes[index];
+            let parent = if index == 0 { "" } else { &prefixes[index - 1] };
+            let segment = path::split_parent(current).1;
+            ctx.check_cancelled()?;
+            let absolute = self.absolute(current);
             if self.try_cwd(&absolute).await? {
-                self.session.mark_known_dir(&current);
+                self.session.mark_known_dir(current);
                 continue;
             }
             match self.stream.mkdir(&absolute).await {
-                Ok(()) => self.session.mark_created_dir(&current, &parent, segment),
+                Ok(()) => self.session.mark_created_dir(current, parent, segment),
                 Err(err @ FtpError::UnexpectedResponse(_)) => {
                     // Another connection may have created it meanwhile.
                     if self.try_cwd(&absolute).await? {
-                        self.session.mark_known_dir(&current);
+                        self.session.mark_known_dir(current);
                     } else {
-                        return Err(remote_error(err, "create directory", &current));
+                        return Err(remote_error(err, "create directory", current));
                     }
                 }
                 Err(e) => return Err(e.into()),
@@ -702,11 +727,8 @@ impl FtpTransport {
             );
         }
         let (parent, name) = path::split_parent(relative);
-        // A known directory may have vanished meanwhile: CWD into it before the transfer and
-        // recreate the whole chain if it is gone (FtpDAO.java:631-639).
-        if self.session.is_known_dir(parent) && !self.try_cwd(&self.absolute(parent)).await? {
-            self.session.forget_chain(parent);
-        }
+        // `mkdirs` enters a known parent with CWD before the transfer and recreates it if it
+        // vanished meanwhile (B14).
         self.mkdirs(parent, ctx).await?;
         let written = self.store(&mut source, relative, ctx).await?;
         self.session.add_entry(parent, name);

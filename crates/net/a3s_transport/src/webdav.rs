@@ -205,7 +205,8 @@ impl WebdavTransport {
 }
 
 /// Status check for `PUT` and `MKCOL`: 409 Conflict means a missing parent collection.
-// Mirrors dao/connection/webdav/WebdavDAO.java:231-242, 295, 342.
+// Approved deviation from dao/connection/webdav/WebdavDAO.java:231-242 (Java maps only
+// 401/404): 409 → `NotFound` here, and a 207 answer to DELETE is `Error::Remote`.
 fn check_write_status(status: StatusCode, url: &Url, path: &str) -> Result<()> {
     if status == StatusCode::CONFLICT {
         return Err(Error::NotFound(path.to_owned()));
