@@ -23,3 +23,5 @@ arma3sync.workspace = true
 [[bin]]
 name = "arma3sync"
 path = "src/main.rs"
+# The facade library is also called `arma3sync`; documenting both collides.
+doc = false
