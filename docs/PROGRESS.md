@@ -3,7 +3,7 @@
 Mode: RUNNING (resumed via /orchestrate)            Updated: 2026-10-10
 Current wave: 0          Next action: on resume — live-check WP06 FTP resume fix (`scripts/gate.sh --slot 3 live a3s_transport` in its worktree); rebase WP03 on main; verify+review+merge WP02, WP03, WP06; then start WP20, WP17, WP31; consider 2 compiling slots (HDD load)
 Waiting-on: verify+review WP03 (slot 1), WP02 (slot 2), WP06 (slot 3 + live)
-Blockers: WP12 Q7 needs user decision (nested `racine` folder upload paths)
+Blockers: none
 
 ## In flight
 
@@ -48,7 +48,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 | 1 | WP15 | a3s_platform | WP02 | SPEC_OK | | |
 | 2 | WP08 | a3s_sync plan | WP07 | SPEC_OK | | |
 | 2 | WP09 | a3s_sync download | WP07 | SPEC_OK | | |
-| 2 | WP12 | a3s_admin upload/check/events | WP06, WP07, WP11 | SPEC_OK | | split WP12a → WP12b; Q7 needs user |
+| 2 | WP12 | a3s_admin upload/check/events | WP06, WP07, WP11 | SPEC_OK | | split WP12a → WP12b |
 | 2 | WP14 | app services | WP04, WP05 | SPEC_OK | | |
 | 2 | WP16 | a3s_launch | WP13, WP15 | SPEC_OK | | |
 | 2 | WP18 | presets | WP13, WP02, WP04 | SPEC_OK | | |
@@ -78,6 +78,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 - D-6 2026-10-10: SFTP accepts any host key and logs its fingerprint (mirrors Java/MINA default).
 - D-7 2026-10-10: Rust config/data dir name `arma3sync-rs` (user).
 - D-8 2026-10-10: orchestrator may approve local-only deviations that fix Java bugs/security; wire-visible changes go to the user (user).
+- D-11 2026-10-10: WP12 Q7 — fix nested `racine` folder upload paths (user).
 - D-10 2026-10-10: JDK = user-local Temurin 25.0.4.1 (Bazzite, no dnf); harness sources scripts/java_env.sh; no Gradle — compile with javac.
 - D-9 2026-10-10: custom agent types need a session restart; until then spawn general-purpose/opus with a ROLE header. (Now registered in this session.)
 
