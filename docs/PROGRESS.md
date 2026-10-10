@@ -2,7 +2,7 @@
 
 Mode: RUNNING (resumed via /orchestrate)            Updated: 2026-10-10
 Current wave: 0/1          Next action: on resume — live-check WP06 FTP resume fix (`scripts/gate.sh --slot 3 live a3s_transport` in its worktree); rebase WP03 on main; verify+review+merge WP02, WP03, WP06; then start WP20, WP17, WP31; consider 2 compiling slots (HDD load)
-Waiting-on: impl WP20 (slot 1), impl WP07 (slot 2), impl WP01 (slot 3)
+Waiting-on: impl WP20 (slot 1), verify+review WP07 (slot 2), impl WP01 (slot 3)
 Blockers: none
 
 ## In flight
@@ -10,7 +10,7 @@ Blockers: none
 | WP | Crate | State | Round | Agents | Slot | Branch | Worktree | HEAD | Since |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | WP20 | a3s_ui | IMPL | 0 | impl=a2a77fc3 (egui) | 1 | (worktree) | | | 2026-10-10 |
-| WP07 | a3s_sync model/remote/status | IMPL (frozen API first) | 0 | impl=ad5742c0 | 2 | (worktree) | | | 2026-10-10 |
+| WP07 | a3s_sync model/remote/status | VERIFY(+live) ∥ REVIEW; FROZEN_API afb3cdc | 0 | impl=ad5742c0 ver=a4303258 rev=a4d7e3c7 | 2 | worktree-agent-ad5742c0deb10a381 | .claude/worktrees/agent-ad5742c0deb10a381 | 16c9dbb | 2026-10-10 |
 | WP01 | java_fixture_harness | IMPL | 0 | impl=ae232646 | 3 | (worktree) | | | 2026-10-11 |
 
 ## Done before orchestration
@@ -42,7 +42,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 | 0 | WP31 | a3s_updater core | — | SPEC_OK | | |
 | 1 | WP04 | a3s_repo_files local/legacy | WP02, WP03 | SPEC_OK | | |
 | 1 | WP05 | autoconfig url/export | WP03 | SPEC_OK | | |
-| 1 | WP07 | a3s_sync model/remote/status | WP02, WP03 | IMPL | | critical path |
+| 1 | WP07 | a3s_sync model/remote/status | WP02, WP03 | VERIFY | | critical path |
 | 1 | WP11 | a3s_admin build | WP03 | SPEC_OK | | wire-touching |
 | 1 | WP13 | a3s_addons | WP03 | SPEC_OK | | |
 | 1 | WP15 | a3s_platform | WP02 | SPEC_OK | | |
