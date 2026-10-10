@@ -99,12 +99,15 @@ pub fn update_repository(
     let mut configuration_changed = false;
     if let Some(auto_config) = &metadata.auto_config {
         let before = configuration.favorite_servers.clone();
+        // Java's getter sorts the list on every read, so the merge matches against the sorted
+        // list (the first match in sorted order wins).
+        // Mirrors domain/configration/Configuration.java:59-65
+        configuration.sort_favorite_servers();
         merge_favorite_servers(
             &mut configuration.favorite_servers,
             &auto_config.favorite_servers,
             &repository.name,
         );
-        // Java sorts the list on every read.
         configuration.sort_favorite_servers();
         configuration_changed = configuration.favorite_servers != before;
     }

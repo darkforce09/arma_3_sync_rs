@@ -402,28 +402,32 @@ async fn a5_d_cancel_while_stalled() {
     let protocol = server.protocol("/repo");
     let ctx = TransferCtx::new();
     let cancel = ctx.cancel.clone();
-    tokio::spawn(async move {
+    let seen = Arc::clone(&server.state.seen);
+    // Cancel 200 ms after the stalled `sync` request arrived (independent of machine load).
+    let cancelled_at = tokio::spawn(async move {
+        while !seen.lock().iter().any(|s| s.path.ends_with("/sync")) {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
         tokio::time::sleep(Duration::from_millis(200)).await;
         cancel.cancel();
+        Instant::now()
     });
     let previous = previous_metadata();
     let mut metadata = previous.clone();
-    let start = Instant::now();
-    let result = check_repository(
-        "WOG",
-        &protocol,
-        &TransportOptions::from_protocol(&protocol),
-        &mut metadata,
-        &ctx,
-        &EventSender::noop(),
-    )
-    .await;
-    assert!(
-        start.elapsed() < Duration::from_secs(1),
-        "{:?}",
-        start.elapsed()
-    );
+    let mut connection =
+        RemoteConnection::connect(&protocol, &TransportOptions::from_protocol(&protocol), &ctx)
+            .await
+            .expect("connect");
+    let result = connection
+        .check_repository("WOG", &mut metadata, &ctx, &EventSender::noop())
+        .await;
+    let returned_at = Instant::now();
+    let cancelled_at = cancelled_at.await.expect("cancel task");
+    let delay = returned_at.saturating_duration_since(cancelled_at);
+    assert!(delay < Duration::from_secs(1), "{delay:?}");
     assert!(matches!(result, Err(RemoteError::Cancelled)), "{result:?}");
+    assert!(connection.is_poisoned());
+    connection.close().await;
     assert_fixture_fields(&metadata, &[A3sFile::ServerInfo]);
     assert_eq!(metadata.sync, None);
     assert_eq!(metadata.changelogs, previous.changelogs);
@@ -443,6 +447,30 @@ async fn a5_d_cancel_while_stalled() {
     .await;
     assert!(matches!(result, Err(RemoteError::Cancelled)));
     assert_eq!(metadata, previous);
+}
+
+#[tokio::test]
+async fn a5_connect_failure_clears_server_info() {
+    // A closed port: bind, read the port, drop the listener.
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .expect("bind")
+        .local_addr()
+        .expect("addr")
+        .port();
+    let protocol = Protocol::new(
+        ProtocolType::Ftp,
+        "127.0.0.1/repo",
+        port.to_string(),
+        "anonymous",
+        "",
+        false,
+    );
+    let previous = previous_metadata();
+    let mut metadata = previous.clone();
+    let err = check(&protocol, &mut metadata).await.expect_err("refused");
+    assert!(matches!(err, RemoteError::Connect { .. }), "{err:?}");
+    assert_eq!(metadata.server_info, None);
+    assert_eq!(metadata.sync, previous.sync);
 }
 
 #[tokio::test]

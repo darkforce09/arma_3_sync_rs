@@ -102,9 +102,14 @@ pub enum PartialTransferSupport {
 }
 
 /// One connection to a repository.
+///
+/// A transfer interrupted by cancellation leaves the connection in an unknown state (e.g. an
+/// FTP data transfer still pending); such a connection is *poisoned* and [`Self::close`] drops
+/// it without talking to the server.
 pub struct RemoteConnection {
     transport: Transport,
     protocol: Protocol,
+    poisoned: bool,
 }
 
 impl RemoteConnection {
@@ -128,7 +133,33 @@ impl RemoteConnection {
         Ok(Self {
             transport,
             protocol: protocol.clone(),
+            poisoned: false,
         })
+    }
+
+    /// Whether a cancelled transfer left the connection unusable (see [`RemoteConnection`]).
+    pub fn is_poisoned(&self) -> bool {
+        self.poisoned
+    }
+
+    /// Fetches `relative` into memory, returning as soon as `ctx` is cancelled (the transport
+    /// may not notice a cancel while the server stalls). A cancel poisons the connection.
+    async fn fetch_cancellable(
+        &mut self,
+        relative: &str,
+        ctx: &TransferCtx,
+    ) -> Option<a3s_transport::Result<Vec<u8>>> {
+        if ctx.cancel.is_cancelled() {
+            return None;
+        }
+        let fetched = tokio::select! {
+            () = ctx.cancel.cancelled() => None,
+            res = self.transport.fetch(relative, ctx) => Some(res),
+        };
+        if matches!(fetched, None | Some(Err(a3s_transport::Error::Cancelled))) {
+            self.poisoned = true;
+        }
+        fetched
     }
 
     /// The protocol this connection was opened with.
@@ -159,9 +190,9 @@ impl RemoteConnection {
         }
         let remote = RemoteFile::new(file.file_name(), A3S_FOLDER, false);
         let bytes = self
-            .transport
-            .fetch(&remote.transport_path(), ctx)
+            .fetch_cancellable(&remote.transport_path(), ctx)
             .await
+            .ok_or(RemoteError::Cancelled)?
             .map_err(|e| RemoteError::fetch(&self.protocol, &remote, e))?;
         let len = bytes.len() as u64;
         let decoded = if file == A3sFile::Sync {
@@ -301,11 +332,16 @@ impl RemoteConnection {
         }
         ensure_not_cancelled(ctx)?;
         let remote = RemoteFile::new(A3sFile::Sync.file_name(), A3S_FOLDER, false);
-        match self
-            .transport
-            .fetch_range(&remote.transport_path(), 0..2, ctx)
-            .await
-        {
+        let path = remote.transport_path();
+        let probed = tokio::select! {
+            () = ctx.cancel.cancelled() => None,
+            res = self.transport.fetch_range(&path, 0..2, ctx) => Some(res),
+        };
+        let Some(probed) = probed else {
+            self.poisoned = true;
+            return Err(RemoteError::Cancelled);
+        };
+        match probed {
             // Java only looks at the status: a short 206 body still means "supported".
             Ok(_) | Err(a3s_transport::Error::Incomplete { .. }) => {
                 Ok(PartialTransferSupport::Supported)
@@ -317,8 +353,12 @@ impl RemoteConnection {
         }
     }
 
-    /// Closes the connection politely.
+    /// Closes the connection politely, or just drops it when it is poisoned.
     pub async fn close(self) {
+        if self.poisoned {
+            tracing::debug!("Dropping a connection interrupted by cancellation");
+            return;
+        }
         self.transport.close().await;
     }
 }
@@ -345,7 +385,17 @@ pub async fn check_repository(
     ctx: &TransferCtx,
     events: &EventSender,
 ) -> Result<(), RemoteError> {
-    let mut connection = RemoteConnection::connect(protocol, options, ctx).await?;
+    let mut connection = match RemoteConnection::connect(protocol, options, ctx).await {
+        Ok(connection) => connection,
+        Err(err) => {
+            // Java connects inside `getServerInfo`, whose `finally` stores a null server info.
+            // Mirrors service/ConnectionService.java:100-106
+            if !matches!(err, RemoteError::Cancelled) {
+                metadata.server_info = None;
+            }
+            return Err(err);
+        }
+    };
     let result = connection
         .check_repository(repository_name, metadata, ctx, events)
         .await;
@@ -370,11 +420,12 @@ pub async fn import_autoconfig(
     let mut connection = RemoteConnection::connect(protocol, options, ctx).await?;
     let remote = RemoteFile::new(file_name, "", false);
     let result = connection
-        .transport
-        .fetch(&remote.transport_path(), ctx)
+        .fetch_cancellable(&remote.transport_path(), ctx)
         .await;
     connection.close().await;
-    let bytes = result.map_err(|e| RemoteError::fetch(protocol, &remote, e))?;
+    let bytes = result
+        .ok_or(RemoteError::Cancelled)?
+        .map_err(|e| RemoteError::fetch(protocol, &remote, e))?;
     ensure_not_cancelled(ctx)?;
     a3s_repo_files::decode_a3s(&bytes).map_err(|e| RemoteError::decode(A3sFile::AutoConfig, e))
 }

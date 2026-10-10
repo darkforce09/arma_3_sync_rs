@@ -241,13 +241,20 @@ pub(crate) fn transport_kind(err: &a3s_transport::Error) -> ErrorKind {
         E::Timeout => ErrorKind::Timeout,
         E::Cancelled => ErrorKind::Cancelled,
         E::Incomplete { .. } => ErrorKind::IncompleteTransfer,
-        E::InvalidProtocol(_) => ErrorKind::InvalidInput,
+        E::InvalidProtocol(_) | E::InvalidPath(_) => ErrorKind::InvalidInput,
         E::InsecureTlsRefused(_) | E::Tls(_) => ErrorKind::TlsValidation,
         E::Unsupported { .. } => ErrorKind::Unsupported,
         E::Http(e) if e.is_connect() => ErrorKind::ConnectionFailed,
-        E::Ftp(suppaftp::FtpError::ConnectionError(_)) | E::Ssh(_) => ErrorKind::ConnectionFailed,
+        E::Ftp(suppaftp::FtpError::ConnectionError(_)) | E::Ssh(_) | E::ConnectionPoisoned => {
+            ErrorKind::ConnectionFailed
+        }
         E::Io(e) => ErrorKind::from_io(e),
-        _ => ErrorKind::Io,
+        E::Remote { .. }
+        | E::HttpStatus { .. }
+        | E::InsecureRedirect
+        | E::Sftp(_)
+        | E::Http(_)
+        | E::Ftp(_) => ErrorKind::Io,
     }
 }
 
@@ -466,6 +473,16 @@ mod tests {
                 ErrorKind::ConnectionFailed,
             ),
             (E::Ftp(suppaftp::FtpError::BadResponse), ErrorKind::Io),
+            (E::ConnectionPoisoned, ErrorKind::ConnectionFailed),
+            (E::InvalidPath("..".to_owned()), ErrorKind::InvalidInput),
+            (
+                E::Remote {
+                    operation: "MKD",
+                    path: "a".to_owned(),
+                    reason: "550".to_owned(),
+                },
+                ErrorKind::Io,
+            ),
             (
                 E::Io(std::io::Error::from(std::io::ErrorKind::ConnectionReset)),
                 ErrorKind::ConnectionFailed,

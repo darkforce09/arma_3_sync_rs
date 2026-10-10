@@ -202,6 +202,33 @@ fn a14_update_repository_merges_and_sorts_favorites() {
 }
 
 #[test]
+fn a14_merge_matches_against_the_sorted_list() {
+    // Two local servers share ip and port; Java matches the first one in *sorted* order.
+    let mut c = Configuration {
+        favorite_servers: vec![
+            fav(Some("zulu"), Some("1.1.1.1"), 1),
+            fav(Some("Alpha"), Some("1.1.1.1"), 1),
+        ],
+        ..Default::default()
+    };
+    let mut remote = fav(None, Some("1.1.1.1"), 1);
+    remote.password = Some("pw".to_owned());
+    let metadata = RemoteMetadata {
+        auto_config: Some(Arc::new(AutoConfig {
+            repository_name: None,
+            protocol: None,
+            favorite_servers: vec![remote],
+        })),
+        ..Default::default()
+    };
+    let update = update_repository(&mut repo(), &mut c, &metadata);
+    assert!(update.configuration_changed);
+    assert_eq!(c.favorite_servers[0].name.as_deref(), Some("Alpha"));
+    assert_eq!(c.favorite_servers[0].password.as_deref(), Some("pw"));
+    assert_eq!(c.favorite_servers[1].password, None);
+}
+
+#[test]
 fn a14_merge_into_empty_list() {
     let mut local = Vec::new();
     let mut remote = fav(Some(""), Some("1.2.3.4"), 2302);
