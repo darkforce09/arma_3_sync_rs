@@ -42,7 +42,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 | 0 | WP31 | a3s_updater core | — | SPEC_OK | | |
 | 1 | WP04 | a3s_repo_files local/legacy | WP02, WP03 | SPEC_OK | | |
 | 1 | WP05 | autoconfig url/export | WP03 | SPEC_OK | | |
-| 1 | WP07 | a3s_sync model/remote/status | WP02, WP03 | TODO | | critical path |
+| 1 | WP07 | a3s_sync model/remote/status | WP02, WP03 | SPEC_OK | | critical path |
 | 1 | WP11 | a3s_admin build | WP03 | TODO | | wire-touching |
 | 1 | WP13 | a3s_addons | WP03 | SPEC_OK | | |
 | 1 | WP15 | a3s_platform | WP02 | SPEC_OK | | |
@@ -85,6 +85,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 - F-1 WP03: confirm PROVISIONAL computed UID of `domain.AutoConfig` (and FileAttributes, configration.Proxy) with the JDK harness (WP01).
 - F-3 After WP06: `a3s_transport::is_local_test_host` delegates to `a3s_types::ssl_policy` (WP05 Q3).
 - F-4 OS keyring for repository passwords (WP04 Q1; TOML is plain text, 0600).
+- F-5 Optional `HttpTransport::probe_range` returning headers for the partial-transfer test dialog (WP07 Q2).
 - F-2 CI: add mesa Vulkan drivers to rust.yml for egui_kittest snapshot tests (WP20 Q10).
 
 ## Live test log
