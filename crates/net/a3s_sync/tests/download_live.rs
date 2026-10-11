@@ -1,7 +1,7 @@
 //! Live, read-only download test against the public WOG repository (WP09 A17).
 //!
 //! Downloads `.a3s/sync` plus at most 3 files of at most 1 MB each (3 MB in total).
-//! Run with `scripts/gate.sh live a3s_sync`.
+//! Run with `cargo test -p a3s_sync -- --ignored --test-threads=1`.
 
 use std::sync::Arc;
 

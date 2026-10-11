@@ -7,10 +7,11 @@ the harness compiles the minimal set of Arma3Sync sources with plain `javac` and
 Use it through the Rust wrapper (`crates/build/a3s_dev_tools`):
 
 ```sh
-scripts/gate.sh cargo run -p a3s_dev_tools -- regen-fixtures --out /tmp/fixtures   # generate only
-scripts/gate.sh cargo run -p a3s_dev_tools -- regen-fixtures --write-fixtures      # orchestrator only
-scripts/gate.sh cargo run -p a3s_dev_tools -- regen-fixtures --check
-scripts/gate.sh cargo run -p a3s_dev_tools -- java-verify <files or dirs>...
+source scripts/java_env.sh
+cargo run -p a3s_dev_tools -- regen-fixtures --out .workstation/fixtures   # generate only
+cargo run -p a3s_dev_tools -- regen-fixtures --write-fixtures                 # install into tests/fixtures
+cargo run -p a3s_dev_tools -- regen-fixtures --check
+cargo run -p a3s_dev_tools -- java-verify <files or dirs>...
 ```
 
 ## Requirements

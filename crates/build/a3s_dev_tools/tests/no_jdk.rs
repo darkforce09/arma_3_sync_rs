@@ -58,29 +58,11 @@ fn a5_cli_rejects_write_fixtures_with_only() {
 }
 
 #[test]
-fn a5_cli_help_lists_the_subcommands() {
-    let output = Command::new(BIN).arg("--help").output().unwrap();
-    assert!(output.status.success());
-    let help = String::from_utf8(output.stdout).unwrap();
-    for subcommand in [
-        "regen-fixtures",
-        "java-verify",
-        "java-dump",
-        "java-roundtrip",
-    ] {
-        assert!(
-            help.contains(subcommand),
-            "{subcommand} missing from:\n{help}"
-        );
-    }
-}
-
-#[test]
 fn a5_cli_missing_prerequisites_exit_2() {
     let tmp = tempfile::tempdir().unwrap();
     let output = Command::new(BIN)
         .env("A3S_REPO_ROOT", tmp.path())
-        .args(["java-dump", "x"])
+        .args(["java-verify", "x"])
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(2));

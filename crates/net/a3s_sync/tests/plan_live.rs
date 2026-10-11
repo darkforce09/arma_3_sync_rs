@@ -1,6 +1,6 @@
 //! Live, read-only planning against the public WOG repository (`.a3s/*` only, ~125 KB).
 //!
-//! Run with `scripts/gate.sh live a3s_sync`.
+//! Run with `cargo test -p a3s_sync -- --ignored --test-threads=1`.
 
 use a3s_sync::completion::determine_completion;
 use a3s_sync::plan::{NoAddons, plan_repository, select_all_except_root};

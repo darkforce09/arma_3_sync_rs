@@ -1,6 +1,6 @@
 //! Headless wgpu snapshots of the gallery and the dialogs (spec A17, A18).
 //!
-//! Rendered through lavapipe (`scripts/gate.sh` sets `VK_ICD_FILENAMES`). Regenerate with
+//! Rendered through wgpu on Mesa's lavapipe Vulkan driver. Regenerate with
 //! `UPDATE_SNAPSHOTS=1`.
 #![cfg(target_os = "linux")]
 

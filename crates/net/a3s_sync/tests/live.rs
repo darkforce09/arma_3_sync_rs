@@ -1,6 +1,6 @@
 //! Live, read-only tests against the public WOG repository (`.a3s/*` only, ~125 KB).
 //!
-//! Run with `scripts/gate.sh live a3s_sync`.
+//! Run with `cargo test -p a3s_sync -- --ignored --test-threads=1`.
 
 use a3s_sync::remote::RemoteConnection;
 use a3s_sync::status::determine_sync_status;

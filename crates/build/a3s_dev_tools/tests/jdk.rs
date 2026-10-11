@@ -2,7 +2,7 @@
 //! sources, and are ignored by default:
 //!
 //! ```sh
-//! scripts/gate.sh cargo test -p a3s_dev_tools -- --ignored --test-threads=1
+//! source scripts/java_env.sh && cargo test -p a3s_dev_tools -- --ignored --test-threads=1
 //! ```
 //!
 //! Every test holds [`LOCK`], so they also run one at a time without `--test-threads=1`

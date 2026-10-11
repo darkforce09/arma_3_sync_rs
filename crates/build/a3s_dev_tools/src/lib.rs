@@ -1,4 +1,4 @@
-//! Developer tooling: fixture regeneration, code checks and release helpers.
+//! Developer tooling around the Java fixture harness: fixture regeneration and Java cross-checks.
 //!
 //! The golden fixtures in `tests/fixtures/` are produced by the Java implementation through the
 //! Java fixture harness (`tools/java_fixture_harness`). This crate wraps it:
@@ -8,8 +8,8 @@
 //!   [`Harness::dump`], [`Harness::roundtrip`]). Usable as a dev-dependency by any crate.
 //! * [`fixtures`]: regenerate, install into `tests/fixtures`, and compare fixture trees.
 //!
-//! The `a3s_dev_tools` binary exposes the same as `regen-fixtures`, `java-verify`, `java-dump`
-//! and `java-roundtrip`. The harness needs JDK 25 (`scripts/java_env.sh`) and runs on Unix only.
+//! The `a3s_dev_tools` binary exposes fixture regeneration (`regen-fixtures`) and Java
+//! verification (`java-verify`). The harness needs JDK 25 (`scripts/java_env.sh`) and runs on Unix only.
 
 pub mod fixtures;
 pub mod java_harness;

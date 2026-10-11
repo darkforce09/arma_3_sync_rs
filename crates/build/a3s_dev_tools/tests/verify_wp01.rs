@@ -1,7 +1,7 @@
 //! WP01 verifier: adversarial tests for the harness wrapper and the generated fixtures.
 //!
 //! The JDK-backed tests are ignored like `jdk.rs`:
-//! `scripts/gate.sh cargo test -p a3s_dev_tools --test verify_wp01 -- --ignored --test-threads=1`.
+//! `source scripts/java_env.sh && cargo test -p a3s_dev_tools --test verify_wp01 -- --ignored --test-threads=1`.
 
 mod common;
 

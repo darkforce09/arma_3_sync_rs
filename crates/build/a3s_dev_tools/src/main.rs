@@ -59,25 +59,6 @@ enum Command {
         #[arg(required = true)]
         paths: Vec<PathBuf>,
     },
-
-    /// Prints the canonical JSON dump of one object file.
-    JavaDump {
-        /// Semantic dump (no identities, sorted sets and maps).
-        #[arg(long)]
-        semantic: bool,
-
-        /// The file to dump.
-        file: PathBuf,
-    },
-
-    /// Java read of a plain `.a3s` file followed by the upload serialization.
-    JavaRoundtrip {
-        /// Input file.
-        input: PathBuf,
-
-        /// Output file.
-        output: PathBuf,
-    },
 }
 
 fn parse_part(arg: &str) -> Result<Part, String> {
@@ -138,15 +119,6 @@ fn run(command: Command) -> anyhow::Result<ExitCode> {
                 report.skipped.len()
             );
             Ok(exit_code(report.is_success()))
-        }
-        Command::JavaDump { semantic, file } => {
-            print!("{}", harness.dump(&file, dump_mode(semantic))?);
-            Ok(ExitCode::SUCCESS)
-        }
-        Command::JavaRoundtrip { input, output } => {
-            harness.roundtrip(&input, &output)?;
-            println!("OK\t{}", output.display());
-            Ok(ExitCode::SUCCESS)
         }
     }
 }

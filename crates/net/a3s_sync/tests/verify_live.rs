@@ -1,6 +1,6 @@
 //! WP07 adversarial live checks against the public WOG repository (read-only, `.a3s/*` only).
 //!
-//! Run with `scripts/gate.sh live a3s_sync verify_live`.
+//! Run with `cargo test -p a3s_sync --test verify_live -- --ignored --test-threads=1`.
 
 use a3s_error::ErrorKind;
 use a3s_sync::remote::import_autoconfig;
