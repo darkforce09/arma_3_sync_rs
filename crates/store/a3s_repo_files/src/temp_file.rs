@@ -39,6 +39,6 @@ pub fn temp_file_next_to(target: &Path, mode: TempFileMode) -> io::Result<NamedT
         builder.permissions(std::fs::Permissions::from_mode(0o666));
     }
     #[cfg(not(unix))]
-    let _ = mode;
+    let _: TempFileMode = mode;
     builder.tempfile_in(dir)
 }
