@@ -15,18 +15,7 @@ This document describes the structure of the Rust rewrite. The layout follows
 
 ## Crate groups
 
-Dependencies only point "down" this list (a crate may depend on crates from its own group or a
-group listed below it):
-
-```
-top     ─┐  arma3sync, arma3sync-cli, a3s_updater
-viewer  ─┤  a3s_viewer, a3s_viewer_context, a3s_ui
-game    ─┤  a3s_addons, a3s_launch, a3s_tools, a3s_platform
-net     ─┤  a3s_sync, a3s_admin, a3s_transport
-store   ─┤  a3s_types, a3s_jserial, a3s_repo_files, a3s_zsync, a3s_hash
-utils   ─┤  a3s_log, a3s_paths, a3s_format, a3s_error
-build   ─┘  a3s_build_info, a3s_dev_tools
-```
+A crate may depend on crates from its own group or a group listed above it in this table.
 
 | Crate | Purpose | Java counterpart |
 | --- | --- | --- |
@@ -120,21 +109,34 @@ The Rust client stores its own configuration as TOML in the platform config dire
 (`a3s_paths`). On first start it offers a one-time import of the Java client's data
 (`a3s.cfg`, `a3s.prefs`, `*.a3s.profile`, AES-encrypted `*.a3s.repository`).
 
+## Intentional differences from Java
+
+Wire compatibility is the requirement; these differences are deliberate.
+
+* **Compatibility levels.** `.a3s/*` files and `.zsync` files are byte-identical to Java's;
+  `.pbo.zip`/`.ebo.zip` are semantically equal (same entry and content, not the same bytes).
+* **Local client data** is a new TOML store in its own directory, `arma3sync-rs`, which never
+  collides with the Java client's; the Java client's files are imported once on request.
+* **SFTP** accepts any host key and logs its fingerprint, like Java's MINA default.
+  `deny.toml` ignores RUSTSEC-2023-0071 (RSA timing) because only public-key verification is used;
+  re-evaluate if client public-key authentication is added.
+* **Repository upload** writes nested `racine` folders to their real paths (Java uploads them to
+  wrong paths).
+* **Repository build:** the compression stage's own outputs (`<name>.zip` for any compressible
+  file, so also `.ebo.zip`) are never sync leaves (Java turns its `.ebo.zip` into a leaf on the
+  next build); a repository whose path is a symbolic link reports the real `totalFilesSize` of the
+  linked folder (Java reports 0).
+* **Sync safety:** the plan rejects remote names that are empty, `.`, `..`, absolute or contain a
+  separator, and every write and delete stays inside the destination. The extra-file scan never
+  follows a symbolic link (it is one file node); deletions remove the link, never its target.
+  Downloads do follow links the user created inside the destination. Java has none of these checks.
+* **Local-only fixes** (no wire effect) are allowed where Java has a bug or a security hole, for
+  example control characters rejected in local file names, and UI tokens adjusted for readability
+  in the dark theme. UI and error text need not match Java.
+
 ## Testing strategy
 
 * Golden fixtures in `tests/fixtures/` are produced by the Java implementation through
   `tools/java_fixture_harness`. Rust must decode them, and re-encode them byte-identically.
 * Live, read-only tests against a public repository are `#[ignore]`d and run with
   `cargo test -- --ignored`.
-
-## Roadmap
-
-0. Workspace scaffold, CI, docs.
-1. Golden fixtures from the Java implementation.
-2. `a3s_jserial`, `a3s_types`, `a3s_repo_files`.
-3. `a3s_zsync`, `a3s_hash`.
-4. `a3s_transport`, `a3s_sync`, CLI `sync` / `check`.
-5. `a3s_admin`, CLI `build` / upload.
-6. `game` crates.
-7. `viewer` crates (egui UI).
-8. Updater and packaging.
