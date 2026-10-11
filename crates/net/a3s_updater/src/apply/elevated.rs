@@ -1,14 +1,20 @@
 //! The elevated install: the unelevated application starts its own binary with administrator
-//! rights and the hidden [`ELEVATED_SUBCOMMAND`], which only re-verifies and installs the
-//! archive the parent already downloaded, then waits for it.
+//! rights and the hidden [`ELEVATED_SUBCOMMAND`], which installs the archive the parent already
+//! downloaded, then waits for it.
 //!
-//! Protocol: the parent passes the archive, its SHA-256, the version, a startup marker and a
-//! result file (both in the parent's staging directory). The child writes the marker as soon as
-//! it starts, installs into the directory of its own executable, writes an empty result on
-//! success or the error message on failure, and exits with 0 or 1.
+//! The child trusts nothing a user process can change. Its arguments only name the archive,
+//! the requested version, the release channel and a nonce. It resolves the release itself
+//! through the installation's own `updater.toml` (no user configuration, no environment
+//! overrides), requires that release to be the requested version and newer than its own, and
+//! verifies the archive against the SHA-256 it resolved. It writes its startup marker, result
+//! and log only into a directory it creates inside the installation,
+//! `.a3s-elevated-<pid>-<nonce>`, which a less-privileged user can read but not redirect; the
+//! parent finds it by the nonce. It exits with 0 on success and 1 on failure.
 
+use std::collections::hash_map::RandomState;
 use std::ffi::OsString;
-use std::io::{Read as _, Write as _};
+use std::hash::{BuildHasher as _, Hasher as _};
+use std::io::{self, Read as _, Write as _};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -16,10 +22,13 @@ use std::time::Duration;
 use a3s_foundation::paths::Os;
 
 use super::install::install_verified_archive;
-use super::replace::SelfReplacer;
+use super::replace::{ELEVATED_PREFIX, SelfReplacer, cleanup_leftovers};
 use super::{ApplyError, UpdateContext, UpdateEvent, console};
 use crate::elevation::{ElevatedLaunch, ElevatedLauncher, LaunchExit, is_windows};
-use crate::{DiagnosticLog, Release};
+use crate::{
+    CancellationToken, ConfigOverrides, DiagnosticLog, HttpClient, Release, ResolveRequest,
+    UpdateConfig, UpdateError, UpdateSource, host_target, is_newer, resolve_release,
+};
 
 /// First argument of the elevated updater process.
 pub const ELEVATED_SUBCOMMAND: &str = "__a3s-elevated-install";
@@ -34,83 +43,114 @@ const MARKER_POLL_INTERVAL: Duration = Duration::from_millis(100);
 /// Most bytes of the result file the parent reads.
 const MAX_RESULT_BYTES: u64 = 64 * 1024;
 
-const OPTION_ARCHIVE: &str = "--archive";
-const OPTION_SHA256: &str = "--sha256";
-const OPTION_VERSION: &str = "--version";
-const OPTION_MARKER: &str = "--marker";
-const OPTION_RESULT: &str = "--result";
-const OPTION_DEBUG_LOG: &str = "--debug-log";
+/// Files of the child's work directory.
+const MARKER_NAME: &str = "elevated.startup";
+const RESULT_NAME: &str = "elevated.result";
+const LOG_NAME: &str = "elevated-updater.log";
 
-/// The arguments of the elevated updater. There is no installation directory: the child
-/// installs next to its own executable, so it cannot be pointed at another directory.
+/// Hex digits of a nonce.
+const NONCE_LENGTH: usize = 32;
+
+const OPTION_ARCHIVE: &str = "--archive";
+const OPTION_VERSION: &str = "--version";
+const OPTION_NONCE: &str = "--nonce";
+const OPTION_SOURCE: &str = "--source";
+const FLAG_DEV: &str = "--dev";
+const FLAG_DEBUG: &str = "--debug";
+
+/// The arguments of the elevated updater. There is no installation directory and no checksum:
+/// the child installs next to its own executable and resolves the checksum itself.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ElevatedInstallArgs {
     /// The downloaded archive (absolute).
     pub archive: PathBuf,
 
-    /// Lowercase hex SHA-256 the archive must have.
-    pub sha256: String,
+    /// The version the parent downloaded; the child installs only this version.
     pub version: String,
 
-    /// File the child writes as soon as it starts (absolute).
-    pub marker: PathBuf,
+    /// Names the child's work directory (32 lowercase hex digits).
+    pub nonce: String,
 
-    /// File the child writes its outcome to: empty on success, else the error (absolute).
-    pub result: PathBuf,
+    /// Resolve the development channel.
+    pub dev: bool,
+    pub source: UpdateSource,
 
-    /// Diagnostic log the child appends to.
-    pub debug_log: Option<PathBuf>,
+    /// Write a diagnostic log into the work directory.
+    pub debug: bool,
 }
 
 impl ElevatedInstallArgs {
-    /// The full argument list, starting with [`ELEVATED_SUBCOMMAND`]; fails for a path that is
-    /// not valid UTF-8.
+    /// A new random nonce.
+    pub fn new_nonce() -> String {
+        let mut nonce = String::with_capacity(NONCE_LENGTH);
+        // `RandomState` keys come from the operating system's random source.
+        for part in 0..2u8 {
+            let mut hasher = RandomState::new().build_hasher();
+            hasher.write_u8(part);
+            hasher.write_u32(std::process::id());
+            nonce.push_str(&format!("{:016x}", hasher.finish()));
+        }
+        nonce
+    }
+
+    /// The full argument list, starting with [`ELEVATED_SUBCOMMAND`]; fails for an archive
+    /// path that is not valid UTF-8.
     // Mirrors a3sUpdater/service/ElevationSupport.java:95-121
     pub fn to_args(&self) -> Result<Vec<String>, String> {
-        let path = |option: &str, path: &Path| {
-            path.to_str()
-                .map(str::to_owned)
-                .ok_or_else(|| format!("{option} {} is not valid UTF-8.", path.display()))
-        };
+        let archive = self.archive.to_str().ok_or_else(|| {
+            format!(
+                "{OPTION_ARCHIVE} {} is not valid UTF-8.",
+                self.archive.display()
+            )
+        })?;
         let mut args = vec![
             ELEVATED_SUBCOMMAND.to_owned(),
             OPTION_ARCHIVE.to_owned(),
-            path(OPTION_ARCHIVE, &self.archive)?,
-            OPTION_SHA256.to_owned(),
-            self.sha256.clone(),
+            archive.to_owned(),
             OPTION_VERSION.to_owned(),
             self.version.clone(),
-            OPTION_MARKER.to_owned(),
-            path(OPTION_MARKER, &self.marker)?,
-            OPTION_RESULT.to_owned(),
-            path(OPTION_RESULT, &self.result)?,
+            OPTION_NONCE.to_owned(),
+            self.nonce.clone(),
+            OPTION_SOURCE.to_owned(),
+            source_name(self.source).to_owned(),
         ];
-        if let Some(debug_log) = &self.debug_log {
-            args.push(OPTION_DEBUG_LOG.to_owned());
-            args.push(path(OPTION_DEBUG_LOG, debug_log)?);
+        for (set, flag) in [(self.dev, FLAG_DEV), (self.debug, FLAG_DEBUG)] {
+            if set {
+                args.push(flag.to_owned());
+            }
         }
         Ok(args)
     }
 
-    /// Parses the arguments after [`ELEVATED_SUBCOMMAND`]: every option once and in any order,
-    /// `--debug-log` optional. Paths must be absolute, the SHA-256 64 hex digits (stored
-    /// lowercase) and the version non-blank.
+    /// Parses the arguments after [`ELEVATED_SUBCOMMAND`]: every option and flag at most once
+    /// and in any order; `--archive`, `--version`, `--nonce` and `--source` are required. The
+    /// archive must be absolute, the version non-blank and the nonce 32 hex digits (stored
+    /// lowercase).
     pub fn parse(args: &[String]) -> Result<Self, String> {
         let mut archive = None;
-        let mut sha256 = None;
         let mut version = None;
-        let mut marker = None;
-        let mut result = None;
-        let mut debug_log = None;
+        let mut nonce = None;
+        let mut source = None;
+        let mut dev = false;
+        let mut debug = false;
         let mut rest = args.iter();
         while let Some(option) = rest.next() {
+            let flag = match option.as_str() {
+                FLAG_DEV => Some(&mut dev),
+                FLAG_DEBUG => Some(&mut debug),
+                _ => None,
+            };
+            if let Some(flag) = flag {
+                if std::mem::replace(flag, true) {
+                    return Err(format!("{option} is given more than once"));
+                }
+                continue;
+            }
             let slot = match option.as_str() {
                 OPTION_ARCHIVE => &mut archive,
-                OPTION_SHA256 => &mut sha256,
                 OPTION_VERSION => &mut version,
-                OPTION_MARKER => &mut marker,
-                OPTION_RESULT => &mut result,
-                OPTION_DEBUG_LOG => &mut debug_log,
+                OPTION_NONCE => &mut nonce,
+                OPTION_SOURCE => &mut source,
                 other => return Err(format!("unknown option {other}")),
             };
             let value = rest
@@ -120,24 +160,42 @@ impl ElevatedInstallArgs {
                 return Err(format!("{option} is given more than once"));
             }
         }
-        let sha256 = required(sha256, OPTION_SHA256)?;
-        if sha256.len() != 64 || !sha256.bytes().all(|b| b.is_ascii_hexdigit()) {
-            return Err(format!("{OPTION_SHA256} must be 64 hexadecimal digits"));
+        let archive = PathBuf::from(required(archive, OPTION_ARCHIVE)?);
+        if !archive.is_absolute() {
+            return Err(format!("{OPTION_ARCHIVE} must be an absolute path"));
         }
         let version = required(version, OPTION_VERSION)?;
         if version.trim().is_empty() {
             return Err(format!("{OPTION_VERSION} is blank"));
         }
+        let nonce = required(nonce, OPTION_NONCE)?;
+        if nonce.len() != NONCE_LENGTH || !nonce.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err(format!(
+                "{OPTION_NONCE} must be {NONCE_LENGTH} hexadecimal digits"
+            ));
+        }
+        let source = match required(source, OPTION_SOURCE)? {
+            "configured" => UpdateSource::Configured,
+            "github" => UpdateSource::GitHub,
+            "manifest" => UpdateSource::Manifest,
+            other => return Err(format!("unknown {OPTION_SOURCE} {other}")),
+        };
         Ok(Self {
-            archive: absolute(archive, OPTION_ARCHIVE)?,
-            sha256: sha256.to_ascii_lowercase(),
+            archive,
             version: version.to_owned(),
-            marker: absolute(marker, OPTION_MARKER)?,
-            result: absolute(result, OPTION_RESULT)?,
-            debug_log: debug_log
-                .map(|value| absolute(Some(value), OPTION_DEBUG_LOG))
-                .transpose()?,
+            nonce: nonce.to_ascii_lowercase(),
+            dev,
+            source,
+            debug,
         })
+    }
+}
+
+fn source_name(source: UpdateSource) -> &'static str {
+    match source {
+        UpdateSource::Configured => "configured",
+        UpdateSource::GitHub => "github",
+        UpdateSource::Manifest => "manifest",
     }
 }
 
@@ -145,34 +203,27 @@ fn required<'a>(value: Option<&'a str>, option: &str) -> Result<&'a str, String>
     value.ok_or_else(|| format!("{option} is missing"))
 }
 
-fn absolute(value: Option<&str>, option: &str) -> Result<PathBuf, String> {
-    let path = PathBuf::from(required(value, option)?);
-    if path.is_absolute() {
-        Ok(path)
-    } else {
-        Err(format!("{option} must be an absolute path"))
-    }
-}
-
 /// Entry point of the elevated updater: the binary calls it with the arguments after
-/// [`ELEVATED_SUBCOMMAND`] before any other setup, and exits with the returned code.
-pub fn run_elevated_install(args: &[OsString]) -> i32 {
+/// [`ELEVATED_SUBCOMMAND`] and its own version before any other setup, and exits with the
+/// returned code.
+pub fn run_elevated_install(args: &[OsString], current_version: &str) -> i32 {
     match super::current_exe_path() {
-        Ok(exe) => run_elevated_install_with(args, &exe, Os::current()),
-        Err(err) => {
-            let _ignored: std::io::Result<()> = writeln!(
-                std::io::stderr(),
-                "The elevated updater cannot find its own executable: {err}"
-            );
-            console::EXIT_FAILURE
-        }
+        Ok(exe) => run_elevated_install_with(args, &exe, Os::current(), current_version),
+        Err(err) => fail_early(&format!(
+            "The elevated updater cannot find its own executable: {err}"
+        )),
     }
 }
 
-/// [`run_elevated_install`] for the executable `exe_path` on `os`: installs into the parent
-/// directory of `exe_path`. Returns 0 on success, 1 on failure.
+/// [`run_elevated_install`] for the executable `exe_path` of version `current_version` on
+/// `os`: installs into the parent directory of `exe_path`. Returns 0 on success, 1 on failure.
 // Mirrors a3sUpdater/main/ArmA3SyncUpdater.java:19-23
-pub fn run_elevated_install_with(args: &[OsString], exe_path: &Path, os: Os) -> i32 {
+pub fn run_elevated_install_with(
+    args: &[OsString],
+    exe_path: &Path,
+    os: Os,
+    current_version: &str,
+) -> i32 {
     let strings: Option<Vec<String>> = args.iter().map(|a| a.to_str().map(str::to_owned)).collect();
     let parsed = strings
         .as_deref()
@@ -181,68 +232,178 @@ pub fn run_elevated_install_with(args: &[OsString], exe_path: &Path, os: Os) -> 
     let args = match parsed {
         Ok(args) => args,
         Err(detail) => {
-            let message = format!("Invalid elevated updater arguments: {detail}");
-            let _ignored: std::io::Result<()> = writeln!(std::io::stderr(), "{message}");
-            if let Some(result) = strings.as_deref().and_then(result_option) {
-                write_result(&result, &message);
-            }
-            return console::EXIT_FAILURE;
+            return fail_early(&format!("Invalid elevated updater arguments: {detail}"));
         }
     };
-
-    let diag = match &args.debug_log {
-        Some(path) => DiagnosticLog::new(true, Some(path.clone())),
-        None => DiagnosticLog::disabled(),
-    };
-    diag.mark_elevated_startup(&args.marker);
     let Some(install_dir) = exe_path.parent() else {
-        write_result(
-            &args.result,
-            &format!("{} has no parent directory.", exe_path.display()),
-        );
-        return console::EXIT_FAILURE;
+        return fail_early(&format!("{} has no parent directory.", exe_path.display()));
     };
+    // Removes the work directories of earlier runs before this one is created.
+    cleanup_leftovers(install_dir);
+    let work = match create_work_dir(install_dir, &args.nonce) {
+        Ok(work) => work,
+        Err(err) => {
+            return fail_early(&format!(
+                "The elevated updater cannot create its work directory in {}: {err}",
+                install_dir.display()
+            ));
+        }
+    };
+    let diag = if args.debug {
+        DiagnosticLog::new(true, Some(work.join(LOG_NAME)))
+    } else {
+        DiagnosticLog::disabled()
+    };
+    diag.mark_elevated_startup(&work.join(MARKER_NAME));
     diag.info(&format!(
         "Elevated updater started: installation={}, version={}",
         install_dir.display(),
         args.version
     ));
 
-    match install_verified_archive(
-        &args.archive,
-        &args.sha256,
-        install_dir,
-        os,
-        &SelfReplacer::new(),
-        &diag,
-    ) {
-        Ok(_) => {
-            write_result(&args.result, "");
+    let result = work.join(RESULT_NAME);
+    match install_requested(&args, install_dir, os, current_version, &diag) {
+        Ok(()) => {
+            write_result(&result, "");
             console::EXIT_OK
         }
         Err(err) => {
+            diag.error("Elevated update failed.", Some(&err));
             if err.is_permission_failure() {
                 diag.error(
                     "Elevated updater still cannot write to the installation; not retrying UAC.",
-                    Some(&err),
+                    None,
                 );
             }
-            write_result(&args.result, &err.to_string());
+            write_result(&result, &err.to_string());
             console::EXIT_FAILURE
         }
     }
 }
 
-/// The `--result` value of arguments that failed to parse, if it is an absolute path.
-fn result_option(args: &[String]) -> Option<PathBuf> {
-    let index = args.iter().position(|a| a == OPTION_RESULT)?;
-    Some(PathBuf::from(args.get(index + 1)?)).filter(|path| path.is_absolute())
+/// Reports a failure that happened before the work directory existed.
+fn fail_early(message: &str) -> i32 {
+    let _ignored: io::Result<()> = writeln!(io::stderr(), "{message}");
+    console::EXIT_FAILURE
+}
+
+/// Creates `<install_dir>/.a3s-elevated-<pid>-<nonce>`; fails when anything, a link or
+/// junction included, already has that name.
+fn create_work_dir(install_dir: &Path, nonce: &str) -> io::Result<PathBuf> {
+    let dir = install_dir.join(format!("{ELEVATED_PREFIX}{}-{nonce}", std::process::id()));
+    std::fs::create_dir(&dir)?;
+    let meta = std::fs::symlink_metadata(&dir)?;
+    if !meta.is_dir() || is_link(&meta) {
+        return Err(io::Error::other(format!(
+            "{} is not a plain directory",
+            dir.display()
+        )));
+    }
+    Ok(dir)
+}
+
+#[cfg(windows)]
+fn is_link(meta: &std::fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt as _;
+    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+    meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+}
+
+#[cfg(not(windows))]
+fn is_link(meta: &std::fs::Metadata) -> bool {
+    meta.file_type().is_symlink()
+}
+
+/// Resolves the release through the installation's configuration, checks it against the
+/// request and installs the archive with the resolved checksum.
+fn install_requested(
+    args: &ElevatedInstallArgs,
+    install_dir: &Path,
+    os: Os,
+    current_version: &str,
+    diag: &DiagnosticLog,
+) -> Result<(), ApplyError> {
+    let release = resolve_as_installation(install_dir, args, diag)?;
+    if release.version.trim() != args.version.trim() {
+        return Err(ApplyError::ElevatedInstallFailed(format!(
+            "The latest release is {}, not the requested {}.",
+            release.version, args.version
+        )));
+    }
+    if !is_newer(&release.version, current_version) {
+        return Err(ApplyError::ElevatedInstallFailed(format!(
+            "Release {} is not newer than the installed version {current_version}.",
+            release.version
+        )));
+    }
+    let sha256 = release.sha256.ok_or(ApplyError::Unverified {
+        version: release.version,
+    })?;
+    install_verified_archive(
+        &args.archive,
+        &sha256,
+        install_dir,
+        os,
+        &SelfReplacer::new(),
+        diag,
+    )
+    .map(drop)
+}
+
+/// The latest release as the installation's own `updater.toml` describes it: no user
+/// configuration directory and no environment overrides, which a less-privileged user could
+/// change.
+fn resolve_as_installation(
+    install_dir: &Path,
+    args: &ElevatedInstallArgs,
+    diag: &DiagnosticLog,
+) -> Result<Release, ApplyError> {
+    let target = host_target().ok_or(ApplyError::NoTarget)?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| {
+            ApplyError::Metadata(UpdateError::Io {
+                context: "Could not start the update runtime".to_owned(),
+                source: e,
+            })
+        })?;
+    runtime.block_on(async {
+        let config = UpdateConfig::load(install_dir, &ConfigOverrides::default())
+            .map_err(ApplyError::Metadata)?;
+        let http = HttpClient::new(&config).map_err(ApplyError::Metadata)?;
+        let request = ResolveRequest {
+            install_dir,
+            dev: args.dev,
+            preference: args.source,
+            target,
+        };
+        resolve_release(&config, &http, &request, diag, &CancellationToken::new())
+            .await
+            .map_err(ApplyError::Metadata)
+    })
 }
 
 fn write_result(path: &Path, message: &str) {
     if let Err(err) = std::fs::write(path, message) {
         tracing::warn!(path = %path.display(), error = %err, "cannot write the elevated updater result");
     }
+}
+
+/// The child's work directory for `nonce` in `install_dir`, once it exists.
+fn find_work_dir(install_dir: &Path, nonce: &str) -> Option<PathBuf> {
+    let suffix = format!("-{nonce}");
+    std::fs::read_dir(install_dir)
+        .ok()?
+        .filter_map(Result::ok)
+        .find(|entry| {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            name.starts_with(ELEVATED_PREFIX)
+                && name.ends_with(&suffix)
+                && entry.file_type().is_ok_and(|t| t.is_dir())
+        })
+        .map(|entry| entry.path())
 }
 
 /// Parent side: starts the elevated updater for `archive` and waits for it.
@@ -254,7 +415,6 @@ pub(super) async fn elevated_install(
     ctx: &UpdateContext,
     release: &Release,
     archive: &Path,
-    staging: &Path,
     launcher: Arc<dyn ElevatedLauncher>,
     on_event: &(dyn Fn(UpdateEvent) + Send + Sync),
 ) -> Result<(), ApplyError> {
@@ -267,26 +427,14 @@ pub(super) async fn elevated_install(
             ctx.exe_path.display()
         )));
     }
-    let sha256 = release
-        .sha256
-        .clone()
-        .ok_or_else(|| ApplyError::Unverified {
-            version: release.version.clone(),
-        })?;
-    let staging = std::path::absolute(staging).map_err(|e| not_started(&e))?;
-    let marker = staging.join("elevated.startup");
-    let result = staging.join("elevated.result");
+    let nonce = ElevatedInstallArgs::new_nonce();
     let args = ElevatedInstallArgs {
         archive: std::path::absolute(archive).map_err(|e| not_started(&e))?,
-        sha256,
         version: release.version.clone(),
-        marker: marker.clone(),
-        result: result.clone(),
-        debug_log: ctx
-            .diag
-            .is_enabled()
-            .then(|| ctx.diag.path().map(Path::to_path_buf))
-            .flatten(),
+        nonce: nonce.clone(),
+        dev: ctx.dev,
+        source: ctx.source,
+        debug: ctx.diag.is_enabled(),
     }
     .to_args()
     .map_err(|detail| not_started(&detail))?;
@@ -304,28 +452,37 @@ pub(super) async fn elevated_install(
     };
     let mut task =
         tokio::task::spawn_blocking(move || launcher.run(&launch, ELEVATED_INSTALL_TIMEOUT));
+    let mut work: Option<PathBuf> = None;
     let mut started = false;
     let mut announce_start = || {
-        if !started && marker.exists() {
+        if work.is_none() {
+            work = find_work_dir(&ctx.install_dir, &nonce);
+        }
+        let marker = work.as_ref().map(|dir| dir.join(MARKER_NAME));
+        if !started && marker.is_some_and(|marker| marker.is_file()) {
             started = true;
             on_event(UpdateEvent::ElevatedInstallStarted);
             on_event(UpdateEvent::Installing);
         }
+        started
     };
     let joined = loop {
         tokio::select! {
             joined = &mut task => break joined,
-            () = tokio::time::sleep(MARKER_POLL_INTERVAL) => announce_start(),
+            () = tokio::time::sleep(MARKER_POLL_INTERVAL) => {
+                announce_start();
+            }
         }
     };
-    announce_start();
+    let started = announce_start();
     let exit = match joined {
         Ok(exit) => exit,
         Err(err) if err.is_panic() => std::panic::resume_unwind(err.into_panic()),
-        Err(err) => Err(std::io::Error::other(err.to_string())),
+        Err(err) => Err(io::Error::other(err.to_string())),
     };
 
-    let outcome = map_exit(exit, marker.exists(), &result);
+    let result = work.as_ref().map(|dir| dir.join(RESULT_NAME));
+    let outcome = map_exit(exit, started, result.as_deref());
     match &outcome {
         Ok(()) => ctx
             .diag
@@ -333,6 +490,12 @@ pub(super) async fn elevated_install(
         Err(err) => ctx
             .diag
             .error(&format!("UAC restart rejected: {err}"), None),
+    }
+    if let Some(dir) = work.as_ref().filter(|_| ctx.diag.is_enabled()) {
+        ctx.diag.info(&format!(
+            "Elevated updater log: {}",
+            dir.join(LOG_NAME).display()
+        ));
     }
     outcome
 }
@@ -346,17 +509,17 @@ fn not_started(detail: &dyn std::fmt::Display) -> ApplyError {
 /// Maps how the elevated updater ended to the result of the update.
 // Mirrors a3sUpdater/service/ElevationSupport.java:153-170
 fn map_exit(
-    exit: std::io::Result<LaunchExit>,
-    marker_exists: bool,
-    result: &Path,
+    exit: io::Result<LaunchExit>,
+    started: bool,
+    result: Option<&Path>,
 ) -> Result<(), ApplyError> {
     match exit {
         Ok(LaunchExit::Exited(0)) => Ok(()),
-        Ok(LaunchExit::Exited(_)) if !marker_exists => Err(ApplyError::ElevatedInstallFailed(
+        Ok(LaunchExit::Exited(_)) if !started => Err(ApplyError::ElevatedInstallFailed(
             "The elevated updater did not start.".to_owned(),
         )),
         Ok(LaunchExit::Exited(code)) => {
-            let message = read_result(result);
+            let message = result.map(read_result).unwrap_or_default();
             Err(ApplyError::ElevatedInstallFailed(if message.is_empty() {
                 format!("The elevated updater failed with exit code {code}.")
             } else {
@@ -384,7 +547,7 @@ fn map_exit(
 fn read_result(path: &Path) -> String {
     let mut bytes = Vec::new();
     if let Ok(file) = std::fs::File::open(path) {
-        let _ignored: std::io::Result<usize> = file.take(MAX_RESULT_BYTES).read_to_end(&mut bytes);
+        let _ignored: io::Result<usize> = file.take(MAX_RESULT_BYTES).read_to_end(&mut bytes);
     }
     String::from_utf8_lossy(&bytes).trim().to_owned()
 }

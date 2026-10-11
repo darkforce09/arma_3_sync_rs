@@ -133,7 +133,7 @@ fn is_portable_data(relative: &str) -> bool {
 /// 2. Copies the archive privately while hashing it and validates it ([`validate_archive`]);
 ///    a different SHA-256 than `expected_sha256` fails with
 ///    `ApplyError::Download(UpdateError::Integrity)`.
-/// 3. Extracts it into a new `.a3s-stage-*` directory inside `install_dir`, removed on return.
+/// 3. Extracts it into a new `.a3s-stage-<pid>-*` directory inside `install_dir`, removed on return.
 ///    The installation is the one place an elevated updater may write that a less-privileged
 ///    user cannot, so nobody can swap the staged files before they are copied.
 /// 4. Checks the release layout ([`check_release_layout`]); nothing in the installation has
@@ -169,7 +169,7 @@ pub fn install_verified_archive(
         Err(err) => return Err(install_error(stage("archive validation", err))),
     };
     let staging = tempfile::Builder::new()
-        .prefix(STAGE_PREFIX)
+        .prefix(&format!("{STAGE_PREFIX}{}-", std::process::id()))
         .tempdir_in(install_dir)
         .map_err(|e| {
             let err = UpdateError::Io {

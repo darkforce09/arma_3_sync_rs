@@ -11,8 +11,9 @@ How to use: build an `UpdateContext::for_current_process`, wrap it in an `Update
 `run_legacy_update_command`) and parses the updater flags; `apply::text` holds every text a GUI
 shows and `ApplyError::dialog` maps an error to a dialog; `apply::relaunch` starts the updated
 application after the caller released its single-instance lock. The binary must dispatch
-`argv[1] == ELEVATED_SUBCOMMAND` to `run_elevated_install` before any other setup, and call
-`cleanup_leftovers` on its directory at startup.
+`argv[1] == ELEVATED_SUBCOMMAND` to `run_elevated_install` (with its own version) before any
+other setup, and call `cleanup_leftovers` on its directory at startup. It must save everything it
+persists before `relaunch`, which releases the single-instance lock while it still runs.
 
 The building blocks stay public: `UpdateConfig::load` (with `ConfigOverrides::from_env()`),
 `resolve_release` for the target triple from `host_target()`, `is_newer`, `download_release` into
@@ -35,10 +36,19 @@ files the updater installed, so the next update deletes the ones it no longer sh
 (`a3s.cfg`, `updater.toml`, `profiles/`, the portable-mode marker and data folder, ...) is never
 written or deleted.
 
-Elevation (Windows only): the unelevated application downloads and verifies the archive, then
-starts its own binary through PowerShell `Start-Process -Verb RunAs` with the hidden
-subcommand; that child re-verifies the SHA-256, installs into its own directory, writes a
-startup marker and a result file, and exits 0 or 1 while the parent waits.
+Elevation (Windows only): only an installation the application cannot write is elevated. The
+unelevated application downloads and verifies the archive, then starts its own binary through
+`%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe` `Start-Process -Verb RunAs` with
+the hidden subcommand, passing only the archive path, the requested version, the channel and a
+nonce. The child trusts none of it beyond that: it resolves the release through the
+installation's own `updater.toml`, requires the requested version and a newer one than its own,
+verifies the archive against the SHA-256 it resolved, installs into its own directory, and writes
+its startup marker, result and log only into a `.a3s-elevated-<pid>-<nonce>` directory it creates
+inside the installation, where the waiting parent reads them. It exits 0 or 1.
+
+Leftovers (`.a3s-old-*`, `.a3s-new-*`, `.a3s-stage-*`, `.a3s-elevated-*`) of processes that are
+no longer running are removed by the next `cleanup_leftovers` with write access to the
+installation; a renamed-away file whose target is missing is restored instead.
 
 Boundaries: HTTP(S) only, through its own `reqwest` client (`User-Agent: ArmA3Sync-Updater`,
 HTTPS-only unless `allow_http`). AppImage, macOS bundle, Java and cargo-build installations are

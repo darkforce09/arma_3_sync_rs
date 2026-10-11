@@ -156,6 +156,18 @@ impl Fixture {
     }
 }
 
+/// The release a check of `session` finds; panics when there is no update.
+pub async fn available(session: &UpdateSession) -> Release {
+    match session
+        .check(&a3s_updater::CancellationToken::new())
+        .await
+        .expect("check")
+    {
+        a3s_updater::CheckOutcome::Available { release, .. } => release,
+        a3s_updater::CheckOutcome::UpToDate { .. } => panic!("no update"),
+    }
+}
+
 /// Collects the events of an update.
 #[derive(Default)]
 pub struct Events(Mutex<Vec<UpdateEvent>>);
@@ -186,6 +198,10 @@ pub struct SeenLaunch {
     pub launch: ElevatedLaunch,
 
     /// Whether the `--archive` file existed when the launcher ran.
+    #[cfg_attr(
+        not(unix),
+        expect(dead_code, reason = "only Unix tests reach the launcher")
+    )]
     pub archive_existed: bool,
 }
 
@@ -199,7 +215,7 @@ impl SeenLaunch {
 }
 
 /// How a [`FakeLauncher`] answers a launch.
-type Answer = Box<dyn Fn(&ElevatedLaunch) -> io::Result<LaunchExit> + Send + Sync>;
+pub type Answer = Box<dyn Fn(&ElevatedLaunch) -> io::Result<LaunchExit> + Send + Sync>;
 
 /// A launcher that records its calls and answers with `answer`.
 pub struct FakeLauncher {
@@ -237,23 +253,23 @@ impl ElevatedLauncher for FakeLauncher {
     }
 }
 
-/// Makes `dir` read-only (`0o555`) until dropped; `None` when the process can still write it
-/// (running as root).
+/// Makes `dir` read-only (`0o555`) until dropped. Panics when the process can still write it:
+/// these tests need a non-root user.
 #[cfg(unix)]
 pub struct ReadOnly(PathBuf);
 
 #[cfg(unix)]
 impl ReadOnly {
-    pub fn new(dir: &Path) -> Option<Self> {
+    pub fn new(dir: &Path) -> Self {
         use std::os::unix::fs::PermissionsExt as _;
         std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o555)).expect("chmod");
         let guard = Self(dir.to_path_buf());
         let probe = dir.join(".root-probe");
-        if std::fs::write(&probe, b"").is_ok() {
-            std::fs::remove_file(probe).expect("remove probe");
-            return None;
-        }
-        Some(guard)
+        assert!(
+            std::fs::write(&probe, b"").is_err(),
+            "a read-only directory is writable: this test needs a non-root user"
+        );
+        guard
     }
 }
 

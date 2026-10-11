@@ -230,12 +230,21 @@ Wire compatibility is the requirement; these differences are deliberate.
 * **Applying updates:** exit codes (check: 0 available, 2 none, 1 error; update: 0, 2, 1; legacy
   `-update` always 0) and the console lines stay Java's. There is no separate updater program:
   the application updates itself and replaces its running binary (rename over it on Unix, rename
-  it away to `.a3s-old-*` on Windows; leftovers are removed at the next start). With UAC the
+  it away to `.a3s-old-*` on Windows). Leftovers of finished processes are removed (a renamed-away
+  file whose target is missing is renamed back) by the next start that can write the
+  installation; in a protected installation that is the next elevated update. With UAC the
   unelevated application downloads and verifies the archive, then starts its own binary elevated
-  with a hidden `__a3s-elevated-install` subcommand that only re-verifies the SHA-256 and installs
-  into its own directory, through PowerShell `-EncodedCommand`; the parent waits up to 10 minutes
-  and relaunches the application unelevated (Java hands the whole update to an elevated copy of
-  the JRE and updater, forwards its `a3s.updater.*` properties and relaunches elevated). A
+  through PowerShell `-EncodedCommand` with a hidden `__a3s-elevated-install` subcommand that
+  receives only the archive path, the requested version, the channel and a nonce. The child
+  resolves the release itself through the installation's own `updater.toml` (no user
+  configuration, no environment overrides), requires it to be the requested version and newer
+  than its own, verifies the archive against the SHA-256 it resolved (a release without one is
+  never installed elevated), installs into its own directory, and writes its marker, result and
+  log into a `.a3s-elevated-<pid>-<nonce>` directory it creates there. The parent waits up to 10
+  minutes and relaunches the application unelevated (Java hands the whole update to an elevated
+  copy of the JRE and updater, forwards its `a3s.updater.*` properties and relaunches elevated).
+  An in-process install that fails for lack of permissions is retried elevated only when the
+  installation directory is no longer writable. A
   release archive must hold `arma3sync[.exe]` at its root and no portable user data; AppImage,
   macOS bundle, Java and cargo-build installations are refused. An unknown archive size proceeds
   with indeterminate progress; Linux and macOS fail before the download when the installation is

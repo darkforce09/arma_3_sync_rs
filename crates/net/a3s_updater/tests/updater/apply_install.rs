@@ -144,7 +144,7 @@ fn verified_archive_is_installed_and_staging_removed() {
         Entry::File("arma3sync", NEW_BINARY),
         Entry::File("LICENSE.txt", b"license"),
     ]);
-    std::fs::write(install.join(".a3s-old-1-0-arma3sync"), b"leftover").expect("leftover");
+    std::fs::write(install.join(".a3s-old-999999999-0-arma3sync"), b"leftover").expect("leftover");
 
     let report = install_verified_archive(
         &zip,

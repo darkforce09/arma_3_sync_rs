@@ -161,10 +161,7 @@ fn failing_archive() -> Vec<u8> {
 #[tokio::test]
 async fn read_only_installation_fails_before_download_without_uac() {
     let fixture = Fixture::new(Os::Linux).await;
-    let Some(_read_only) = crate::apply_fixture::ReadOnly::new(fixture.dir()) else {
-        eprintln!("skipped: running as root");
-        return;
-    };
+    let _read_only = crate::apply_fixture::ReadOnly::new(fixture.dir());
     let (mut out, mut err) = (Vec::new(), Vec::new());
     let code = run_console_update(
         &fixture.session(OLD_VERSION),
@@ -192,10 +189,7 @@ async fn read_only_installation_on_windows_requests_uac_after_the_download() {
     use a3s_updater::elevation::LaunchExit;
 
     let fixture = Fixture::new(Os::Windows).await;
-    let Some(_read_only) = crate::apply_fixture::ReadOnly::new(fixture.dir()) else {
-        eprintln!("skipped: running as root");
-        return;
-    };
+    let _read_only = crate::apply_fixture::ReadOnly::new(fixture.dir());
     let launcher = Arc::new(FakeLauncher::new(|_| Ok(LaunchExit::Exited(0))));
     let session = fixture.session(OLD_VERSION).with_launcher(launcher.clone());
     let (mut out, mut err) = (Vec::new(), Vec::new());
@@ -205,8 +199,8 @@ async fn read_only_installation_on_windows_requests_uac_after_the_download() {
     let calls = launcher.calls();
     assert_eq!(calls.len(), 1);
     assert!(calls[0].archive_existed);
-    let sha256 = sha256_hex(&crate::apply_fixture::release_zip(Os::Windows));
-    assert_eq!(calls[0].value("--sha256"), sha256);
+    assert_eq!(calls[0].value("--version"), NEW_VERSION);
+    assert!(!calls[0].launch.args.iter().any(|a| a.contains("sha")));
     assert_eq!(fixture.downloads(), 1);
 }
 

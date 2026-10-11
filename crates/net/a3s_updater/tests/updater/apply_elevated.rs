@@ -8,52 +8,68 @@ use std::sync::Arc;
 use a3s_foundation::paths::Os;
 use a3s_updater::apply::replace::{FsOps, SelfReplacer};
 use a3s_updater::apply::{ELEVATED_SUBCOMMAND, ElevatedInstallArgs, run_elevated_install_with};
-use a3s_updater::elevation::{ElevatedLaunch, LaunchExit};
+use a3s_updater::elevation::LaunchExit;
 use a3s_updater::{
-    ApplyError, CancellationToken, CheckOutcome, Release, UpdateError, UpdateEvent, UpdateSession,
+    ApplyError, ApplyOutcome, CancellationToken, UpdateEvent, UpdateSession, UpdateSource,
 };
 
 use crate::apply_fixture::{
-    Events, FakeLauncher, Fixture, NEW_BINARY, OLD_BINARY, OLD_VERSION, release_zip,
+    Events, FakeLauncher, Fixture, NEW_BINARY, NEW_VERSION, OLD_BINARY, OLD_VERSION,
 };
-use crate::support::{HASH, sha256_hex};
-
-fn absolute(name: &str) -> PathBuf {
-    std::path::absolute(name).expect("absolute")
-}
-
-fn sample_args(debug_log: Option<PathBuf>) -> ElevatedInstallArgs {
-    ElevatedInstallArgs {
-        archive: absolute("staging dir/Arma3Sync 9.0.0.zip"),
-        sha256: HASH.to_owned(),
-        version: "9.0.0".to_owned(),
-        marker: absolute("staging dir/elevated.startup"),
-        result: absolute("staging dir/elevated.result"),
-        debug_log,
-    }
-}
+use crate::support::{Entry, zip_bytes};
 
 fn strings(args: &[&str]) -> Vec<String> {
     args.iter().map(|&s| s.to_owned()).collect()
 }
 
-#[test]
-fn arguments_round_trip_in_any_order() {
-    for debug_log in [None, Some(absolute("logs/updater.log"))] {
-        let args = sample_args(debug_log);
-        let list = args.to_args().expect("to_args");
-        assert_eq!(list[0], ELEVATED_SUBCOMMAND);
-        assert_eq!(ElevatedInstallArgs::parse(&list[1..]), Ok(args.clone()));
+fn os_strings(args: &[String]) -> Vec<OsString> {
+    args.iter().map(OsString::from).collect()
+}
 
-        let mut pairs: Vec<Vec<String>> = list[1..].chunks(2).map(<[String]>::to_vec).collect();
-        pairs.reverse();
-        assert_eq!(ElevatedInstallArgs::parse(&pairs.concat()), Ok(args));
+fn sample_args(dev: bool, debug: bool) -> ElevatedInstallArgs {
+    ElevatedInstallArgs {
+        archive: std::path::absolute("staging dir/Arma3Sync 9.0.0.zip").expect("absolute"),
+        version: NEW_VERSION.to_owned(),
+        nonce: ElevatedInstallArgs::new_nonce(),
+        dev,
+        source: UpdateSource::GitHub,
+        debug,
     }
 }
 
 #[test]
+fn arguments_round_trip_in_any_order() {
+    for (dev, debug) in [(false, false), (true, true)] {
+        let args = sample_args(dev, debug);
+        let list = args.to_args().expect("to_args");
+        assert_eq!(list[0], ELEVATED_SUBCOMMAND);
+        assert!(!list.iter().any(|a| a.contains("sha")));
+        assert_eq!(ElevatedInstallArgs::parse(&list[1..]), Ok(args.clone()));
+
+        let mut reversed = list[1..].to_vec();
+        reversed.reverse();
+        // Reversing swaps each option with its value; swap them back.
+        let mut fixed = Vec::new();
+        let mut rest = reversed.into_iter();
+        while let Some(item) = rest.next() {
+            if item.starts_with("--") {
+                fixed.push(item);
+            } else {
+                let option = rest.next().expect("option");
+                fixed.extend([option, item]);
+            }
+        }
+        assert_eq!(ElevatedInstallArgs::parse(&fixed), Ok(args));
+    }
+    assert_ne!(
+        ElevatedInstallArgs::new_nonce(),
+        ElevatedInstallArgs::new_nonce()
+    );
+}
+
+#[test]
 fn invalid_arguments_are_rejected() {
-    let valid = sample_args(None).to_args().expect("to_args")[1..].to_vec();
+    let valid = sample_args(false, false).to_args().expect("to_args")[1..].to_vec();
     let with = |option: &str, value: &str| {
         let mut list = valid.clone();
         let index = list.iter().position(|a| a == option).expect("option");
@@ -66,198 +82,222 @@ fn invalid_arguments_are_rejected() {
         list.drain(index..index + 2);
         list
     };
-    let mut duplicate = valid.clone();
-    duplicate.extend(strings(&["--version", "9.0.1"]));
-    let mut unknown = valid.clone();
-    unknown.extend(strings(&["--install-dir", "/somewhere"]));
-    let mut dangling = valid.clone();
-    dangling.push("--debug-log".to_owned());
+    let extended = |extra: &[&str]| {
+        let mut list = valid.clone();
+        list.extend(strings(extra));
+        list
+    };
 
     for invalid in [
         without("--archive"),
-        without("--sha256"),
         without("--version"),
-        without("--marker"),
-        without("--result"),
-        duplicate,
-        unknown,
-        dangling,
+        without("--nonce"),
+        without("--source"),
+        extended(&["--version", "9.0.1"]),
+        extended(&["--dev", "--dev"]),
+        extended(&["--sha256", &"0".repeat(64)]),
+        extended(&["--archive"]),
         with("--archive", "relative/update.zip"),
-        with("--sha256", &HASH[..63]),
-        with("--sha256", &format!("{}g", &HASH[..63])),
+        with("--nonce", "0123"),
+        with("--nonce", &"g".repeat(32)),
+        with("--source", "ftp"),
         with("--version", "  "),
     ] {
         assert!(ElevatedInstallArgs::parse(&invalid).is_err(), "{invalid:?}");
     }
 
-    let upper = ElevatedInstallArgs::parse(&with("--sha256", &HASH.to_ascii_uppercase()))
-        .expect("uppercase sha");
-    assert_eq!(upper.sha256, HASH);
+    let upper = ElevatedInstallArgs::parse(&with("--nonce", &"AB".repeat(16))).expect("nonce");
+    assert_eq!(upper.nonce, "ab".repeat(16));
 }
 
-fn os_strings(args: &[String]) -> Vec<OsString> {
-    args.iter().map(OsString::from).collect()
+/// The child's arguments for the fixture's release, downloaded into the staging directory.
+fn child_args(fixture: &Fixture, archive: &[u8]) -> ElevatedInstallArgs {
+    let path = fixture.staging.path().join("Arma3Sync-9.0.0.zip");
+    std::fs::write(&path, archive).expect("archive");
+    ElevatedInstallArgs {
+        archive: path,
+        version: NEW_VERSION.to_owned(),
+        nonce: ElevatedInstallArgs::new_nonce(),
+        dev: false,
+        source: UpdateSource::Configured,
+        debug: true,
+    }
 }
 
-/// An installation holding an old binary, an archive with a new one, and the child's
-/// arguments for them.
-fn child_setup() -> (tempfile::TempDir, PathBuf, ElevatedInstallArgs) {
-    let temp = tempfile::tempdir().expect("tempdir");
-    let install = temp.path().join("installation");
-    let staging = temp.path().join("staging");
-    std::fs::create_dir_all(&install).expect("mkdir");
-    std::fs::create_dir_all(&staging).expect("mkdir");
-    std::fs::write(install.join("arma3sync"), OLD_BINARY).expect("old");
-    let archive = staging.join("update.zip");
-    std::fs::write(&archive, release_zip(Os::Linux)).expect("zip");
-    let args = ElevatedInstallArgs {
-        sha256: sha256_hex(&std::fs::read(&archive).expect("read")),
-        archive,
-        version: "9.0.0".to_owned(),
-        marker: staging.join("elevated.startup"),
-        result: staging.join("elevated.result"),
-        debug_log: None,
-    };
-    (temp, install, args)
+/// Runs the child for `fixture`'s installation on a blocking thread, as an elevated process
+/// of version `current_version` would.
+async fn run_child(fixture: &Fixture, args: &ElevatedInstallArgs, current_version: &str) -> i32 {
+    let list = os_strings(&args.to_args().expect("to_args")[1..]);
+    let exe = fixture.binary();
+    let os = fixture.os;
+    let version = current_version.to_owned();
+    tokio::task::spawn_blocking(move || run_elevated_install_with(&list, &exe, os, &version))
+        .await
+        .expect("child")
 }
 
-#[test]
-fn child_installs_next_to_its_own_executable() {
-    let (_temp, install, args) = child_setup();
-    let list = args.to_args().expect("to_args");
-    let code = run_elevated_install_with(
-        &os_strings(&list[1..]),
-        &install.join("arma3sync"),
-        Os::Linux,
-    );
-    assert_eq!(code, 0);
-    assert!(args.marker.is_file());
-    assert_eq!(std::fs::read(&args.result).expect("result"), b"");
-    assert_eq!(
-        std::fs::read(install.join("arma3sync")).expect("read"),
-        NEW_BINARY
-    );
-    assert!(install.join("LICENSE.txt").is_file());
+/// The work directory the child created for `nonce`.
+fn work_dir(fixture: &Fixture, nonce: &str) -> Option<PathBuf> {
+    std::fs::read_dir(fixture.dir())
+        .expect("list")
+        .map(|e| e.expect("entry").path())
+        .find(|path| {
+            let name = path
+                .file_name()
+                .expect("name")
+                .to_string_lossy()
+                .into_owned();
+            name.starts_with(".a3s-elevated-") && name.ends_with(nonce)
+        })
+}
+
+fn read(path: &Path) -> Vec<u8> {
+    std::fs::read(path).expect("read")
+}
+
+#[tokio::test]
+async fn child_installs_the_release_it_resolved_itself() {
+    let fixture = Fixture::new(Os::Linux).await;
+    let args = child_args(&fixture, &crate::apply_fixture::release_zip(Os::Linux));
+    assert_eq!(run_child(&fixture, &args, OLD_VERSION).await, 0);
+
+    assert_eq!(read(&fixture.binary()), NEW_BINARY);
+    assert!(fixture.dir().join("LICENSE.txt").is_file());
+    let work = work_dir(&fixture, &args.nonce).expect("work dir");
+    assert!(work.join("elevated.startup").is_file());
+    assert_eq!(read(&work.join("elevated.result")), b"");
+    assert!(work.join("elevated-updater.log").is_file());
     assert!(
         args.archive.is_file(),
         "the child leaves the archive to the parent"
     );
 }
 
-#[test]
-fn child_rejects_invalid_arguments_and_a_wrong_checksum() {
-    let (_temp, install, args) = child_setup();
-    let exe = install.join("arma3sync");
-    let invalid = strings(&[
-        "--result",
-        args.result.to_str().expect("utf-8"),
-        "--bogus",
-        "x",
-    ]);
-    assert_eq!(
-        run_elevated_install_with(&os_strings(&invalid), &exe, Os::Linux),
-        1
-    );
-    assert!(!std::fs::read(&args.result).expect("result").is_empty());
-    assert!(!args.marker.exists());
+#[tokio::test]
+async fn child_refuses_an_archive_that_does_not_match_the_resolved_checksum() {
+    let fixture = Fixture::new(Os::Linux).await;
+    let hostile = zip_bytes(&[Entry::File("arma3sync", b"hostile")]);
+    let args = child_args(&fixture, &hostile);
+    assert_eq!(run_child(&fixture, &args, OLD_VERSION).await, 1);
+    assert_eq!(read(&fixture.binary()), OLD_BINARY);
+    let work = work_dir(&fixture, &args.nonce).expect("work dir");
+    assert!(!read(&work.join("elevated.result")).is_empty());
+}
 
-    let wrong = ElevatedInstallArgs {
-        sha256: "0".repeat(64),
-        ..args.clone()
+#[tokio::test]
+async fn child_refuses_a_release_that_is_not_newer() {
+    let fixture = Fixture::new(Os::Linux).await;
+    let args = child_args(&fixture, &crate::apply_fixture::release_zip(Os::Linux));
+    assert_eq!(run_child(&fixture, &args, NEW_VERSION).await, 1);
+    assert_eq!(read(&fixture.binary()), OLD_BINARY);
+}
+
+#[tokio::test]
+async fn child_refuses_a_version_other_than_the_resolved_one() {
+    let fixture = Fixture::new(Os::Linux).await;
+    let args = ElevatedInstallArgs {
+        version: "8.0.0".to_owned(),
+        ..child_args(&fixture, &crate::apply_fixture::release_zip(Os::Linux))
     };
-    let list = wrong.to_args().expect("to_args");
-    assert_eq!(
-        run_elevated_install_with(&os_strings(&list[1..]), &exe, Os::Linux),
-        1
-    );
-    assert_eq!(
-        std::fs::read_to_string(&args.result).expect("result"),
-        UpdateError::Integrity.to_string()
-    );
-    assert_eq!(std::fs::read(&exe).expect("read"), OLD_BINARY);
+    assert_eq!(run_child(&fixture, &args, OLD_VERSION).await, 1);
+    assert_eq!(read(&fixture.binary()), OLD_BINARY);
+}
+
+#[tokio::test]
+async fn child_refuses_invalid_arguments_and_an_existing_work_directory() {
+    let fixture = Fixture::new(Os::Linux).await;
+    let exe = fixture.binary();
+    let invalid = os_strings(&strings(&["--bogus", "x"]));
+    let code = tokio::task::spawn_blocking(move || {
+        run_elevated_install_with(&invalid, &exe, Os::Linux, OLD_VERSION)
+    })
+    .await
+    .expect("child");
+    assert_eq!(code, 1);
+
+    let args = child_args(&fixture, &crate::apply_fixture::release_zip(Os::Linux));
+    // The tests run the child in this process, so its work directory carries this pid.
+    let taken = fixture.dir().join(format!(
+        ".a3s-elevated-{}-{}",
+        std::process::id(),
+        args.nonce
+    ));
+    let outside = tempfile::tempdir().expect("outside");
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(outside.path(), &taken).expect("symlink");
+    #[cfg(not(unix))]
+    std::fs::create_dir(&taken).expect("mkdir");
+    assert_eq!(run_child(&fixture, &args, OLD_VERSION).await, 1);
+    assert_eq!(read(&fixture.binary()), OLD_BINARY);
+    assert_eq!(std::fs::read_dir(outside.path()).expect("list").count(), 0);
 }
 
 #[cfg(unix)]
-#[test]
-fn child_without_write_access_fails_without_retrying() {
-    let (_temp, install, args) = child_setup();
-    let Some(_read_only) = crate::apply_fixture::ReadOnly::new(&install) else {
-        eprintln!("skipped: running as root");
-        return;
-    };
-    let list = args.to_args().expect("to_args");
-    let code = run_elevated_install_with(
-        &os_strings(&list[1..]),
-        &install.join("arma3sync"),
-        Os::Linux,
-    );
-    assert_eq!(code, 1);
-    assert!(!std::fs::read(&args.result).expect("result").is_empty());
-    assert_eq!(
-        std::fs::read(install.join("arma3sync")).expect("read"),
-        OLD_BINARY
-    );
+#[tokio::test]
+async fn child_without_write_access_fails() {
+    let fixture = Fixture::new(Os::Linux).await;
+    let args = child_args(&fixture, &crate::apply_fixture::release_zip(Os::Linux));
+    let read_only = crate::apply_fixture::ReadOnly::new(fixture.dir());
+    assert_eq!(run_child(&fixture, &args, OLD_VERSION).await, 1);
+    drop(read_only);
+    assert_eq!(read(&fixture.binary()), OLD_BINARY);
 }
 
-/// The child's arguments of an elevated launch.
-fn child_args(launch: &ElevatedLaunch) -> Vec<OsString> {
-    assert_eq!(launch.args[0], ELEVATED_SUBCOMMAND);
-    os_strings(&launch.args[1..])
+/// A launcher that grants the child write access to the installation (as UAC does) and runs
+/// it in this process.
+#[cfg(unix)]
+fn granting_launcher(fixture: &Fixture, archive: Option<Vec<u8>>) -> Arc<FakeLauncher> {
+    let exe = fixture.binary();
+    let dir = fixture.dir().to_path_buf();
+    Arc::new(FakeLauncher::new(move |launch| {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755))?;
+        if let Some(archive) = &archive {
+            let index = launch
+                .args
+                .iter()
+                .position(|a| a == "--archive")
+                .expect("archive");
+            std::fs::write(&launch.args[index + 1], archive)?;
+        }
+        let args = os_strings(&launch.args[1..]);
+        Ok(LaunchExit::Exited(run_elevated_install_with(
+            &args,
+            &exe,
+            Os::Windows,
+            OLD_VERSION,
+        )))
+    }))
 }
 
-async fn available(session: &UpdateSession) -> Release {
-    match session
-        .check(&CancellationToken::new())
-        .await
-        .expect("check")
-    {
-        CheckOutcome::Available { release, .. } => release,
-        CheckOutcome::UpToDate { .. } => panic!("no update"),
-    }
+/// Applies the fixture's update through `launcher` with a read-only installation.
+#[cfg(unix)]
+async fn apply_read_only(
+    fixture: &Fixture,
+    launcher: &Arc<FakeLauncher>,
+) -> (Result<ApplyOutcome, ApplyError>, Events) {
+    let session = fixture.session(OLD_VERSION).with_launcher(launcher.clone());
+    let release = crate::apply_fixture::available(&session).await;
+    let read_only = crate::apply_fixture::ReadOnly::new(fixture.dir());
+    let events = Events::default();
+    let result = session
+        .apply(&release, &|e| events.record(e), &CancellationToken::new())
+        .await;
+    drop(read_only);
+    (result, events)
 }
 
 #[cfg(unix)]
 #[tokio::test]
 async fn parent_hands_the_install_to_the_elevated_child() {
-    use std::sync::atomic::{AtomicBool, Ordering};
-
     let fixture = Fixture::new(Os::Windows).await;
-    let Some(read_only) = crate::apply_fixture::ReadOnly::new(fixture.dir()) else {
-        eprintln!("skipped: running as root");
-        return;
-    };
-    let exe = fixture.binary();
-    let dir = fixture.dir().to_path_buf();
-    let marker_written = Arc::new(AtomicBool::new(false));
-    let marker_seen = Arc::clone(&marker_written);
-    let launcher = Arc::new(FakeLauncher::new(move |launch| {
-        use std::os::unix::fs::PermissionsExt as _;
-        // Granting UAC gives the child write access to the installation.
-        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755))?;
-        let code = run_elevated_install_with(&child_args(launch), &exe, Os::Windows);
-        let marker = &launch.args[launch
-            .args
-            .iter()
-            .position(|a| a == "--marker")
-            .expect("marker")
-            + 1];
-        marker_seen.store(Path::new(marker).is_file(), Ordering::SeqCst);
-        Ok(LaunchExit::Exited(code))
-    }));
-    let session = fixture.session(OLD_VERSION).with_launcher(launcher.clone());
-    let release = available(&session).await;
-    let events = Events::default();
+    let launcher = granting_launcher(&fixture, None);
+    let (result, events) = apply_read_only(&fixture, &launcher).await;
 
-    let outcome = session
-        .apply(&release, &|e| events.record(e), &CancellationToken::new())
-        .await
-        .expect("apply");
-    drop(read_only);
-
+    let outcome = result.expect("apply");
     assert!(outcome.elevated);
     assert!(outcome.report.is_none());
-    assert_eq!(std::fs::read(fixture.binary()).expect("read"), NEW_BINARY);
-    assert!(marker_written.load(Ordering::SeqCst));
+    assert_eq!(read(&fixture.binary()), NEW_BINARY);
     assert_eq!(
         events.after_download(),
         [
@@ -270,13 +310,94 @@ async fn parent_hands_the_install_to_the_elevated_child() {
     let calls = launcher.calls();
     assert_eq!(calls.len(), 1);
     assert!(calls[0].archive_existed);
+    assert_eq!(calls[0].value("--version"), NEW_VERSION);
     assert_eq!(calls[0].launch.program, fixture.binary());
     assert_eq!(calls[0].launch.working_dir, fixture.dir());
+    let work = work_dir(&fixture, &calls[0].value("--nonce")).expect("work dir");
+    assert!(work.join("elevated.startup").is_file());
+    assert!(fixture.staging_is_empty());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn child_error_reaches_the_parent() {
+    let fixture = Fixture::new(Os::Windows).await;
+    let hostile = zip_bytes(&[Entry::File("arma3sync.exe", b"hostile")]);
+    let launcher = granting_launcher(&fixture, Some(hostile));
+    let (result, _) = apply_read_only(&fixture, &launcher).await;
+    assert!(
+        matches!(result, Err(ApplyError::ElevatedInstallFailed(_))),
+        "{result:?}"
+    );
+    assert_eq!(read(&fixture.binary()), OLD_BINARY);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn launcher_outcomes_map_to_errors() {
+    let fixture = Fixture::new(Os::Windows).await;
+    let dir = fixture.dir().to_path_buf();
+    let run = |answer: crate::apply_fixture::Answer| {
+        let launcher = Arc::new(FakeLauncher::new(answer));
+        let fixture = &fixture;
+        async move { apply_read_only(fixture, &launcher).await.0 }
+    };
+
+    let not_granted = run(Box::new(|_| {
+        Ok(LaunchExit::NotStarted {
+            detail: "canceled by the user".to_owned(),
+        })
+    }))
+    .await;
+    assert!(
+        matches!(&not_granted, Err(e @ ApplyError::ElevationNotGranted(_)) if e.needs_admin()),
+        "{not_granted:?}"
+    );
+
+    let not_started = run(Box::new(|_| Ok(LaunchExit::Exited(1)))).await;
+    let failed = run(Box::new(move |launch| {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755))?;
+        let index = launch
+            .args
+            .iter()
+            .position(|a| a == "--nonce")
+            .expect("nonce");
+        let work = dir.join(format!(".a3s-elevated-1-{}", launch.args[index + 1]));
+        std::fs::create_dir(&work)?;
+        std::fs::write(work.join("elevated.startup"), b"started")?;
+        Ok(LaunchExit::Exited(3))
+    }))
+    .await;
+    match (not_started, failed) {
+        (
+            Err(ApplyError::ElevatedInstallFailed(not_started)),
+            Err(ApplyError::ElevatedInstallFailed(failed)),
+        ) => assert_ne!(not_started, failed),
+        other => panic!("{other:?}"),
+    }
+
+    assert!(matches!(
+        run(Box::new(|_| Ok(LaunchExit::TimedOut))).await,
+        Err(ApplyError::ElevatedInstallFailed(_))
+    ));
+    assert!(matches!(
+        run(Box::new(|_| Err(io::Error::other("no PowerShell")))).await,
+        Err(ApplyError::ElevationNotGranted(_))
+    ));
+    assert_eq!(read(&fixture.binary()), OLD_BINARY);
     assert!(fixture.staging_is_empty());
 }
 
 /// File operations whose renames are always denied, as for a file Windows will not let go.
-struct DeniedFs;
+struct DeniedFs {
+    /// Made read-only on the first rename, as if the installation's permissions changed.
+    #[cfg_attr(
+        not(unix),
+        expect(dead_code, reason = "only Unix tests can make a directory read-only")
+    )]
+    lock: Option<PathBuf>,
+}
 
 impl FsOps for DeniedFs {
     fn copy(&self, _from: &Path, _to: &Path) -> io::Result<u64> {
@@ -284,6 +405,11 @@ impl FsOps for DeniedFs {
     }
 
     fn rename(&self, _from: &Path, _to: &Path) -> io::Result<()> {
+        #[cfg(unix)]
+        if let Some(dir) = &self.lock {
+            use std::os::unix::fs::PermissionsExt as _;
+            std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o555))?;
+        }
         Err(io::Error::from(io::ErrorKind::PermissionDenied))
     }
 
@@ -304,14 +430,18 @@ impl FsOps for DeniedFs {
 async fn apply_denied(
     fixture: &Fixture,
     elevated: bool,
+    lock: Option<PathBuf>,
     launcher: &Arc<FakeLauncher>,
-) -> (Result<a3s_updater::ApplyOutcome, ApplyError>, Events) {
+) -> (Result<ApplyOutcome, ApplyError>, Events) {
     let mut ctx = fixture.context(OLD_VERSION);
     ctx.elevated = elevated;
     let session = UpdateSession::new(ctx)
-        .with_replacer(Arc::new(SelfReplacer::with_fs(Box::new(DeniedFs), true)))
+        .with_replacer(Arc::new(SelfReplacer::with_fs(
+            Box::new(DeniedFs { lock }),
+            true,
+        )))
         .with_launcher(launcher.clone());
-    let release = available(&session).await;
+    let release = crate::apply_fixture::available(&session).await;
     let events = Events::default();
     let result = session
         .apply(&release, &|e| events.record(e), &CancellationToken::new())
@@ -320,21 +450,34 @@ async fn apply_denied(
 }
 
 #[tokio::test]
-async fn denied_install_is_retried_once_through_the_elevated_child() {
-    let fixture = Fixture::new(Os::Windows).await;
-    let exe = fixture.binary();
-    let launcher = Arc::new(FakeLauncher::new(move |launch| {
-        Ok(LaunchExit::Exited(run_elevated_install_with(
-            &child_args(launch),
-            &exe,
-            Os::Windows,
-        )))
-    }));
-    let (result, events) = apply_denied(&fixture, false, &launcher).await;
+async fn denied_file_in_a_writable_installation_is_not_elevated() {
+    let launcher = Arc::new(FakeLauncher::new(|_| Ok(LaunchExit::Exited(0))));
+    for (os, elevated) in [
+        (Os::Windows, false),
+        (Os::Windows, true),
+        (Os::Linux, false),
+    ] {
+        let fixture = Fixture::new(os).await;
+        let (result, events) = apply_denied(&fixture, elevated, None, &launcher).await;
+        assert_eq!(events.after_download(), [UpdateEvent::Installing]);
+        let err = result.expect_err("denied");
+        assert!(matches!(err, ApplyError::Install { .. }), "{err:?}");
+        assert!(err.is_permission_failure());
+    }
+    assert!(launcher.calls().is_empty());
+}
 
-    let outcome = result.expect("apply");
-    assert!(outcome.elevated);
-    assert_eq!(std::fs::read(fixture.binary()).expect("read"), NEW_BINARY);
+#[cfg(unix)]
+#[tokio::test]
+async fn installation_that_became_unwritable_is_retried_elevated() {
+    let fixture = Fixture::new(Os::Windows).await;
+    let launcher = granting_launcher(&fixture, None);
+    let lock = Some(fixture.dir().to_path_buf());
+    let (result, events) = apply_denied(&fixture, false, lock, &launcher).await;
+
+    assert!(result.expect("apply").elevated);
+    assert_eq!(read(&fixture.binary()), NEW_BINARY);
+    assert_eq!(launcher.calls().len(), 1);
     assert_eq!(
         events.after_download(),
         [
@@ -345,132 +488,4 @@ async fn denied_install_is_retried_once_through_the_elevated_child() {
             UpdateEvent::Done
         ]
     );
-    let calls = launcher.calls();
-    assert_eq!(calls.len(), 1);
-    assert!(calls[0].archive_existed);
-    assert!(calls[0].value("--archive").ends_with("Arma3Sync-9.0.0.zip"));
-    assert_eq!(
-        calls[0].value("--sha256"),
-        sha256_hex(&release_zip(Os::Windows))
-    );
-    assert_eq!(fixture.downloads(), 1);
-    assert!(fixture.staging_is_empty());
-}
-
-#[tokio::test]
-async fn elevated_process_and_other_systems_do_not_request_uac() {
-    let fixture = Fixture::new(Os::Windows).await;
-    let launcher = Arc::new(FakeLauncher::new(|_| Ok(LaunchExit::Exited(0))));
-    let (result, _) = apply_denied(&fixture, true, &launcher).await;
-    let err = result.expect_err("denied");
-    assert!(matches!(err, ApplyError::Install { .. }), "{err:?}");
-    assert!(err.is_permission_failure());
-    assert!(launcher.calls().is_empty());
-
-    let fixture = Fixture::new(Os::Linux).await;
-    let (result, _) = apply_denied(&fixture, false, &launcher).await;
-    assert!(matches!(result, Err(ApplyError::ElevationUnavailable)));
-    assert!(launcher.calls().is_empty());
-}
-
-#[tokio::test]
-async fn child_with_a_wrong_checksum_reports_its_error_to_the_parent() {
-    let fixture = Fixture::new(Os::Windows).await;
-    let exe = fixture.binary();
-    let launcher = Arc::new(FakeLauncher::new(move |launch| {
-        let mut args = child_args(launch);
-        let index = args.iter().position(|a| a == "--sha256").expect("sha");
-        args[index + 1] = OsString::from("0".repeat(64));
-        Ok(LaunchExit::Exited(run_elevated_install_with(
-            &args,
-            &exe,
-            Os::Windows,
-        )))
-    }));
-    let (result, _) = apply_denied(&fixture, false, &launcher).await;
-    match result {
-        Err(ApplyError::ElevatedInstallFailed(message)) => {
-            assert_eq!(message, UpdateError::Integrity.to_string());
-        }
-        other => panic!("{other:?}"),
-    }
-    assert_eq!(std::fs::read(fixture.binary()).expect("read"), OLD_BINARY);
-}
-
-#[tokio::test]
-async fn launcher_outcomes_map_to_errors() {
-    let fixture = Fixture::new(Os::Windows).await;
-    let run = |answer: fn(&ElevatedLaunch) -> io::Result<LaunchExit>| {
-        let launcher = Arc::new(FakeLauncher::new(answer));
-        let fixture = &fixture;
-        async move { apply_denied(fixture, false, &launcher).await.0 }
-    };
-
-    match run(|_| {
-        Ok(LaunchExit::NotStarted {
-            detail: " canceled by the user ".to_owned(),
-        })
-    })
-    .await
-    {
-        Err(err @ ApplyError::ElevationNotGranted(_)) => {
-            assert!(err.needs_admin());
-            assert!(err.to_string().ends_with(". canceled by the user"), "{err}");
-        }
-        other => panic!("{other:?}"),
-    }
-
-    let not_started = run(|_| Ok(LaunchExit::Exited(1))).await;
-    let failed = run(|launch| {
-        let index = launch
-            .args
-            .iter()
-            .position(|a| a == "--marker")
-            .expect("marker");
-        std::fs::write(&launch.args[index + 1], b"started")?;
-        Ok(LaunchExit::Exited(3))
-    })
-    .await;
-    match (not_started, failed) {
-        (
-            Err(ApplyError::ElevatedInstallFailed(not_started)),
-            Err(ApplyError::ElevatedInstallFailed(failed)),
-        ) => {
-            assert_ne!(not_started, failed);
-            assert!(failed.contains('3'), "{failed}");
-        }
-        other => panic!("{other:?}"),
-    }
-
-    assert!(matches!(
-        run(|_| Ok(LaunchExit::TimedOut)).await,
-        Err(ApplyError::ElevatedInstallFailed(_))
-    ));
-    match run(|_| Err(io::Error::other("powershell.exe is missing"))).await {
-        Err(err @ ApplyError::ElevationNotGranted(_)) => {
-            assert!(err.to_string().contains("powershell.exe is missing"));
-        }
-        other => panic!("{other:?}"),
-    }
-    assert_eq!(std::fs::read(fixture.binary()).expect("read"), OLD_BINARY);
-    assert!(fixture.staging_is_empty());
-}
-
-#[test]
-fn archive_path_must_exist_for_the_child() {
-    let (_temp, install, args) = child_setup();
-    let missing = ElevatedInstallArgs {
-        archive: args.archive.with_file_name("missing.zip"),
-        ..args.clone()
-    };
-    let list = missing.to_args().expect("to_args");
-    assert_eq!(
-        run_elevated_install_with(
-            &os_strings(&list[1..]),
-            &install.join("arma3sync"),
-            Os::Linux
-        ),
-        1
-    );
-    assert!(!std::fs::read(&args.result).expect("result").is_empty());
 }

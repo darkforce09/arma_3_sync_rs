@@ -20,6 +20,10 @@ pub(crate) const OLD_PREFIX: &str = ".a3s-old-";
 /// Prefix of the directory an archive is extracted into inside the installation.
 pub(crate) const STAGE_PREFIX: &str = ".a3s-stage-";
 
+/// Prefix of the directory the elevated updater writes its marker, result and log to:
+/// `.a3s-elevated-<pid>-<nonce>` inside the installation.
+pub(crate) const ELEVATED_PREFIX: &str = ".a3s-elevated-";
+
 /// Deepest directory level [`cleanup_leftovers`] visits below the installation.
 const CLEANUP_DEPTH: usize = 4;
 
@@ -73,8 +77,8 @@ impl FsOps for RealFs {
 /// On Unix that rename is atomic and works on a running binary. On Windows a running `.exe`
 /// (or a read-only file) cannot be overwritten, so when that rename fails with access denied or
 /// a sharing violation, the target is renamed away to `.a3s-old-<pid>-<n>-<name>` first and the
-/// new file is moved in; the old file is deleted when possible, otherwise by
-/// [`cleanup_leftovers`] on a later start.
+/// new file is moved in; the old file is deleted when possible, otherwise by a later
+/// [`cleanup_leftovers`] with write access to the installation.
 pub struct SelfReplacer {
     counter: AtomicU32,
     fs: Box<dyn FsOps>,
@@ -160,8 +164,9 @@ impl FileReplacer for SelfReplacer {
             return Err(into);
         }
         if let Err(err) = self.fs.remove_file(&old) {
-            // A running executable cannot be deleted; a later start removes it.
-            tracing::debug!(path = %old.display(), error = %err, "replaced file kept until the next start");
+            // A running executable cannot be deleted; `cleanup_leftovers` removes it once this
+            // process has exited.
+            tracing::debug!(path = %old.display(), error = %err, "replaced file kept for a later cleanup");
         }
         Ok(())
     }
@@ -174,12 +179,20 @@ fn is_locked_or_denied(err: &io::Error) -> bool {
         || (cfg!(windows) && matches!(err.raw_os_error(), Some(5 | 32)))
 }
 
-/// Removes what interrupted updates left in `install_dir`.
+/// Repairs and removes what interrupted updates left in `install_dir`.
 ///
-/// That is files named `.a3s-old-*` or
-/// `.a3s-new-*` and extraction directories named `.a3s-stage-*`, at most four directory levels
-/// deep, without following symbolic links and skipping the portable data folder. Errors are
-/// logged and skipped. Returns the number of files and directories removed.
+/// Visits at most four directory levels, without following symbolic links and skipping the
+/// portable data folder:
+/// - `.a3s-old-<pid>-<n>-<name>`: when `<name>` is missing (the update stopped between
+///   renaming the old file away and moving the new one in), the old file is renamed back;
+///   otherwise it is deleted.
+/// - `.a3s-new-*` files, `.a3s-stage-*` extraction directories and `.a3s-elevated-<pid>-*`
+///   directories of the elevated updater are deleted.
+///
+/// Leftovers named after a process that is still running are left alone. Removing them needs
+/// write access to the installation, so in a protected installation only the next elevated
+/// update removes them. Errors are logged and skipped. Returns the number of entries repaired
+/// or removed.
 pub fn cleanup_leftovers(install_dir: &Path) -> usize {
     let mut removed = 0;
     sweep(install_dir, 0, &mut removed);
@@ -209,18 +222,34 @@ fn sweep(dir: &Path, depth: usize, removed: &mut usize) {
         let Ok(file_type) = entry.file_type() else {
             continue;
         };
-        let result = if file_type.is_file()
-            && (name.starts_with(OLD_PREFIX) || name.starts_with(NEW_PREFIX))
-        {
-            std::fs::remove_file(&path)
-        } else if file_type.is_dir() && name.starts_with(STAGE_PREFIX) {
-            std::fs::remove_dir_all(&path)
+        let leftover = if file_type.is_file() {
+            [OLD_PREFIX, NEW_PREFIX]
+                .into_iter()
+                .find(|prefix| name.starts_with(prefix))
+        } else if file_type.is_dir() {
+            [STAGE_PREFIX, ELEVATED_PREFIX]
+                .into_iter()
+                .find(|prefix| name.starts_with(prefix))
         } else {
+            None
+        };
+        let Some(prefix) = leftover else {
             let portable = depth == 0 && name.eq_ignore_ascii_case(PORTABLE_DATA_DIR);
             if file_type.is_dir() && depth < CLEANUP_DEPTH && !portable {
                 sweep(&path, depth + 1, removed);
             }
             continue;
+        };
+        let owner = parse_owner(&name[prefix.len()..]);
+        if owner.is_some_and(|(pid, _)| process_is_alive(pid)) {
+            continue;
+        }
+        let result = match (prefix, owner) {
+            (OLD_PREFIX, Some((_, target))) if is_missing(&dir.join(target)) => {
+                std::fs::rename(&path, dir.join(target))
+            }
+            (OLD_PREFIX | NEW_PREFIX, _) => std::fs::remove_file(&path),
+            _ => std::fs::remove_dir_all(&path),
         };
         match result {
             Ok(()) => *removed += 1,
@@ -228,5 +257,47 @@ fn sweep(dir: &Path, depth: usize, removed: &mut usize) {
                 tracing::debug!(path = %path.display(), error = %err, "leftover not removed");
             }
         }
+    }
+}
+
+/// Splits `<pid>-<rest>` of a leftover name; for replacer leftovers `<rest>` is `<n>-<name>`
+/// and the second value is `<name>`.
+fn parse_owner(suffix: &str) -> Option<(u32, &str)> {
+    let (pid, rest) = suffix.split_once('-')?;
+    let pid = pid.parse().ok()?;
+    let target = rest
+        .split_once('-')
+        .filter(|(n, _)| n.parse::<u32>().is_ok())
+        .map_or(rest, |(_, name)| name);
+    Some((pid, target))
+}
+
+fn is_missing(path: &Path) -> bool {
+    matches!(std::fs::symlink_metadata(path), Err(e) if e.kind() == io::ErrorKind::NotFound)
+}
+
+/// Whether a process with this id is running; `true` when that cannot be determined.
+pub(crate) fn process_is_alive(pid: u32) -> bool {
+    if pid == std::process::id() {
+        return true;
+    }
+    if cfg!(target_os = "linux") {
+        return Path::new("/proc").join(pid.to_string()).exists();
+    }
+    let output = if cfg!(windows) {
+        std::process::Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {pid}"), "/NH", "/FO", "CSV"])
+            .output()
+    } else {
+        std::process::Command::new("ps")
+            .args(["-p", &pid.to_string()])
+            .output()
+    };
+    match output {
+        Ok(output) if cfg!(windows) => {
+            String::from_utf8_lossy(&output.stdout).contains(&format!("\"{pid}\""))
+        }
+        Ok(output) => output.status.success(),
+        Err(_) => true,
     }
 }

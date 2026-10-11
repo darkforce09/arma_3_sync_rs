@@ -342,7 +342,8 @@ impl UpdateSession {
     /// Order: [`preflight`] (no network), size, download with SHA-256 verification, a last
     /// cancellation check, then the install: in this process, or through the elevated updater
     /// when the installation needs UAC. An in-process install that fails for lack of
-    /// permissions on Windows is retried once through the elevated updater. The downloaded
+    /// permissions on Windows is retried once through the elevated updater, but only when the
+    /// installation directory is no longer writable by this process. The downloaded
     /// archive is deleted on every path. Install, elevation wait and relaunch cannot be
     /// cancelled.
     // Mirrors a3sUpdater/service/Service.java:96-195, a3sUpdater/console/Console.java:43-79
@@ -437,7 +438,6 @@ impl UpdateSession {
                 ctx,
                 release,
                 &archive.path,
-                staging.path(),
                 Arc::clone(&self.launcher),
                 on_event,
             )
@@ -456,12 +456,22 @@ impl UpdateSession {
 
     /// Decides what follows an in-process install that failed for lack of permissions: `Ok`
     /// means "retry through the elevated updater".
+    ///
+    /// Only an installation this process cannot write is handed to the elevated updater: an
+    /// elevated process must never install into a directory a less-privileged user can modify,
+    /// so a failure on a single file of a writable installation is reported as it is.
     // Mirrors a3sUpdater/console/Console.java:54-76, a3sUpdater/ui/Updater.java:130-155
     fn permission_fallback(&self, err: ApplyError) -> Result<(), ApplyError> {
         let ctx = &self.ctx;
         if ctx.elevated {
             ctx.diag.error(
                 "Elevated updater still cannot write to the installation; not retrying UAC.",
+                Some(&err),
+            );
+            Err(err)
+        } else if can_write_installation(&ctx.install_dir, &ctx.diag) {
+            ctx.diag.error(
+                "Install failed with a permission error in a writable installation; not requesting UAC.",
                 Some(&err),
             );
             Err(err)

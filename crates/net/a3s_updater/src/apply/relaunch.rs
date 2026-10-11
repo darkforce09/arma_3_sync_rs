@@ -43,6 +43,9 @@ impl RelaunchPlan {
 ///
 /// `release_instance_lock` runs first; it must release the application's single-instance lock
 /// (shut down its instance guard), otherwise the new process finds the old one still running.
+/// From then on both processes run at the same time, so the caller must have saved everything
+/// it persists (configuration, profiles, repositories) before calling this, and must not write
+/// any of it afterwards.
 pub fn relaunch(plan: &RelaunchPlan, release_instance_lock: impl FnOnce()) -> io::Result<()> {
     release_instance_lock();
     let mut command = Command::new(&plan.program);

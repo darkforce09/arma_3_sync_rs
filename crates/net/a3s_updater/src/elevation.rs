@@ -182,6 +182,7 @@ impl ElevatedLauncher for PowerShellLauncher {
 mod powershell {
     use std::io::{self, Read as _};
     use std::os::windows::process::CommandExt as _;
+    use std::path::PathBuf;
     use std::process::{Command, Stdio};
     use std::time::{Duration, Instant};
 
@@ -191,9 +192,18 @@ mod powershell {
     const POLL_INTERVAL: Duration = Duration::from_millis(100);
     const MAX_DETAIL_BYTES: u64 = 4096;
 
+    /// `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe` (`C:\Windows` when
+    /// `SystemRoot` is unset), so no `powershell.exe` earlier on the search path is started.
+    fn powershell_path() -> PathBuf {
+        std::env::var_os("SystemRoot")
+            .filter(|root| !root.is_empty())
+            .map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from)
+            .join(r"System32\WindowsPowerShell\v1.0\powershell.exe")
+    }
+
     // Mirrors a3sUpdater/service/ElevationSupport.java:139-170
     pub(super) fn run(launch: &ElevatedLaunch, timeout: Duration) -> io::Result<LaunchExit> {
-        let mut child = Command::new("powershell.exe")
+        let mut child = Command::new(powershell_path())
             .args([
                 "-NoProfile",
                 "-NonInteractive",

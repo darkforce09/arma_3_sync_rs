@@ -183,31 +183,77 @@ fn running_binary_is_replaced_without_text_file_busy() {
     assert!(leftovers.is_empty(), "{leftovers:?}");
 }
 
+/// A process id no running process has (above every system's maximum, and not a multiple of
+/// four as Windows ids are).
+const DEAD: u32 = 999_999_999;
+
 #[test]
-fn cleanup_removes_only_update_leftovers() {
+fn cleanup_repairs_and_removes_leftovers_of_finished_updates() {
     let temp = tempfile::tempdir().expect("tempdir");
     let root = temp.path();
-    let write = |relative: &str| {
+    let write = |relative: &str, content: &[u8]| {
         let path = root.join(relative);
         std::fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
-        std::fs::write(path, b"x").expect("write");
+        std::fs::write(path, content).expect("write");
     };
-    write(".a3s-old-1-0-arma3sync.exe");
-    write(".a3s-new-1-1-LICENSE.txt");
-    write("sub/.a3s-old-1-2-lib.dll");
-    write(".a3s-stage-abc/entry-1.tmp");
-    write("a3s-old-x");
-    write("arma3sync-rs-data/.a3s-old-1-3-x");
-    write("a/b/c/d/e/.a3s-old-deep");
+    let alive = std::process::id();
+    write("arma3sync.exe", b"new");
+    write(&format!(".a3s-old-{DEAD}-0-arma3sync.exe"), b"old");
+    write(&format!(".a3s-old-{DEAD}-1-lib.dll"), b"only copy");
+    write(&format!(".a3s-new-{DEAD}-2-LICENSE.txt"), b"x");
+    write("sub/x.dll", b"new");
+    write(&format!("sub/.a3s-old-{DEAD}-3-x.dll"), b"old");
+    write(&format!(".a3s-stage-{DEAD}-abc/entry-1.tmp"), b"x");
+    write(&format!(".a3s-elevated-{DEAD}-0123/elevated.result"), b"");
+    write(".a3s-new-Xy12ab.tmp", b"x");
+    write(&format!(".a3s-old-{alive}-0-running.exe"), b"x");
+    write(
+        &format!(".a3s-elevated-{alive}-4567/elevated.startup"),
+        b"x",
+    );
+    write("a3s-old-x", b"x");
+    write(&format!("arma3sync-rs-data/.a3s-old-{DEAD}-4-x"), b"x");
+    write(&format!("a/b/c/d/e/.a3s-old-{DEAD}-5-deep"), b"x");
 
-    assert_eq!(cleanup_leftovers(root), 4);
-    assert!(!root.join(".a3s-old-1-0-arma3sync.exe").exists());
-    assert!(!root.join(".a3s-new-1-1-LICENSE.txt").exists());
-    assert!(!root.join("sub/.a3s-old-1-2-lib.dll").exists());
-    assert!(!root.join(".a3s-stage-abc").exists());
-    assert!(root.join("a3s-old-x").exists());
-    assert!(root.join("arma3sync-rs-data/.a3s-old-1-3-x").exists());
-    assert!(root.join("a/b/c/d/e/.a3s-old-deep").exists());
+    assert_eq!(cleanup_leftovers(root), 7);
+    let mut names: Vec<String> = std::fs::read_dir(root)
+        .expect("list")
+        .map(|e| e.expect("entry").file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    assert_eq!(
+        names,
+        [
+            format!(".a3s-elevated-{alive}-4567"),
+            format!(".a3s-old-{alive}-0-running.exe"),
+            "a".to_owned(),
+            "a3s-old-x".to_owned(),
+            "arma3sync-rs-data".to_owned(),
+            "arma3sync.exe".to_owned(),
+            "lib.dll".to_owned(),
+            "sub".to_owned(),
+        ]
+    );
+    assert_eq!(
+        std::fs::read(root.join("arma3sync.exe")).expect("read"),
+        b"new"
+    );
+    assert_eq!(
+        std::fs::read(root.join("lib.dll")).expect("read"),
+        b"only copy"
+    );
+    assert_eq!(
+        std::fs::read_dir(root.join("sub")).expect("list").count(),
+        1
+    );
+    assert!(
+        root.join(format!("arma3sync-rs-data/.a3s-old-{DEAD}-4-x"))
+            .exists()
+    );
+    assert!(
+        root.join(format!("a/b/c/d/e/.a3s-old-{DEAD}-5-deep"))
+            .exists()
+    );
     assert_eq!(cleanup_leftovers(&root.join("missing")), 0);
 }
 
@@ -221,7 +267,7 @@ fn cleanup_does_not_follow_links_or_fail_on_unreadable_directories() {
     let root = temp.path().join("installation");
     std::fs::create_dir_all(&outside).expect("mkdir");
     std::fs::create_dir_all(root.join("locked")).expect("mkdir");
-    std::fs::write(outside.join(".a3s-old-1-0-x"), b"x").expect("write");
+    std::fs::write(outside.join(format!(".a3s-old-{DEAD}-0-x")), b"x").expect("write");
     std::os::unix::fs::symlink(&outside, root.join("link")).expect("symlink");
     std::fs::set_permissions(root.join("locked"), std::fs::Permissions::from_mode(0o000))
         .expect("chmod");
@@ -230,5 +276,5 @@ fn cleanup_does_not_follow_links_or_fail_on_unreadable_directories() {
     std::fs::set_permissions(root.join("locked"), std::fs::Permissions::from_mode(0o755))
         .expect("chmod back");
     assert_eq!(removed, 0);
-    assert!(outside.join(".a3s-old-1-0-x").exists());
+    assert!(outside.join(format!(".a3s-old-{DEAD}-0-x")).exists());
 }

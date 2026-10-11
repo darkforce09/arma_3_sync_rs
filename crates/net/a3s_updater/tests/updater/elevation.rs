@@ -102,10 +102,7 @@ fn write_probe_and_elevation_rule_on_a_read_only_directory() {
     let read_only = temp.path().join("read-only");
     std::fs::create_dir(&writable).expect("mkdir");
     std::fs::create_dir(&read_only).expect("mkdir");
-    let Some(_guard) = crate::apply_fixture::ReadOnly::new(&read_only) else {
-        eprintln!("skipped: running as root");
-        return;
-    };
+    let _guard = crate::apply_fixture::ReadOnly::new(&read_only);
     assert!(!can_write_installation(&read_only, &diag));
 
     assert!(!requires_elevation(Os::Linux, false, &read_only, &diag));
