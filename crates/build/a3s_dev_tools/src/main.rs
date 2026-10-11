@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use a3s_dev_tools::fixtures;
-use a3s_dev_tools::{DumpMode, Harness, HarnessError, Part};
+use a3s_dev_tools::{DumpMode, Harness, HarnessError, Part, TreeDiff};
 use clap::{Parser, Subcommand};
 
 /// Developer tooling for the Arma3Sync Rust rewrite.
@@ -174,7 +174,13 @@ fn regen_fixtures(
         }
         let diffs = fixtures::compare_generated(&fixtures_dir, &generated)?;
         for diff in &diffs {
-            println!("{diff}");
+            match diff {
+                TreeDiff::Missing(path) => {
+                    println!("only in tests/fixtures:     {}", path.display());
+                }
+                TreeDiff::Extra(path) => println!("only in the Java output:   {}", path.display()),
+                TreeDiff::Differs(path) => println!("differs from Java output: {}", path.display()),
+            }
         }
         if diffs.is_empty() {
             println!("tests/fixtures matches the Java harness output");

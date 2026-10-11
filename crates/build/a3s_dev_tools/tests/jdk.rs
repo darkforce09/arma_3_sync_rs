@@ -986,3 +986,158 @@ fn a17_cli_regen_and_check() {
         "{stdout}"
     );
 }
+
+/// Copies `source` to `target` the way a git checkout does: contents only, mtimes = now.
+fn checkout_copy(source: &Path, target: &Path) {
+    for rel in files(source) {
+        let to = target.join(&rel);
+        fs::create_dir_all(to.parent().unwrap()).unwrap();
+        fs::copy(source.join(&rel), &to).unwrap();
+        fs::File::options()
+            .write(true)
+            .open(&to)
+            .unwrap()
+            .set_modified(std::time::SystemTime::now())
+            .unwrap();
+    }
+}
+
+/// Sets the mtimes recorded in `scenario.json` and `generated_files.json` on a checkout.
+fn restore_mtimes(variant_dir: &Path) {
+    let load = |name: &str| Json::parse(&fs::read_to_string(variant_dir.join(name)).unwrap());
+    for list in [load("scenario.json"), load("generated_files.json")] {
+        for step in list.get("steps").unwrap().as_array() {
+            let repo = variant_dir
+                .join(step.get("name").and_then(Json::as_str).unwrap())
+                .join("repo");
+            for file in step.get("files").unwrap().as_array() {
+                let Some(ms) = file.get("mtime_ms").and_then(Json::as_i64) else {
+                    continue;
+                };
+                let path = repo.join(file.get("path").and_then(Json::as_str).unwrap());
+                let size = file.get("size").and_then(Json::as_i64).unwrap();
+                assert_eq!(
+                    fs::metadata(&path).unwrap().len(),
+                    u64::try_from(size).unwrap(),
+                    "{}",
+                    path.display()
+                );
+                let mtime = std::time::UNIX_EPOCH
+                    + std::time::Duration::from_millis(u64::try_from(ms).unwrap());
+                fs::File::options()
+                    .write(true)
+                    .open(&path)
+                    .unwrap()
+                    .set_modified(mtime)
+                    .unwrap();
+            }
+        }
+    }
+}
+
+/// After a git checkout (mtimes lost), restoring the mtimes recorded in `scenario.json` and
+/// `generated_files.json` makes every snapshot, `.zsync` files included, verify again.
+#[test]
+#[ignore = "needs JDK 25: source scripts/java_env.sh"]
+fn a10_snapshots_verify_after_checkout_with_restored_mtimes() {
+    let _guard = LOCK.lock();
+    let (tmp, out) = generate(&[Part::Built]);
+    let h = harness();
+    for variant in ["http_plain", "http_zip"] {
+        let checkout = tmp.path().join("checkout").join(variant);
+        checkout_copy(&out.join("java_built").join(variant), &checkout);
+        let before = h
+            .verify(&[checkout.join("1_initial/repo")], None, DumpMode::Identity)
+            .unwrap();
+        assert!(
+            !before.is_success(),
+            "{variant}: zsync must depend on mtimes"
+        );
+        restore_mtimes(&checkout);
+        for step in ["1_initial", "2_rebuild_nochange", "3_modified"] {
+            let report = h
+                .verify(
+                    &[checkout.join(step).join("repo")],
+                    None,
+                    DumpMode::Identity,
+                )
+                .unwrap();
+            assert!(report.is_success(), "{variant}/{step}: {:?}", report.failed);
+        }
+    }
+    // The .ebo.zip the next build hashes is recorded as a sync leaf with its pinned mtime.
+    let generated = Json::parse(
+        &fs::read_to_string(out.join("java_built/http_zip/generated_files.json")).unwrap(),
+    );
+    let step1 = &generated.get("steps").unwrap().as_array()[0];
+    let ebo = step1
+        .get("files")
+        .unwrap()
+        .as_array()
+        .iter()
+        .find(|f| f.get("path").and_then(Json::as_str) == Some("@mod_b/Addons/mod_b.ebo.zip"))
+        .unwrap();
+    assert_eq!(ebo.get("sync_leaf"), Some(&Json::Bool(true)));
+    assert_eq!(
+        ebo.get("mtime_ms").and_then(Json::as_i64),
+        Some(1_704_067_200_000)
+    );
+}
+
+/// Non-ASCII work and output paths with a C locale (`sun.jnu.encoding` follows the locale only).
+#[test]
+#[ignore = "needs JDK 25: source scripts/java_env.sh"]
+fn generate_with_non_ascii_tmpdir_in_c_locale() {
+    let _guard = LOCK.lock();
+    let tmp = tempfile::tempdir().unwrap();
+    let tmpdir = tmp.path().join("Dossier é ü");
+    fs::create_dir_all(&tmpdir).unwrap();
+    let out = tmp.path().join("sortie é");
+    let h = harness()
+        .env("TMPDIR", &tmpdir)
+        .env("LANG", "C")
+        .env("LC_ALL", "C");
+    fixtures::regenerate(&h, &out, &[Part::Local, Part::Presets]).unwrap();
+    assert!(out.join("java_local/dumps").is_dir());
+    assert!(out.join("java_presets/p1_golden/preset.html").is_file());
+}
+
+/// `verify` on a path with nothing Arma3Sync reads is a failure, not a silent all-SKIP.
+#[test]
+#[ignore = "needs JDK 25: source scripts/java_env.sh"]
+fn verify_fails_when_nothing_is_readable() {
+    let _guard = LOCK.lock();
+    let (_tmp, out) = generate(&[Part::Built]);
+    let uploaded = out.join("java_built/http_plain/1_initial/uploaded");
+    let report = harness()
+        .verify(std::slice::from_ref(&uploaded), None, DumpMode::Identity)
+        .unwrap();
+    assert_eq!(report.failed.len(), 1, "{report:?}");
+    assert_eq!(report.failed[0].path, uploaded);
+    assert!(report.failed[0].detail.contains(".a3s directory"));
+    assert_eq!(report.skipped.len(), 5);
+}
+
+/// `generate` refuses `--work` and `--out` inside each other (exit 2).
+#[cfg(unix)]
+#[test]
+#[ignore = "needs JDK 25: source scripts/java_env.sh"]
+fn generate_refuses_nested_work_and_out() {
+    let _guard = LOCK.lock();
+    let tmp = tempfile::tempdir().unwrap();
+    let out = tmp.path().join("out");
+    let run = |work: &Path| {
+        Command::new("bash")
+            .arg(harness().harness_dir().join("run.sh"))
+            .args(["generate", "--only", "descriptors", "--out"])
+            .arg(&out)
+            .arg("--work")
+            .arg(work)
+            .output()
+            .unwrap()
+    };
+    assert_eq!(run(&out.join("work")).status.code(), Some(2));
+    assert_eq!(run(tmp.path()).status.code(), Some(2));
+    assert_eq!(run(&out).status.code(), Some(2));
+    assert!(!out.join("java_descriptors.txt").exists());
+}

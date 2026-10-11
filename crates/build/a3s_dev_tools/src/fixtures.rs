@@ -44,9 +44,9 @@ impl TreeDiff {
 impl std::fmt::Display for TreeDiff {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Missing(path) => write!(f, "missing: {}", path.display()),
-            Self::Extra(path) => write!(f, "extra:   {}", path.display()),
-            Self::Differs(path) => write!(f, "differs: {}", path.display()),
+            Self::Missing(path) => write!(f, "only in expected: {}", path.display()),
+            Self::Extra(path) => write!(f, "only in actual:   {}", path.display()),
+            Self::Differs(path) => write!(f, "differs:          {}", path.display()),
         }
     }
 }
@@ -59,8 +59,9 @@ pub fn regenerate(harness: &Harness, out: &Path, parts: &[Part]) -> Result<(), H
 
 /// Replaces the [`GENERATED_ENTRIES`] of `fixtures_dir` with those of `generated`.
 ///
-/// Every entry must exist in `generated`; this is checked before anything is removed. Entries are
-/// moved (renamed, or copied and removed across file systems).
+/// Every entry must exist in `generated`; this is checked before anything is touched. All entries
+/// are first moved into a staging directory inside `fixtures_dir` (renamed, or copied and removed
+/// across file systems), then swapped in with renames.
 pub fn install(generated: &Path, fixtures_dir: &Path) -> io::Result<()> {
     for entry in GENERATED_ENTRIES {
         let source = generated.join(entry);
@@ -72,20 +73,38 @@ pub fn install(generated: &Path, fixtures_dir: &Path) -> io::Result<()> {
         }
     }
     fs::create_dir_all(fixtures_dir)?;
+
+    // Stage every entry next to its target first (the slow, failure-prone part), so a failure
+    // leaves the old fixtures untouched; then swap with renames on the same file system.
+    let staging = tempfile::Builder::new()
+        .prefix(".a3s-fixtures-staging")
+        .tempdir_in(fixtures_dir)?;
     for entry in GENERATED_ENTRIES {
-        let source = generated.join(entry);
-        let target = fixtures_dir.join(entry);
-        remove_entry(&target)?;
-        match fs::rename(&source, &target) {
-            Ok(()) => {}
-            Err(err) if err.kind() == io::ErrorKind::CrossesDevices => {
-                copy_entry(&source, &target)?;
-                remove_entry(&source)?;
-            }
-            Err(err) => return Err(err),
-        }
+        move_entry(&generated.join(entry), &staging.path().join(entry))?;
     }
+    let old = staging.path().join(".old");
+    fs::create_dir(&old)?;
+    for entry in GENERATED_ENTRIES {
+        let target = fixtures_dir.join(entry);
+        if fs::symlink_metadata(&target).is_ok() {
+            fs::rename(&target, old.join(entry))?;
+        }
+        fs::rename(staging.path().join(entry), &target)?;
+    }
+    // Dropping `staging` deletes the replaced entries.
     Ok(())
+}
+
+/// Renames `source` to `target`, or copies and removes it across file systems.
+fn move_entry(source: &Path, target: &Path) -> io::Result<()> {
+    match fs::rename(source, target) {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == io::ErrorKind::CrossesDevices => {
+            copy_entry(source, target)?;
+            remove_entry(source)
+        }
+        Err(err) => Err(err),
+    }
 }
 
 fn remove_entry(path: &Path) -> io::Result<()> {

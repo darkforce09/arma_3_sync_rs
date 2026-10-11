@@ -290,8 +290,14 @@ impl Harness {
         Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     }
 
-    /// Generates the fixture parts into `out`, which must be empty or missing.
+    /// Generates the fixture parts into `out`, which must be empty or missing. An empty `parts`
+    /// means every part.
     pub fn generate(&self, out: &Path, parts: &[Part]) -> Result<(), HarnessError> {
+        let parts = if parts.is_empty() {
+            &Part::ALL[..]
+        } else {
+            parts
+        };
         let only = parts
             .iter()
             .map(|part| part.as_arg())
