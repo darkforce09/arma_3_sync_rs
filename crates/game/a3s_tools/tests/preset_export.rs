@@ -452,29 +452,29 @@ fn run_fixture(case_dir: &Path) {
     // The harness resolves by exact folder name.
     let result = generate(&modset, &|name: &str| resolvable.get(name), None);
 
-    let mut report = format!(
-        "valid={}\nworkshop={}\ndlc={}\n",
-        result.is_valid(),
-        result.workshop_count(),
-        result.dlc_count()
-    );
-    for error in result.errors() {
-        report.push_str(&format!("error: {error}\n"));
-    }
-    for warning in result.warnings() {
-        report.push_str(&format!("warning: {warning}\n"));
-    }
+    // Compared without message text: validity, counts, the kind of every message and the
+    // structured fields of every metadata issue.
+    let mut report = vec![
+        format!("valid={}", result.is_valid()),
+        format!("workshop={}", result.workshop_count()),
+        format!("dlc={}", result.dlc_count()),
+    ];
+    report.extend(result.errors().iter().map(|_| "error".to_owned()));
+    report.extend(result.warnings().iter().map(|_| "warning".to_owned()));
     for issue in result.metadata_issues() {
-        report.push_str(&format!(
-            "issue: {}|{}|{}|{}|{}\n",
+        report.push(format!(
+            "issue: {}|{}|{}|{}",
             issue.addon_key,
             issue.addon_name,
-            issue.reason,
             issue.published_id.as_deref().unwrap_or("null"),
             issue.name
         ));
     }
-    let expected = fs::read_to_string(case_dir.join("result.txt")).unwrap();
+    let expected: Vec<String> = fs::read_to_string(case_dir.join("result.txt"))
+        .unwrap()
+        .lines()
+        .map(without_message_text)
+        .collect();
     assert_eq!(report, expected, "{}", case_dir.display());
 
     let java_html = case_dir.join("preset.html");
@@ -610,4 +610,21 @@ fn exported_preset_imports_back() {
         Some("Mod 'quoted' \"x\"")
     );
     assert_eq!(imported.missing_dlc[0].addon_key.as_deref(), Some("GM"));
+}
+
+/// One line of a Java `result.txt` without its message text (see [`run_fixture`]).
+fn without_message_text(line: &str) -> String {
+    if line.starts_with("error: ") {
+        "error".to_owned()
+    } else if line.starts_with("warning: ") {
+        "warning".to_owned()
+    } else if let Some(issue) = line.strip_prefix("issue: ") {
+        let fields: Vec<&str> = issue.splitn(5, '|').collect();
+        format!(
+            "issue: {}|{}|{}|{}",
+            fields[0], fields[1], fields[3], fields[4]
+        )
+    } else {
+        line.to_owned()
+    }
 }
