@@ -17,4 +17,16 @@ workspace = true
 [package.metadata.docs.rs]
 all-features = true
 
+[[bin]]
+name = "a3s_dev_tools"
+path = "src/main.rs"
+
 [dependencies]
+anyhow.workspace = true
+clap.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+flate2.workspace = true
+parking_lot.workspace = true
