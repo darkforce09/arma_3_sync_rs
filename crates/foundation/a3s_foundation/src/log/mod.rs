@@ -4,7 +4,8 @@
 //! * [`init`] installs a global subscriber with a stderr layer (`A3S_LOG`, default `warn`) and,
 //!   opt-in like Java's `-debug`, a size-rotated debug file `arma3sync-rs.log`.
 //! * Both layers use the Java-like line format of [`JavaLikeFormat`].
-//! * [`redact`] and [`describe_endpoint`] keep credentials out of log lines.
+//! * [`redact`] and [`describe_endpoint`] keep credentials out of log lines, and both layers
+//!   drop the `trace` events of [`SECRET_TRACE_TARGETS`], whatever `A3S_LOG` says.
 
 mod format;
 mod redact;
@@ -15,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use tracing::Metadata;
-use tracing_subscriber::filter::{EnvFilter, FilterFn, LevelFilter};
+use tracing_subscriber::filter::{EnvFilter, FilterExt as _, FilterFn, LevelFilter};
 use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
 use tracing_subscriber::{Layer as _, fmt};
@@ -29,6 +30,10 @@ pub const LOG_FILE_NAME: &str = "arma3sync-rs.log";
 
 /// Environment variable with the stderr filter (`EnvFilter` syntax).
 pub const LOG_FILTER_VAR: &str = "A3S_LOG";
+
+/// Targets (and their sub-targets) whose `trace` events carry credentials: `suppaftp` traces
+/// every FTP control command, `PASS <password>` included. Both layers keep them at `debug`.
+pub const SECRET_TRACE_TARGETS: &[&str] = &["suppaftp"];
 
 /// Errors of [`init`].
 #[derive(Debug, thiserror::Error)]
@@ -93,7 +98,7 @@ pub fn init(config: &LogConfig) -> Result<LogHandle, Error> {
             .event_format(JavaLikeFormat)
             .with_ansi(false)
             .with_writer(io::stderr)
-            .with_filter(stderr_filter)
+            .with_filter(stderr_filter.and(FilterFn::new(no_secret_trace)))
     });
 
     let file = if config.debug {
@@ -160,7 +165,18 @@ fn file_filter(metadata: &Metadata<'_>) -> bool {
     } else {
         LevelFilter::INFO
     };
-    *metadata.level() <= max
+    *metadata.level() <= max && no_secret_trace(metadata)
+}
+
+/// `false` for a `trace` event of one of the [`SECRET_TRACE_TARGETS`].
+fn no_secret_trace(metadata: &Metadata<'_>) -> bool {
+    let target = metadata.target();
+    let secret = SECRET_TRACE_TARGETS.iter().any(|secret| {
+        target
+            .strip_prefix(secret)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with("::"))
+    });
+    !(secret && *metadata.level() == tracing::Level::TRACE)
 }
 
 fn open_debug_file(log_dir: Option<&Path>) -> io::Result<RotatingFile> {

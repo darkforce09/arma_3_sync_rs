@@ -53,6 +53,9 @@ fn verify_child_entry() {
         .spawn(|| {
             tracing::info!(target: "a3s_sync", n = 1, "hello");
             tracing::error!(target: "a3s_sync", "boom");
+            // suppaftp logs through the `log` crate.
+            log::trace!(target: "suppaftp::async_ftp::tokio_ftp::control", "CC OUT: PASS hunter2");
+            log::debug!(target: "suppaftp::async_ftp::tokio_ftp::control", "CC IN: 230 ok");
         })
         .expect("spawn")
         .join()
@@ -137,4 +140,20 @@ fn verify_unopenable_file_prints_one_line() {
         .filter(|line| line.starts_with("Arma3Sync diagnostic logging could not be initialized: "))
         .collect();
     assert_eq!(diagnostic.len(), 1, "{stderr}");
+}
+
+/// `suppaftp` trace lines (`PASS <password>`) reach neither stderr nor the file, even with
+/// `A3S_LOG=trace`; its debug lines still do.
+#[test]
+fn verify_ftp_password_never_logged() {
+    for filter in ["trace", "suppaftp=trace", "suppaftp::async_ftp=trace"] {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = tmp.path().join("logs");
+        let output = run_child(&dir, &[("A3S_LOG", filter)]);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(!stderr.contains("hunter2"), "{filter}: {stderr}");
+        assert!(stderr.contains("CC IN: 230 ok"), "{filter}: {stderr}");
+        let contents = std::fs::read_to_string(dir.join(LOG_FILE_NAME)).expect("log file");
+        assert!(!contents.contains("hunter2"), "{filter}: {contents}");
+    }
 }

@@ -9,7 +9,8 @@ The base every other crate builds on, one module per concern:
 - `format`: sizes, speeds, durations and dates for display (the size/speed/duration rules follow
   Java's `UnitConverter`).
 - `log`: the `tracing` setup of the binaries: stderr layer (`A3S_LOG`), opt-in rotating debug file,
-  credential redaction.
+  credential redaction; trace events of credential-logging dependencies (`suppaftp`) are always
+  dropped.
 - `paths`: the Rust client's own configuration, data and cache directories (`arma3sync-rs`,
   portable mode) and read-only discovery of the Java client's data for the importer.
 

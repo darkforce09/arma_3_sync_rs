@@ -67,6 +67,7 @@ fs4 = "1.1.0"
 futures = "0.3.34"
 interprocess = "2.4.5"
 libunftp = { version = "0.23.1", default-features = false, features = ["aws_lc_rs"] }
+log = "0.4.34"
 md4 = "0.11.0"
 mslnk = "0.1.8"
 parking_lot = "0.12.5"
