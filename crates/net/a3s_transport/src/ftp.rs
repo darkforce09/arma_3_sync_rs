@@ -758,14 +758,8 @@ impl FtpTransport {
             .map_err(|e| map_ftp_error(e, relative))?;
         match copy_upload(&mut source.reader, &mut transfer, ctx, self.read_timeout).await {
             Ok(n) => {
-                // Servers such as libunftp accept `RETR` (150) and report a missing file on
-                // completion (550).
-                let finished = with_timeout(self.read_timeout, transfer.finish())
-                    .await
-                    .map_err(|err| match err {
-                        Error::Ftp(err) => map_ftp_error(err, relative),
-                        other => other,
-                    });
+                // A 550 here is a refused store (permissions, quota), not a missing file.
+                let finished = with_timeout(self.read_timeout, transfer.finish()).await;
                 self.poison_on_timeout(finished)?;
                 Ok(n)
             }

@@ -269,6 +269,25 @@ pub fn parent_relative_path(relative_path: &str) -> &str {
         .map_or("", |(parent, _)| parent)
 }
 
+/// The path of a tree node on the server.
+///
+/// Java stops a node's path at its nearest ancestor named `racine`, so a folder of that name
+/// below the root restarts the remote path: `@a/racine/x.pbo` is fetched as `x.pbo`. The local
+/// path keeps the whole tree path.
+// Mirrors dto/sync/SyncTreeNodeDTOMethods.java:11-41, dao/connection/AbstractConnexionDAO.java:262-280
+pub fn remote_relative_path(relative_path: &str) -> &str {
+    let relative_path = strip_leading_slashes(relative_path);
+    let mut start = 0;
+    let mut offset = 0;
+    for segment in parent_relative_path(relative_path).split('/') {
+        offset += segment.len() + 1;
+        if segment == ROOT_NAME {
+            start = offset;
+        }
+    }
+    &relative_path[start..]
+}
+
 /// The last segment of `relative_path` (the whole path if it has no `/`).
 pub fn file_name(relative_path: &str) -> &str {
     relative_path
@@ -555,8 +574,9 @@ fn download_size(size: u64, compressed: bool, compressed_size: u64, complete: f6
 /// One file or folder to download (what `AbstractConnexionDAO.downloadFile` reads from a node).
 #[derive(Clone, Debug, PartialEq)]
 pub struct DownloadTask {
-    /// Remote path below the repository root, without a leading `/`. This is the tree path,
-    /// even when auto-discover redirected the local destination.
+    /// Path in the tree below the repository root, without a leading `/`, even when
+    /// auto-discover redirected the local destination. The remote path is
+    /// [`remote_relative_path`] of it.
     pub relative_path: String,
 
     /// Local folder; the file is `destination_dir/name`.
@@ -894,6 +914,12 @@ mod tests {
         let tree = PlanTree::from_sync_tree(&sync);
         assert_eq!(tree.leaf_paths(), ["@a/racine/x"]);
         assert!(tree.get("@a/racine/x").is_some());
+        // Java fetches it from the repository root; the local path keeps the folder.
+        assert_eq!(remote_relative_path("@a/racine/x"), "x");
+        assert_eq!(remote_relative_path("racine/b/racine/c/x"), "c/x");
+        assert_eq!(remote_relative_path("@a/racine"), "@a/racine");
+        assert_eq!(remote_relative_path("@a/addons/x.pbo"), "@a/addons/x.pbo");
+        assert_eq!(remote_relative_path("x"), "x");
         assert!(dir_changed(&tree, "@a/racine"));
     }
 

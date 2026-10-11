@@ -87,6 +87,8 @@ Limits enforced by Java readers (so a Rust writer must stay inside them): nestin
 ### Other repository content
 
 * Files live at `<root>/<relative path>`; directories are `/`-joined names below `racine`.
+* A folder named `racine` below the root resets the remote path, as in Java: `@a/racine/x.pbo` is
+  stored and downloaded as `<root>/x.pbo`, while clients keep it at `@a/racine/x.pbo` locally.
 * `<file>.zsync` exists for HTTP repositories: jazsync header (`zsync: jazsync`, `Blocksize: 8192`,
   `Hash-Lengths`, `SHA-1`, …) followed by per-block rsum + truncated MD4.
 * `<file>.pbo.zip` / `.ebo.zip` exists when the repository is compressed: one DEFLATE-9 entry.
@@ -115,13 +117,16 @@ Wire compatibility is the requirement; these differences are deliberate.
 * **SFTP** accepts any host key and logs its fingerprint, like Java's MINA default.
   `deny.toml` ignores RUSTSEC-2023-0071 (RSA timing) because only public-key verification is used;
   re-evaluate if client public-key authentication is added.
-* **Repository upload** writes nested `racine` folders to their real paths (Java uploads them to
-  wrong paths). Other upload differences are local only: a failed upload resumes by remote path
-  for an unchanged local `.a3s/sync` and unchanged files (Java resumes at an index that counts
-  failed files as done); parallel workers share one queue and the first failure stops them all;
-  the metadata upload is not interrupted by a cancel once it started; nothing is deleted below a
-  directory that is deleted; the content check keeps one connection per worker. The uploaded
-  `.a3s` files are byte-identical to Java's (the JDK 25 round trip of the local files).
+* **Repository upload** differences are local only: a file below a nested `racine` folder is
+  read from its real local path (Java reads `<folder>/<remote path>`, which is missing or another
+  file); a failed upload resumes by remote path for the same target, an unchanged local `.a3s/sync` and
+  unchanged files (Java resumes at an index that counts failed files as done); parallel workers
+  share one queue and the first failure stops them all; the metadata upload is not interrupted by
+  a cancel once it started; nothing is deleted below a directory that is deleted, and the
+  top-level `.a3s` is never deleted; the content check keeps one connection per worker. Files are
+  overwritten in place (as in Java), so a stop leaves a partial file under the old metadata until
+  the next run re-uploads it. The uploaded `.a3s` files are byte-identical to Java's (the JDK 25
+  round trip of the local files).
 * **Events editing** treats a null `addonNames` in an old events file as empty (Java throws), and
   renaming an event may keep its own name (Java reports a duplicate).
 * **Repository build:** the compression stage's own outputs (`<name>.zip` for any compressible

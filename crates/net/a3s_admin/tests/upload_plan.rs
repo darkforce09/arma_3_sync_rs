@@ -35,9 +35,14 @@ fn root(children: Vec<SyncTreeNode>) -> SyncTreeDirectory {
 fn node(path: &str, is_directory: bool, compressed: bool) -> PlannedNode {
     PlannedNode {
         relative_path: path.to_owned(),
+        tree_path: path.to_owned(),
         is_directory,
         compressed,
     }
+}
+
+fn tree_paths(nodes: &[PlannedNode]) -> Vec<&str> {
+    nodes.iter().map(|n| n.tree_path.as_str()).collect()
 }
 
 fn paths(nodes: &[PlannedNode]) -> Vec<&str> {
@@ -109,7 +114,7 @@ fn plan_compares_paths_and_hashes() {
                 leaf("kind", Some("3"), false),
             ],
         ),
-        // A nested folder named like the root keeps its full path.
+        // Below a folder named like the root, remote paths restart at the root.
         dir(
             "@n",
             vec![dir("racine", vec![leaf("r.pbo", Some("4"), false)])],
@@ -134,17 +139,17 @@ fn plan_compares_paths_and_hashes() {
             "@old",
             vec![dir("addons", vec![leaf("o.pbo", Some("6"), false)])],
         ),
+        dir(".a3s", vec![leaf("sync", Some("7"), false)]),
     ]);
     let plan = plan_upload(&local, Some(&remote));
-    assert_eq!(
-        paths(&plan.to_check),
-        ["@a", "@a/same.pbo", "@n", "@n/racine", "@n/racine/r.pbo"]
-    );
+    assert_eq!(paths(&plan.to_check), ["@a", "@a/same.pbo", "@n", "r.pbo"]);
     assert_eq!(
         paths(&plan.to_upload),
         ["@a/changed.pbo", "@a/kind", "@a/no_sha.pbo"]
     );
-    // Remote-only paths, with the remote leaf's flag; nothing below a deleted directory.
+    assert_eq!(tree_paths(&plan.to_check)[3], "@n/racine/r.pbo");
+    // Remote-only paths, with the remote leaf's flag; nothing below a deleted directory, never
+    // the remote `.a3s` folder.
     assert_eq!(
         plan.to_delete,
         [node("@a/gone.pbo", false, true), node("@old", true, false)]

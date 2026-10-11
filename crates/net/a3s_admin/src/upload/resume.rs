@@ -3,8 +3,8 @@
 //! Java keeps a transient index into its upload list, which counts failed and cancelled files
 //! as done and skips the wrong files when the list changes between attempts. Instead,
 //! [`UploadResume`] records the entries uploaded successfully together with the local file's
-//! length and modification time, and is only valid for the local `.a3s/sync` it was recorded
-//! against.
+//! length and modification time, and is only valid for the upload target and the local
+//! `.a3s/sync` it was recorded against.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -13,8 +13,9 @@ use std::path::Path;
 /// memory, like the transient upload index of Java's `Repository`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct UploadResume {
-    /// SHA-1 of the local `.a3s/sync` file the entries belong to.
-    sync_digest: Option<[u8; 20]>,
+    /// Key of the upload the entries belong to: target and local `.a3s/sync` (see
+    /// [`Self::begin`]).
+    key: Option<[u8; 20]>,
 
     /// Remote path → `(local length, local modification time in ms)`; `(0, 0)` for directories.
     entries: BTreeMap<String, (u64, i64)>,
@@ -38,16 +39,16 @@ impl UploadResume {
 
     /// Forgets everything.
     pub fn clear(&mut self) {
-        self.sync_digest = None;
+        self.key = None;
         self.entries.clear();
     }
 
-    /// Starts an attempt for the local sync file with digest `digest`: entries recorded for
-    /// another sync file are dropped.
-    pub(crate) fn begin(&mut self, digest: [u8; 20]) {
-        if self.sync_digest != Some(digest) {
+    /// Starts an attempt; entries recorded for another key are dropped. The key is the SHA-1 of
+    /// the target (protocol type, host, port, remote path) and of the local `.a3s/sync` bytes.
+    pub(crate) fn begin(&mut self, key: [u8; 20]) {
+        if self.key != Some(key) {
             self.entries.clear();
-            self.sync_digest = Some(digest);
+            self.key = Some(key);
         }
     }
 

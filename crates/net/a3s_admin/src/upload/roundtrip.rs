@@ -86,16 +86,6 @@ pub fn java_roundtrip_bytes(
     a3s_repo_files::encode_a3s_stream(&raw).map_err(|e| error(e.to_string()))
 }
 
-/// The `HashSet` capacity Java writes after deserializing a set of `n` elements.
-#[doc(hidden)]
-pub fn hash_set_roundtrip_capacity(n: usize) -> i32 {
-    let mut set = deserialized_hash_set(n);
-    for i in 0..n {
-        set.put(i.to_string(), (), ());
-    }
-    set.write_params().0
-}
-
 /// The backing map of `new HashSet` as `HashSet.readObject` creates it for `size` elements,
 /// before the elements are added.
 // Mirrors java.util.HashSet.readObject (OpenJDK 25)

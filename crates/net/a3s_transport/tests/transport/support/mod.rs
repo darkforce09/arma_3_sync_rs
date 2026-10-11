@@ -1,4 +1,5 @@
-//! In-process test servers and shared helpers.
+//! In-process test servers and shared helpers. `a3s_admin`'s `tests/net_support` includes this
+//! module by path, so changes here must keep compiling there.
 
 pub mod ftp;
 pub mod sftp;

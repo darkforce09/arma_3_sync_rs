@@ -62,6 +62,7 @@ impl Meter {
             cancel,
             progress: Arc::clone(&self.slots[worker].sent),
             throttle: None,
+            ..TransferCtx::default()
         }
     }
 

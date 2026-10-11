@@ -16,21 +16,44 @@ pub fn has_zsync(download_protocol: &Protocol) -> bool {
 ///
 /// A directory is itself; a compressed leaf is only `name.zip` when
 /// `compressed_pbo_files_only`, else `name`, `name.zip` and (with `with_zsync`) `name.zsync`;
-/// any other leaf is `name` and (with `with_zsync`) `name.zsync`.
+/// any other leaf is `name` and (with `with_zsync`) `name.zsync`. Remote paths are the nodes'
+/// remote paths ([`PlannedNode::relative_path`]).
 // Mirrors service/connection/AbstractConnectionProcessor.java:33-79
 pub fn expected_remote_files<'a>(
     nodes: impl IntoIterator<Item = &'a PlannedNode>,
     compressed_pbo_files_only: bool,
     with_zsync: bool,
 ) -> Vec<RemoteFile> {
+    expected_files(nodes, compressed_pbo_files_only, with_zsync)
+        .into_iter()
+        .map(|(remote, _)| remote)
+        .collect()
+}
+
+/// [`expected_remote_files`] with each file's path in the tree (its local path below the
+/// repository folder).
+pub(crate) fn expected_files<'a>(
+    nodes: impl IntoIterator<Item = &'a PlannedNode>,
+    compressed_pbo_files_only: bool,
+    with_zsync: bool,
+) -> Vec<(RemoteFile, String)> {
     let mut files = Vec::new();
     for node in nodes {
         let (parent, name) = node.parent_and_name();
         if node.is_directory {
-            files.push(RemoteFile::new(name, parent, true));
+            files.push((RemoteFile::new(name, parent, true), node.tree_path.clone()));
             continue;
         }
-        let file = |suffix: &str| RemoteFile::new(format!("{name}{suffix}"), parent, false);
+        let tree_parent = node.tree_parent();
+        let file = |suffix: &str| {
+            let file_name = format!("{name}{suffix}");
+            let tree_path = if tree_parent.is_empty() {
+                file_name.clone()
+            } else {
+                format!("{tree_parent}/{file_name}")
+            };
+            (RemoteFile::new(file_name, parent, false), tree_path)
+        };
         if node.compressed && compressed_pbo_files_only {
             files.push(file(ZIP_EXTENSION));
             continue;

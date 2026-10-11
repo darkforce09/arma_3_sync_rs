@@ -5,9 +5,7 @@ use std::io::Read as _;
 use std::path::{Path, PathBuf};
 
 use a3s_admin::build::testing::{JavaHashMap, RawGraph};
-use a3s_admin::upload::{
-    RoundTripOverrides, hash_set_roundtrip_capacity, java_roundtrip, java_roundtrip_bytes,
-};
+use a3s_admin::upload::{RoundTripOverrides, java_roundtrip, java_roundtrip_bytes};
 use a3s_jserial::jdk::Builder;
 use a3s_jserial::{Limits, Node};
 use a3s_repo_files::A3sFile;
@@ -114,12 +112,6 @@ fn collection_capacities_match_jdk_round_trips() {
 
 #[test]
 fn capacity_models() {
-    let sets: Vec<i32> = [0, 1, 2, 3, 4, 5, 6, 7, 12, 13, 24, 25]
-        .into_iter()
-        .map(hash_set_roundtrip_capacity)
-        .collect();
-    assert_eq!(sets, [1, 2, 4, 4, 8, 8, 8, 16, 16, 32, 32, 64]);
-
     for (n, buckets, threshold) in [
         (0, 16, 0),
         (1, 16, 12),

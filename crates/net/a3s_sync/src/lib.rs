@@ -39,7 +39,7 @@ pub use events::{
 };
 pub use model::{
     DeleteTask, DownloadStatus, DownloadTask, DownloadTaskKind, PlanDirectory, PlanLeaf, PlanNode,
-    PlanTree, ROOT_NAME, file_name, parent_relative_path,
+    PlanTree, ROOT_NAME, file_name, parent_relative_path, remote_relative_path,
 };
 pub use options::{MAX_DOWNLOAD_ERRORS, SyncOptions, SyncOptionsError};
 pub use pipeline::{

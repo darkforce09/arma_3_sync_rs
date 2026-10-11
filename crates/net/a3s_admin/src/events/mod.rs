@@ -37,18 +37,6 @@ use crate::build::java_hash::JavaHashMap;
 use crate::check::transport_kind;
 use crate::upload::distinct_boolean;
 
-/// Message after [`EventsDoc::write_local`].
-// Mirrors ui/repository/EventsPanel.java:604-605
-pub const EVENTS_SAVED_MESSAGE: &str = "Events information has been saved to the repository.";
-
-/// Message after [`upload_events`].
-// Mirrors ui/repository/dialogs/progress/ProgressUploadEventsDialog.java:59-60
-pub const EVENTS_UPLOADED_MESSAGE: &str = "Events information has been uploaded to the repository.";
-
-/// Appended after `"\n"` to the message of a failed [`upload_events`].
-// Mirrors ui/repository/dialogs/progress/ProgressUploadEventsDialog.java:71-75
-pub const UPLOAD_FAILURE_HINT: &str = "Please check upload options and server permissions.";
-
 /// Which selection list a saved key comes from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum SelectionList {

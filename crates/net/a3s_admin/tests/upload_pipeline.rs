@@ -311,6 +311,42 @@ async fn webdav_incremental_upload_orders_writes() {
     assert!(deletes.iter().all(|&i| i > last_metadata), "{writes:?}");
 }
 
+/// Connection 0 keeps one upload session for the whole run: after the existence check, a known
+/// directory is entered once instead of each of its parents being checked again per file.
+#[tokio::test]
+async fn ftp_session_spans_the_whole_upload() {
+    let fixture = servers::ftp::fixture(false).await;
+    let proxy = Proxy::start(fixture.protocol.port.parse().expect("port")).await;
+    let (_dir, local) = local_copy("http_zip");
+    let mut repo = setup(
+        ProtocolType::Http,
+        &local,
+        &proxy.protocol(&fixture.protocol),
+        true,
+    );
+    repo.parallel_upload_connections = 1;
+    upload_ok(&repo, &Events::default()).await;
+
+    std::fs::write(local.join("@Mod_A/addons/mod_a.pbo"), vec![7u8; 21_000]).expect("modify");
+    rebuild(&repo);
+    proxy.clear_lines();
+    let report = upload_ok(&repo, &Events::default()).await;
+    assert_eq!(report.uploaded_files, 3);
+    let lines = proxy.lines();
+    // `mod_a.pbo`, its `.zip` and `.zsync` go to `@Mod_A/addons`: once the first is stored the
+    // directory is known, so the parent `@Mod_A` is not checked again.
+    let first_store = lines
+        .iter()
+        .position(|l| l.as_str() == "STOR /@Mod_A/addons/mod_a.pbo")
+        .expect("stored");
+    assert!(
+        lines[first_store..]
+            .iter()
+            .all(|l| l.as_str() != "CWD /@Mod_A"),
+        "{lines:?}"
+    );
+}
+
 #[tokio::test]
 async fn ftp_missing_files_are_repaired_and_only_zip_mode() {
     let fixture = servers::ftp::fixture(false).await;
@@ -490,7 +526,17 @@ async fn parallel_failure_stops_every_worker() {
         other => panic!("{other:?}"),
     }
     assert!(!err.is_connection_lost());
-    assert!(events.count(|e| matches!(e, SyncEvent::FileDone { .. })) < 40);
+    // Once f05 started, only the other three workers' files already in flight may start.
+    let all = events.all();
+    let failing = all
+        .iter()
+        .position(|e| is_file_start(e) == Some("@many/addons/f05.pbo"))
+        .expect("f05 started");
+    let started_after = all[failing + 1..]
+        .iter()
+        .filter(|e| is_file_start(e).is_some())
+        .count();
+    assert!(started_after <= 3, "{started_after}");
     assert!(!fixture.base.join(".a3s").exists());
     assert!(matches!(
         events.all().last(),
@@ -572,6 +618,25 @@ async fn resume_skips_files_of_the_failed_attempt() {
     .await
     .expect("resumed");
     assert_eq!((report.skipped_by_resume, report.uploaded_files), (5, 7));
+
+    // A record for one target is not used for another.
+    let fixture = servers::ftp::fixture(false).await;
+    repo.upload_protocol = Some(fixture.protocol.clone());
+    let mut resume = UploadResume::new();
+    let content = failing_attempt(&repo, &mut resume, local).await;
+    std::fs::write(&victim, &content).expect("restore");
+    let other = servers::ftp::fixture(false).await;
+    repo.upload_protocol = Some(other.protocol.clone());
+    let report = upload(
+        &repo,
+        &mut resume,
+        &TransferCtx::new(),
+        &EventSender::noop(),
+    )
+    .await
+    .expect("other target");
+    assert_eq!((report.skipped_by_resume, report.uploaded_files), (0, 10));
+    assert_eq!(data_files(&other.base).len(), 10);
 
     // A rebuild between attempts discards the resume state.
     let fixture = servers::ftp::fixture(false).await;
@@ -772,4 +837,77 @@ async fn preconditions_fail_before_any_transfer() {
             ..
         })
     ));
+}
+
+/// A file below a folder named `racine` lives at the repository root on the server, as with
+/// Java: the upload puts it there, the content check expects it there, and a client downloads it
+/// from there back to its full local path.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn nested_racine_folder_round_trip() {
+    let fixture = servers::ftp::fixture(false).await;
+    let dir = tempfile::tempdir().expect("tempdir");
+    let local = dir.path().join("local");
+    std::fs::create_dir_all(local.join("@a/racine/sub")).expect("mkdir");
+    std::fs::create_dir_all(local.join("@a/addons")).expect("mkdir");
+    std::fs::write(local.join("@a/racine/x.pbo"), b"nested x").expect("write");
+    std::fs::write(local.join("@a/racine/sub/y.pbo"), b"nested y").expect("write");
+    std::fs::write(local.join("@a/addons/a.pbo"), b"plain").expect("write");
+    let repo = setup(ProtocolType::Ftp, &local, &fixture.protocol, false);
+    rebuild(&repo);
+
+    let report = upload_ok(&repo, &Events::default()).await;
+    assert_eq!(report.uploaded_files, 3);
+    let served = data_files(&fixture.base);
+    let served: Vec<&str> = served.keys().map(String::as_str).collect();
+    assert_eq!(served, ["@a/addons/a.pbo", "sub/y.pbo", "x.pbo"]);
+
+    // Nothing missing for the content check, nothing to do for a second upload.
+    let mut checked = repo.clone();
+    checked.protocol = fixture.protocol.clone();
+    let options = TransportOptions::from_protocol(&fixture.protocol);
+    let content = a3s_admin::check_repository_content(
+        &checked,
+        &options,
+        &TransferCtx::new(),
+        &EventSender::noop(),
+    )
+    .await
+    .expect("check");
+    assert_eq!((content.checked, content.missing.len()), (3, 0));
+    let again = upload_ok(&repo, &Events::default()).await;
+    assert_eq!((again.uploaded_files, again.deleted), (0, 0));
+
+    // A client synchronizes the server into an empty folder: full local paths.
+    let dest = dir.path().join("dest");
+    std::fs::create_dir_all(&dest).expect("mkdir");
+    let mut client = a3s_types::local::Repository::new("client", fixture.protocol.clone());
+    client.default_download_location = Some(dest.to_string_lossy().into_owned());
+    let store = Arc::new(a3s_sync::MemoryStore::new([client]));
+    let job = a3s_sync::SyncJob {
+        check: a3s_sync::CheckRequest {
+            repository_name: "client".to_owned(),
+            event_name: None,
+            protocol: fixture.protocol.clone(),
+            addons: Arc::new(a3s_sync::plan::NoAddons),
+        },
+        arma3_exe_path: None,
+        userconfig: a3s_sync::pipeline::UserconfigPolicy::Silent,
+        reconnect: a3s_sync::pipeline::ReconnectPolicy::NONE,
+    };
+    let synced =
+        a3s_sync::sync_repository(job, store, &CancellationToken::new(), &EventSender::noop())
+            .await;
+    assert_eq!(
+        synced.end,
+        a3s_sync::SyncEnd::Finished(Outcome::Success),
+        "{synced:?}"
+    );
+    assert_eq!(
+        data_files(&dest),
+        BTreeMap::from([
+            ("@a/addons/a.pbo".to_owned(), b"plain".to_vec()),
+            ("@a/racine/sub/y.pbo".to_owned(), b"nested y".to_vec()),
+            ("@a/racine/x.pbo".to_owned(), b"nested x".to_vec()),
+        ])
+    );
 }

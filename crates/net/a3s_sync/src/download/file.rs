@@ -12,7 +12,7 @@ use super::executor::{TaskEnd, Worker};
 use super::sink::DownloadedZip;
 use super::{PART_EXTENSION, ZIP_EXTENSION, ZSYNC_EXTENSION, zsync};
 use crate::remote::RemoteFile;
-use crate::{DownloadStatus, DownloadTask, DownloadTaskKind, RemoteError};
+use crate::{DownloadStatus, DownloadTask, DownloadTaskKind, RemoteError, remote_relative_path};
 
 /// `path` with [`PART_EXTENSION`] appended to its file name.
 pub(crate) fn part_path(path: &Path) -> PathBuf {
@@ -21,22 +21,26 @@ pub(crate) fn part_path(path: &Path) -> PathBuf {
     PathBuf::from(name)
 }
 
-/// The remote path of a full download: `relative_path`, or `"{relative_path}.zip"` for
+/// The remote path of a full download: the task's remote path, or `"{remote path}.zip"` for
 /// compressed leaves.
 // Mirrors dao/connection/AbstractConnexionDAO.java:266-280
 pub(crate) fn remote_path(task: &DownloadTask) -> String {
+    let remote = remote_relative_path(&task.relative_path);
     match task.kind {
         DownloadTaskKind::File {
             compressed: true, ..
-        } => format!("{}{ZIP_EXTENSION}", task.relative_path),
-        _ => task.relative_path.clone(),
+        } => format!("{remote}{ZIP_EXTENSION}"),
+        _ => remote.to_owned(),
     }
 }
 
 /// The remote path of the zsync control file of a leaf.
 // Mirrors dao/connection/http/HttpDAO.java:497-498
 pub(crate) fn control_path(task: &DownloadTask) -> String {
-    format!("{}{ZSYNC_EXTENSION}", task.relative_path)
+    format!(
+        "{}{ZSYNC_EXTENSION}",
+        remote_relative_path(&task.relative_path)
+    )
 }
 
 /// The resume offset: the length of the partial file iff the task is `Running` and
@@ -149,24 +153,9 @@ pub(crate) fn fetch_error(
     remote: &str,
     err: a3s_transport::Error,
 ) -> DownloadError {
-    let err = normalize_not_found(err, remote);
     match RemoteError::fetch(&worker.shared.request.protocol, &remote_file(remote), err) {
         RemoteError::Cancelled => DownloadError::Cancelled,
         other => DownloadError::Remote(other),
-    }
-}
-
-/// Some FTP servers accept `RETR` of a missing file and report `550` only when the transfer
-/// ends; the transport then returns the raw reply. Java checks the file before `RETR`
-/// (`FtpDAO.java:190-207`) and reports it as not found, so this does too.
-fn normalize_not_found(err: a3s_transport::Error, remote: &str) -> a3s_transport::Error {
-    match err {
-        a3s_transport::Error::Ftp(suppaftp::FtpError::UnexpectedResponse(response))
-            if response.status == suppaftp::Status::FileUnavailable =>
-        {
-            a3s_transport::Error::NotFound(remote.to_owned())
-        }
-        other => other,
     }
 }
 
@@ -396,6 +385,10 @@ mod tests {
         let compressed = file_task("@a/addons/x.pbo", true);
         assert_eq!(remote_path(&compressed), "@a/addons/x.pbo.zip");
         assert_eq!(control_path(&compressed), "@a/addons/x.pbo.zsync");
+        // Below a folder named `racine` the remote path restarts at the root, like Java.
+        let nested = file_task("@a/racine/x.pbo", true);
+        assert_eq!(remote_path(&nested), "x.pbo.zip");
+        assert_eq!(control_path(&nested), "x.pbo.zsync");
 
         let file = remote_file("@a/addons/x.pbo.zip");
         assert_eq!(file.relative_file_path(), "/@a/addons/x.pbo.zip");

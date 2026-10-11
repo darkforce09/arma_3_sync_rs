@@ -22,9 +22,10 @@ use a3s_types::local::protocol::host_url;
 use a3s_types::{AutoConfig, Changelogs, Protocol, ServerInfo, SyncTreeDirectory};
 use parking_lot::Mutex;
 
+pub(crate) use expected::expected_files;
 pub use expected::{expected_remote_files, has_zsync};
 
-use crate::upload::PlannedNode;
+use crate::upload::{RacineNodes, tree_nodes};
 
 /// Prefix of the message of a missing file.
 // Mirrors service/connection/ConnectionCheckProcessor.java:116-117
@@ -68,12 +69,6 @@ impl ContentCheckReport {
         lines.extend(self.error_messages());
         lines
     }
-}
-
-/// The console's progress line (printed for strictly increasing values).
-// Mirrors console/CommandGeneral.java:171-176
-pub fn console_progress_line(percent: u8) -> String {
-    format!("Repository check files... complete: {percent} %")
 }
 
 fn missing_message(file: &RemoteFile) -> String {
@@ -227,7 +222,7 @@ async fn run_check(
         .server_info
         .as_ref()
         .is_some_and(|s| s.compressed_pbo_files_only);
-    let nodes = tree_nodes(&sync);
+    let nodes = tree_nodes(&sync, RacineNodes::Directories);
     let files: Vec<RemoteFile> =
         expected_remote_files(&nodes, compressed_pbo_files_only, has_zsync(protocol))
             .into_iter()
@@ -236,16 +231,19 @@ async fn run_check(
     let connections = usize::try_from(repository.repository_check_connections()).unwrap_or(1);
     let mut transport = connection.into_transport();
     events.emit(SyncEvent::Phase(Phase::CheckingRemoteFiles));
-    let result = check_remote_files(
-        &mut transport,
-        Some((protocol, options)),
-        connections,
-        &files,
-        ctx,
-        events,
-        true,
-    )
-    .await;
+    let result = {
+        let mut session = transport.upload_session();
+        check_remote_files(
+            &mut session,
+            Some((protocol, options)),
+            connections,
+            &files,
+            ctx,
+            events,
+            true,
+        )
+        .await
+    };
     transport.close().await;
     let missing = result?;
     Ok(ContentCheckReport {
@@ -283,11 +281,6 @@ async fn fetch_check_metadata(
     Ok(sync)
 }
 
-/// Every node of `tree` (root excluded) in plan order.
-pub(crate) fn tree_nodes(tree: &SyncTreeDirectory) -> Vec<PlannedNode> {
-    crate::upload::plan_upload(tree, None).to_upload
-}
-
 /// Shared state of the check workers.
 struct CheckState<'a> {
     files: &'a [RemoteFile],
@@ -310,7 +303,8 @@ enum WorkerConnection<'a> {
 }
 
 /// Tests `files` with `exists` on `first` plus up to `connections - 1` new connections to
-/// `extra` (none without it), sharing one work index. Returns the indices of the missing
+/// `extra` (none without it), sharing one work index. The caller keeps `first` in an upload
+/// session; each new connection gets its own. Returns the indices of the missing
 /// files, sorted.
 ///
 /// The first error stops every worker and is returned. A missing file emits `FileFailed` when
@@ -376,7 +370,10 @@ async fn check_worker(slot: WorkerConnection<'_>, state: &CheckState<'_>) {
             match RemoteConnection::connect(protocol, options, &ctx).await {
                 Ok(connection) => {
                     let mut transport = connection.into_transport();
-                    check_files(&mut transport, state, &ctx).await;
+                    {
+                        let mut session = transport.upload_session();
+                        check_files(&mut session, state, &ctx).await;
+                    }
                     transport.close().await;
                 }
                 Err(err) => record_error(state, CheckError::from_remote(err)),
@@ -396,14 +393,14 @@ fn record_error(state: &CheckState<'_>, err: CheckError) {
     state.stop.cancel();
 }
 
+/// Tests files on `transport`, which the caller has in an upload session.
 async fn check_files(transport: &mut Transport, state: &CheckState<'_>, ctx: &TransferCtx) {
-    let mut session = transport.upload_session();
     while !state.stop.is_cancelled() {
         let index = state.next.fetch_add(1, Ordering::Relaxed);
         let Some(file) = state.files.get(index) else {
             break;
         };
-        match session.exists(&file.transport_path(), ctx).await {
+        match transport.exists(&file.transport_path(), ctx).await {
             Ok(true) => {}
             Ok(false) => {
                 state.missing.lock().push(index);

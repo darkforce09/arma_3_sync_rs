@@ -438,9 +438,10 @@ async fn file_completion(
         return Ok(0.0);
     }
     tracing::info!("Determining file completion: {}", local.display());
+    let remote_path = crate::remote_relative_path(&candidate.relative_path);
     let remote = RemoteFile::new(
-        format!("{}{ZSYNC_EXTENSION}", file_name(&candidate.relative_path)),
-        parent_relative_path(&candidate.relative_path),
+        format!("{}{ZSYNC_EXTENSION}", file_name(remote_path)),
+        parent_relative_path(remote_path),
         false,
     );
     let path = remote.transport_path();

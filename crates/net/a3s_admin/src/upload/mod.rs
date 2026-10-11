@@ -14,9 +14,13 @@
 //!    cancel once started;
 //! 4. remote nodes absent from the local tree are deleted.
 //!
-//! Differences from Java (none visible to clients): resume is keyed by path and the local
-//! `.a3s/sync` ([`UploadResume`]); parallel workers share one queue and the first failure stops
-//! them all; a folder named `racine` below the root is uploaded to its real path.
+//! Remote paths are Java's: below a folder named `racine` they restart at the repository root
+//! (`@a/racine/x.pbo` is uploaded as `x.pbo`), where Java clients download them from. The local
+//! file is read from its real path in the repository folder (Java reads `<folder>/x.pbo`, which
+//! is missing or another file).
+//!
+//! Other differences from Java: resume is keyed by path, target and the local `.a3s/sync`
+//! ([`UploadResume`]); parallel workers share one queue and the first failure stops them all.
 
 #![allow(
     clippy::result_large_err,
@@ -44,18 +48,17 @@ use parking_lot::Mutex;
 use sha1::{Digest as _, Sha1};
 
 pub use plan::{PlannedNode, UploadPlan, plan_upload};
+pub(crate) use plan::{RacineNodes, tree_nodes};
 pub use resume::UploadResume;
-pub use roundtrip::{
-    RoundTripError, RoundTripOverrides, hash_set_roundtrip_capacity, java_roundtrip,
-    java_roundtrip_bytes,
-};
+pub use roundtrip::{RoundTripError, RoundTripOverrides, java_roundtrip, java_roundtrip_bytes};
 
 pub(crate) use roundtrip::distinct_boolean;
 
 use self::transfer::Meter;
 use crate::build::carry::RawGraph;
 use crate::check::{
-    CheckError, check_remote_files, event_error, expected_remote_files, has_zsync, transport_kind,
+    CheckError, check_remote_files, event_error, expected_files, expected_remote_files, has_zsync,
+    transport_kind,
 };
 
 // Mirrors dao/A3SFilesAccessor.java:26
@@ -329,6 +332,22 @@ fn read_local_metadata(
     })
 }
 
+/// Key of an upload attempt: the target and the local `.a3s/sync` digest.
+fn resume_key(target: &Protocol, sync_digest: &[u8; 20]) -> [u8; 20] {
+    let mut hasher = Sha1::new();
+    for part in [
+        target.protocol_type.description(),
+        target.hostname(),
+        target.port.as_str(),
+        target.remote_path(),
+    ] {
+        hasher.update(part.as_bytes());
+        hasher.update([0]);
+    }
+    hasher.update(sync_digest);
+    hasher.finalize().into()
+}
+
 /// One remote file or directory to upload.
 struct UploadEntry {
     remote: RemoteFile,
@@ -411,7 +430,7 @@ async fn run_upload(
         plan.to_upload.len(),
         plan.to_delete.len()
     );
-    resume.begin(local.sync_digest);
+    resume.begin(resume_key(upload_protocol, &local.sync_digest));
 
     let mut transport = connection.into_transport();
     let pipeline = Pipeline {
@@ -460,11 +479,11 @@ impl Pipeline<'_> {
         // Check.
         self.events
             .emit(SyncEvent::Phase(Phase::CheckingRemoteFiles));
-        let check_files: Vec<RemoteFile> =
-            expected_remote_files(&plan.to_check, only_zip, with_zsync)
+        let (check_files, check_tree_paths): (Vec<RemoteFile>, Vec<String>) =
+            expected_files(&plan.to_check, only_zip, with_zsync)
                 .into_iter()
-                .filter(|f| !f.is_directory)
-                .collect();
+                .filter(|(f, _)| !f.is_directory)
+                .unzip();
         let missing = check_remote_files(
             transport,
             None,
@@ -484,11 +503,16 @@ impl Pipeline<'_> {
 
         // Upload.
         self.events.emit(SyncEvent::Phase(Phase::Uploading));
-        let mut remote_files = expected_remote_files(&plan.to_upload, only_zip, with_zsync);
-        remote_files.extend(missing.into_iter().map(|i| check_files[i].clone()));
+        let mut remote_files = expected_files(&plan.to_upload, only_zip, with_zsync);
+        remote_files.extend(
+            missing
+                .into_iter()
+                .map(|i| (check_files[i].clone(), check_tree_paths[i].clone())),
+        );
         let mut entries = Vec::with_capacity(remote_files.len());
-        for remote in remote_files {
-            let local = (!remote.is_directory).then(|| self.root.join(remote.transport_path()));
+        for (remote, tree_path) in remote_files {
+            // The file in the repository folder; its remote path may be shorter (`racine`).
+            let local = (!remote.is_directory).then(|| self.root.join(&tree_path));
             if resume.is_done(&remote.transport_path(), local.as_deref()) {
                 report.skipped_by_resume += 1;
                 continue;

@@ -284,7 +284,11 @@ async fn attempt(worker: &mut Worker, task: &DownloadTask, size: u64) -> Attempt
             );
             let fetched = race(
                 &worker.shared.run,
-                transport.fetch_range(&task.relative_path, range.clone(), &ctx),
+                transport.fetch_range(
+                    crate::remote_relative_path(&task.relative_path),
+                    range.clone(),
+                    &ctx,
+                ),
             )
             .await;
             match fetched {
@@ -323,7 +327,7 @@ async fn attempt(worker: &mut Worker, task: &DownloadTask, size: u64) -> Attempt
         delete_part().await;
         return Attempt::Transport {
             err,
-            remote: task.relative_path.clone(),
+            remote: crate::remote_relative_path(&task.relative_path).to_owned(),
             received,
         };
     }
