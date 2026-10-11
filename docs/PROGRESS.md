@@ -13,7 +13,6 @@ Blockers: none
 | WP09 | a3s_sync download | IMPL | 0 | impl=ab815ed7 | 1 | (worktree) | | | 2026-10-11 |
 | WP04 | a3s_repo_files local/legacy | IMPL | 0 | impl=a20b9ae5 | 2 | (worktree) | | | 2026-10-11 |
 | WP11 | a3s_admin build | IMPL | 0 | impl=a39b7a5c | 3 | (worktree) | | | 2026-10-11 |
-| WP08 | a3s_sync plan | RE-REVIEW (security delta) | 1 | impl=a1349fd3 ver=a34e0b61 rev=aab55615 | 2 | worktree-agent-a1349fd36b09e8a4b | .claude/worktrees/agent-a1349fd36b09e8a4b | 68c648e | 2026-10-11 |
 
 ## Done before orchestration
 
@@ -48,7 +47,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 | 1 | WP11 | a3s_admin build | WP03 | IMPL | | wire-touching |
 | 1 | WP13 | a3s_addons | WP03 | SPEC_OK | | |
 | 1 | WP15 | a3s_platform | WP02 | SPEC_OK | | |
-| 2 | WP08 | a3s_sync plan | WP07 | VERIFY | | |
+| 2 | WP08 | a3s_sync plan | WP07 | MERGED | | |
 | 2 | WP09 | a3s_sync download | WP07 | IMPL | | |
 | 2 | WP12 | a3s_admin upload/check/events | WP06, WP07, WP11 | SPEC_OK | | split WP12a → WP12b |
 | 2 | WP14 | app services | WP04, WP05 | SPEC_OK | | |
@@ -106,6 +105,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 - F-15 (fixtures now on main) WP03 PROVISIONAL UID markers can be lifted (WP01 verifier: all 25 descriptors + 3 computed UIDs match JDK 25).
 - F-16 a3s_ui dialog focus MINORs: popup press steals dialog focus; focus not handed back when focused dialog closes; Escape not gated by egui_wants_keyboard_input when focus moved by Tab; modal keys only from 2nd frame (document).
 - F-17 a3s_sync: expose RemoteConnection::fetch_file (poisons + B13 error) and use it from completion.rs; run classify_leaves off the async thread.
+- F-18 WP08 MINORs: matched remote folder that is a local symlink is still listed (doc says never followed — narrow doc or skip); completion take() empties tree on future drop (document/clone); reject Windows trailing dot/space and reserved device names; symlinked dir delete needs remove_dir on Windows (WP10); validate_names runs twice.
 - F-2 CI: add mesa Vulkan drivers to rust.yml for egui_kittest snapshot tests (WP20 Q10).
 
 ## Live test log
