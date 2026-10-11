@@ -233,11 +233,24 @@ impl SyncTreeDirectory {
     }
 }
 
+/// SHA-1 of an empty file (`FileAccessMethods.computeSHA1`).
+const EMPTY_FILE_SHA1: &str = "0";
+
+/// Encodes a leaf's `sha1`. The empty-file value `"0"` is a Java string literal returned by
+/// `computeSHA1`, so every empty leaf shares one instance; other hashes are separate strings.
+// Mirrors dao/FileAccessMethods.java:238-240
+fn encode_sha1(b: &mut Builder, sha1: Option<&str>) -> Value {
+    match sha1 {
+        Some(EMPTY_FILE_SHA1) => b.interned(EMPTY_FILE_SHA1),
+        other => b.opt_string(other),
+    }
+}
+
 impl SyncTreeLeaf {
     fn encode_with_parent(&self, b: &mut Builder, parent: NodeId) -> Value {
         let class = wire::sync_tree_leaf_desc(b);
         let name = b.string(&self.name);
-        let sha1 = b.opt_string(self.sha1.as_deref());
+        let sha1 = encode_sha1(b, self.sha1.as_deref());
         b.simple_object(
             class,
             vec![
@@ -273,7 +286,7 @@ impl JavaCodec for SyncTreeLeaf {
     fn encode(&self, b: &mut Builder) -> Value {
         let class = wire::sync_tree_leaf_desc(b);
         let name = b.string(&self.name);
-        let sha1 = b.opt_string(self.sha1.as_deref());
+        let sha1 = encode_sha1(b, self.sha1.as_deref());
         b.simple_object(
             class,
             vec![
@@ -298,5 +311,49 @@ impl JavaCodec for SyncTreeDirectory {
 
     fn encode(&self, b: &mut Builder) -> Value {
         self.encode_node(b, None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{SyncTreeDirectory, SyncTreeLeaf, SyncTreeNode};
+    use crate::wire::{decode_stream, encode_stream};
+
+    fn leaf(name: &str, sha1: &str) -> SyncTreeNode {
+        SyncTreeNode::Leaf(SyncTreeLeaf {
+            name: name.to_owned(),
+            sha1: Some(sha1.to_owned()),
+            ..Default::default()
+        })
+    }
+
+    /// All empty-file leaves share the literal `"0"`, other hashes are separate strings.
+    #[test]
+    fn empty_file_sha1_is_one_shared_instance() {
+        let mut sub = SyncTreeDirectory::new("sub");
+        sub.children = vec![leaf("c", "0"), leaf("d", "abc")];
+        let mut root = SyncTreeDirectory::new_root();
+        root.children = vec![
+            SyncTreeNode::Directory(sub),
+            leaf("a", "0"),
+            leaf("b", "abc"),
+        ];
+        let bytes = encode_stream(&root).unwrap();
+        assert_eq!(decode_stream::<SyncTreeDirectory>(&bytes).unwrap(), root);
+
+        let graph = a3s_jserial::read(&bytes).unwrap();
+        let mut sha1s = Vec::new();
+        for (index, node) in graph.nodes.iter().enumerate() {
+            let id = a3s_jserial::NodeId(u32::try_from(index).unwrap());
+            if matches!(node, a3s_jserial::Node::Object(_))
+                && graph.class_name_of(id).unwrap() == crate::wire::SYNC_TREE_LEAF
+            {
+                sha1s.push(graph.field(id, "sha1").unwrap());
+            }
+        }
+        // Leaves in stream order: c, d, a, b.
+        assert_eq!(sha1s.len(), 4);
+        assert_eq!(sha1s[0], sha1s[2], "the two \"0\" are one instance");
+        assert_ne!(sha1s[1], sha1s[3], "equal non-empty hashes stay separate");
     }
 }

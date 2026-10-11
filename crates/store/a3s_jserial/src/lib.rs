@@ -29,5 +29,7 @@ pub use model::{
     Array, ArrayData, ClassData, ClassDesc, Content, EnumConst, FieldDesc, FieldType, Graph, Node,
     NodeId, Object, Value,
 };
-pub use reader::{Limits, read, read_with_limits};
+pub use reader::{
+    JavaFilterLimits, JavaFilterStats, Limits, java_filter_stats, read, read_with_limits,
+};
 pub use writer::write;

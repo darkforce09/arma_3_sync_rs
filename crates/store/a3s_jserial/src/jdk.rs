@@ -567,6 +567,41 @@ impl Builder {
         Value::Ref(id)
     }
 
+    /// `java.util.HashMap` with explicit `writeObject` parameters: `buckets` (the table length
+    /// Java writes), the `threshold` field, and the entries **in the given order**.
+    ///
+    /// Keys and values are written as given, so shared instances stay shared. Callers that
+    /// model Java's capacity and iteration rules (e.g. maps filled by `putAll`) use this instead
+    /// of [`Self::hash_map_str`].
+    pub fn hash_map(&mut self, entries: &[(Value, Value)], buckets: i32, threshold: i32) -> Value {
+        let class = self.collection_desc(
+            HASH_MAP,
+            362_498_820_763_181_265,
+            &[
+                FieldSpec::prim(FieldType::Float, "loadFactor"),
+                FieldSpec::prim(FieldType::Int, "threshold"),
+            ],
+        );
+        let mut header = Vec::with_capacity(8);
+        header.extend_from_slice(&buckets.to_be_bytes());
+        let len = i32::try_from(entries.len()).expect("map too large");
+        header.extend_from_slice(&len.to_be_bytes());
+        let mut annotations = block_data(&header);
+        for (key, value) in entries {
+            annotations.push(Content::Value(*key));
+            annotations.push(Content::Value(*value));
+        }
+        let id = self.reserve_object(class);
+        self.set_object_data(
+            id,
+            vec![ClassData {
+                values: vec![Value::Float(LOAD_FACTOR), Value::Int(threshold)],
+                annotations,
+            }],
+        );
+        Value::Ref(id)
+    }
+
     /// `java.util.HashSet` built with `new HashSet<>()` and `add`s of strings in the given
     /// order. Elements are written in Java's iteration order.
     pub fn hash_set_str(&mut self, elements: &[String]) -> Value {
@@ -637,7 +672,9 @@ impl Builder {
 
 #[cfg(test)]
 mod tests {
-    use super::{hash_map_capacity, java_string_hash};
+    use super::{
+        AnnotationReader, Builder, Graph, HASH_MAP, Value, hash_map_capacity, java_string_hash,
+    };
 
     #[test]
     fn string_hash_matches_java() {
@@ -655,5 +692,35 @@ mod tests {
         assert_eq!(hash_map_capacity(13), 32);
         assert_eq!(hash_map_capacity(24), 32);
         assert_eq!(hash_map_capacity(25), 64);
+    }
+
+    #[test]
+    fn hash_map_keeps_given_order_parameters_and_sharing() {
+        let mut b = Builder::new();
+        let key = b.string("k");
+        let other = b.string("z");
+        let yes = b.boolean(true);
+        let map = b.hash_map(&[(other, yes), (key, yes)], 2, 1);
+        // Same entries as `hash_map_str`, but in the given order and with our parameters.
+        let graph = b.finish(map);
+        let bytes = crate::write(&graph).unwrap();
+        let read = crate::read(&bytes).unwrap();
+        let root = read.root_value().unwrap();
+        let entries = map_entries(&read, root);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(read.opt_string(entries[0].0).unwrap(), Some("z"));
+        assert_eq!(read.opt_string(entries[1].0).unwrap(), Some("k"));
+        // The Boolean is written once and referenced the second time.
+        assert_eq!(entries[0].1, entries[1].1);
+        let id = root.as_ref().unwrap();
+        assert_eq!(read.field_i32(id, "threshold").unwrap(), 1);
+        let data = read.class_data_of(id, HASH_MAP).unwrap();
+        let mut r = AnnotationReader::new(&data.annotations, HASH_MAP);
+        assert_eq!(r.i32().unwrap(), 2);
+        assert_eq!(r.i32().unwrap(), 2);
+    }
+
+    fn map_entries(graph: &Graph, value: Value) -> Vec<(Value, Value)> {
+        super::map(graph, value).unwrap().unwrap()
     }
 }
