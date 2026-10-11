@@ -10,7 +10,8 @@ Blockers: none
 | WP | Crate | State | Round | Agents | Slot | Branch | Worktree | HEAD | Since |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-10-11 | a3s_sync (WP07 branch) | a19_live_wog_check, import_autoconfig WOG | PASS |
-| WP08 | a3s_sync plan | VERIFY(+live) ∥ REVIEW | 0 | impl=a1349fd3 ver=a34e0b61 rev=aab55615 | 2 | worktree-agent-a1349fd36b09e8a4b | .claude/worktrees/agent-a1349fd36b09e8a4b | 68c648e | 2026-10-11 |
+| WP09 | a3s_sync download | IMPL | 0 | impl=ab815ed7 | 1 | (worktree) | | | 2026-10-11 |
+| WP08 | a3s_sync plan | VERIFY(+live); review REQUEST_CHANGES (BLOCKER path traversal, D-15) → fix after verifier | 0 | impl=a1349fd3 ver=a34e0b61 rev=aab55615 | 2 | worktree-agent-a1349fd36b09e8a4b | .claude/worktrees/agent-a1349fd36b09e8a4b | 68c648e | 2026-10-11 |
 | WP01 | java_fixture_harness | FIX round 1 (review 1 MAJOR scenario mtimes; verifier locale) | 1 | impl=ae232646 | 3 | worktree-agent-ae2326461a583e177 | .claude/worktrees/agent-ae2326461a583e177 | 022f896 | 2026-10-11 |
 
 ## Done before orchestration
@@ -47,7 +48,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 | 1 | WP13 | a3s_addons | WP03 | SPEC_OK | | |
 | 1 | WP15 | a3s_platform | WP02 | SPEC_OK | | |
 | 2 | WP08 | a3s_sync plan | WP07 | VERIFY | | |
-| 2 | WP09 | a3s_sync download | WP07 | SPEC_OK | | |
+| 2 | WP09 | a3s_sync download | WP07 | IMPL | | |
 | 2 | WP12 | a3s_admin upload/check/events | WP06, WP07, WP11 | SPEC_OK | | split WP12a → WP12b |
 | 2 | WP14 | app services | WP04, WP05 | SPEC_OK | | |
 | 2 | WP16 | a3s_launch | WP13, WP15 | SPEC_OK | | |
