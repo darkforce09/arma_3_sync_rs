@@ -118,6 +118,7 @@ dependencies = [
  "futures",
  "libunftp",
  "parking_lot",
+ "reqwest",
  "suppaftp",
  "tempfile",
  "thiserror 2.0.21",

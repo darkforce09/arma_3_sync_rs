@@ -50,7 +50,11 @@ pub async fn download(
 
     // B3
     events.emit(SyncEvent::Phase(Phase::Downloading));
-    let total: u64 = tasks.iter().map(DownloadTask::download_size).sum();
+    // Sizes come from the remote tree: sums saturate instead of overflowing.
+    let total = tasks
+        .iter()
+        .map(DownloadTask::download_size)
+        .fold(0u64, u64::saturating_add);
     let files = tasks.iter().filter(|t| is_file(t)).count();
     events.emit(SyncEvent::TransferTotal {
         bytes: total,
@@ -91,7 +95,7 @@ pub async fn download(
     if !queue.is_empty() && !shared.should_stop() {
         let workers = (request.connections.max(1) as usize).min(queue.len());
         shared.start_workers(queue, workers);
-        run_workers(&shared, cancel, workers).await;
+        run_workers(&shared, workers).await;
     }
 
     // B28
@@ -100,9 +104,9 @@ pub async fn download(
     shared.finish_report(tasks, cancel, started)
 }
 
-/// Runs the workers and the monitor until every worker ended, or the caller cancelled and the
-/// grace period expired.
-async fn run_workers(shared: &Arc<Shared>, cancel: &CancellationToken, workers: usize) {
+/// Runs the workers and the monitor until every worker ended, or the run was cancelled (by the
+/// caller or by a stop) and the grace period expired.
+async fn run_workers(shared: &Arc<Shared>, workers: usize) {
     let mut set = tokio::task::JoinSet::new();
     for id in 0..workers {
         set.spawn(worker(Arc::clone(shared), id));
@@ -117,7 +121,7 @@ async fn run_workers(shared: &Arc<Shared>, cancel: &CancellationToken, workers: 
     loop {
         tokio::select! {
             biased;
-            () = cancel.cancelled(), if deadline.is_none() => {
+            () = shared.run.cancelled(), if deadline.is_none() => {
                 deadline = Some(tokio::time::Instant::now() + CANCEL_GRACE);
             }
             () = sleep_until(deadline), if deadline.is_some() => {
@@ -129,7 +133,9 @@ async fn run_workers(shared: &Arc<Shared>, cancel: &CancellationToken, workers: 
                 None => break,
                 Some(Err(err)) if err.is_panic() => {
                     tracing::error!("download worker panicked: {err}");
-                    shared.run.cancel();
+                    shared.fail(DownloadError::Internal {
+                        message: format!("A download worker failed unexpectedly: {err}"),
+                    });
                 }
                 Some(_) => {}
             },
@@ -225,7 +231,31 @@ struct State {
     max_active: u32,
     connecting: usize,
     connected: usize,
+    /// The first connection failure of a worker (B27).
+    first_connect_error: Option<DownloadError>,
     stop: Option<Stop>,
+}
+
+/// Something to do once the state lock is released: events and zip hand-offs never run under
+/// the lock.
+#[derive(Debug)]
+enum Effect {
+    Emit(SyncEvent),
+    Submit(DownloadedZip),
+}
+
+/// Effects collected under the lock.
+#[derive(Debug, Default)]
+struct Effects(Vec<Effect>);
+
+impl Effects {
+    fn emit(&mut self, event: SyncEvent) {
+        self.0.push(Effect::Emit(event));
+    }
+
+    fn submit(&mut self, zip: DownloadedZip) {
+        self.0.push(Effect::Submit(zip));
+    }
 }
 
 /// State shared by the workers, the monitor and [`download`].
@@ -324,8 +354,23 @@ impl Shared {
         let mut state = self.state.lock();
         let received = state.slots[id].attempt_bytes();
         state.slots[id].progress = Arc::new(AtomicU64::new(0));
-        state.finished_bytes += received;
+        state.finished_bytes = state.finished_bytes.saturating_add(received);
         received
+    }
+
+    /// Corrects the offset of worker `id`'s attempt when the transport restarted from 0.
+    pub(crate) fn set_attempt_offset(&self, id: usize, offset: u64) {
+        self.state.lock().slots[id].offset = offset;
+    }
+
+    /// Runs effects collected under the lock.
+    fn apply(&self, effects: Effects) {
+        for effect in effects.0 {
+            match effect {
+                Effect::Emit(event) => self.events.emit(event),
+                Effect::Submit(zip) => self.zips.submit(zip),
+            }
+        }
     }
 
     fn connected(&self) {
@@ -334,24 +379,41 @@ impl Shared {
         state.connected += 1;
     }
 
-    /// B27: a worker could not connect. The run ends when no worker connected.
+    /// B27: a worker could not connect (`None`: cancelled). When no worker connected, the run
+    /// ends with the first failure.
     fn connect_failed(&self, error: Option<DownloadError>) {
+        let mut effects = Effects::default();
+        {
+            let mut state = self.state.lock();
+            state.connecting -= 1;
+            if let Some(error) = error {
+                tracing::warn!("Download connection failed: {error}");
+                if state.first_connect_error.is_none() {
+                    state.first_connect_error = Some(error);
+                }
+            }
+            let all_failed = state.connecting == 0 && state.connected == 0;
+            if all_failed
+                && state.stop.is_none()
+                && !self.run.is_cancelled()
+                && let Some(error) = state.first_connect_error.take()
+            {
+                if error.is_connection_lost() {
+                    state.stop = Some(Stop::ConnectionLost(error));
+                    effects.emit(SyncEvent::ConnectionLost);
+                } else {
+                    state.stop = Some(Stop::Failed(error));
+                }
+                self.run.cancel();
+            }
+        }
+        self.apply(effects);
+    }
+
+    /// Ends the run with `error` (a worker failed unexpectedly).
+    fn fail(&self, error: DownloadError) {
         let mut state = self.state.lock();
-        state.connecting -= 1;
-        let Some(error) = error else {
-            return; // cancelled
-        };
-        tracing::warn!("Download connection failed: {error}");
-        if state.connecting > 0 || state.connected > 0 || state.stop.is_some() {
-            return;
-        }
-        if self.run.is_cancelled() {
-            return;
-        }
-        if error.is_connection_lost() {
-            state.stop = Some(Stop::ConnectionLost(error));
-            self.events.emit(SyncEvent::ConnectionLost);
-        } else {
+        if state.stop.is_none() && !self.run.is_cancelled() {
             state.stop = Some(Stop::Failed(error));
         }
         self.run.cancel();
@@ -360,78 +422,93 @@ impl Shared {
     /// Takes the next task for worker `id` (B6), marks the worker active (B29) and takes the
     /// reporter slot if it is free (B31).
     fn take_next(&self, id: usize) -> Option<usize> {
-        let mut state = self.state.lock();
-        if state.stop.is_some() || self.run.is_cancelled() {
-            return None;
-        }
-        let index = state.queue.pop()?;
-        let task = &self.tasks[index];
-        let slot = &mut state.slots[id];
-        slot.task = Some(index);
-        slot.offset = 0;
-        slot.percent_base = 0;
-        slot.cap = task.download_size();
-        slot.progress = Arc::new(AtomicU64::new(0));
-        state.active += 1;
-        state.max_active = state.max_active.max(state.active);
-        if state.reporter.is_none() {
-            state.reporter = Some(id);
-        }
-        self.events.emit(SyncEvent::ActiveConnections {
-            active: state.active,
-        });
-        self.events.emit(SyncEvent::FileStarted {
-            relative_path: task.relative_path.clone(),
-        });
+        let mut effects = Effects::default();
+        let index = {
+            let mut state = self.state.lock();
+            if state.stop.is_some() || self.run.is_cancelled() {
+                return None;
+            }
+            let index = state.queue.pop()?;
+            let task = &self.tasks[index];
+            let slot = &mut state.slots[id];
+            slot.task = Some(index);
+            slot.offset = 0;
+            slot.percent_base = 0;
+            slot.cap = task.download_size();
+            slot.progress = Arc::new(AtomicU64::new(0));
+            state.active += 1;
+            state.max_active = state.max_active.max(state.active);
+            if state.reporter.is_none() {
+                state.reporter = Some(id);
+            }
+            effects.emit(SyncEvent::ActiveConnections {
+                active: state.active,
+            });
+            effects.emit(SyncEvent::FileStarted {
+                relative_path: task.relative_path.clone(),
+            });
+            index
+        };
+        self.apply(effects);
         Some(index)
     }
 
     /// Records the end of a task taken by worker `id`.
     // Mirrors service/connection/ConnectionDownloadProcessor.java:89-126
     fn finish_task(&self, id: usize, index: usize, end: TaskEnd) {
-        let mut state = self.state.lock();
-        let slot = &mut state.slots[id];
-        slot.task = None;
-        slot.offset = 0;
-        state.active -= 1;
-        self.events.emit(SyncEvent::ActiveConnections {
-            active: state.active,
-        });
-        let failed = !matches!(end, TaskEnd::Done(_));
-        self.record(&mut state, index, end);
-        if failed && state.reporter == Some(id) {
-            release_reporter(&mut state);
+        let mut effects = Effects::default();
+        {
+            let mut state = self.state.lock();
+            let slot = &mut state.slots[id];
+            slot.task = None;
+            slot.offset = 0;
+            state.active -= 1;
+            effects.emit(SyncEvent::ActiveConnections {
+                active: state.active,
+            });
+            let failed = !matches!(end, TaskEnd::Done(_));
+            self.record(&mut state, &mut effects, index, end);
+            if failed && state.reporter == Some(id) {
+                release_reporter(&mut state);
+            }
         }
+        self.apply(effects);
     }
 
     /// Records the end of a directory task (B5).
     fn finish_directory(&self, index: usize, end: TaskEnd) {
-        let relative_path = self.tasks[index].relative_path.clone();
-        self.events.emit(SyncEvent::FileStarted { relative_path });
-        let mut state = self.state.lock();
-        self.record(&mut state, index, end);
+        let mut effects = Effects::default();
+        effects.emit(SyncEvent::FileStarted {
+            relative_path: self.tasks[index].relative_path.clone(),
+        });
+        {
+            let mut state = self.state.lock();
+            self.record(&mut state, &mut effects, index, end);
+        }
+        self.apply(effects);
     }
 
-    fn record(&self, state: &mut State, index: usize, end: TaskEnd) {
+    fn record(&self, state: &mut State, effects: &mut Effects, index: usize, end: TaskEnd) {
         let task = &self.tasks[index];
         match end {
             TaskEnd::Done(zip) => {
                 state.statuses[index] = DownloadStatus::Done;
                 state.files_done += 1;
                 if is_file(task) {
-                    state.done_size += task.download_size();
+                    state.done_size = state.done_size.saturating_add(task.download_size());
                 }
                 if let Some(zip) = zip {
-                    self.zips.submit(zip.clone());
+                    effects.submit(zip.clone());
                     state.zips.push(zip);
                 }
-                self.events.emit(SyncEvent::FileDone {
+                effects.emit(SyncEvent::FileDone {
                     relative_path: task.relative_path.clone(),
                 });
             }
             TaskEnd::Failed(error) => {
                 // Errors raised after a stop or a cancel are not recorded (B15, B23).
                 if state.stop.is_some() || self.run.is_cancelled() {
+                    tracing::debug!("Ignored after stop: {}: {error}", task.relative_path);
                     return;
                 }
                 let error = FileError {
@@ -439,7 +516,7 @@ impl Shared {
                     error,
                 };
                 tracing::warn!("Download failed: {}: {}", error.relative_path, error.error);
-                self.events.emit(SyncEvent::FileFailed {
+                effects.emit(SyncEvent::FileFailed {
                     relative_path: error.relative_path.clone(),
                     error: error.to_event_error(),
                 });
@@ -456,7 +533,7 @@ impl Shared {
                 }
                 tracing::warn!("Connection lost: {error}");
                 state.stop = Some(Stop::ConnectionLost(error));
-                self.events.emit(SyncEvent::ConnectionLost);
+                effects.emit(SyncEvent::ConnectionLost);
                 self.run.cancel();
             }
             TaskEnd::Cancelled => {}
@@ -477,9 +554,10 @@ impl Shared {
         let mut run_bytes = state.finished_bytes;
         for slot in &state.slots {
             let bytes = slot.attempt_bytes();
-            run_bytes += bytes;
+            run_bytes = run_bytes.saturating_add(bytes);
             if slot.task.is_some() {
-                transferred += (slot.offset + bytes).min(slot.cap);
+                transferred =
+                    transferred.saturating_add(slot.offset.saturating_add(bytes).min(slot.cap));
             }
         }
         let current = state
@@ -489,7 +567,10 @@ impl Shared {
         let (current_file, current_file_percent) = match current {
             Some((index, slot)) => (
                 Some(self.tasks[index].relative_path.clone()),
-                file_percent(slot.offset + slot.attempt_bytes(), slot.percent_base),
+                file_percent(
+                    slot.offset.saturating_add(slot.attempt_bytes()),
+                    slot.percent_base,
+                ),
             ),
             None => (None, 0),
         };

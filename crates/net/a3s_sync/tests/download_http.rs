@@ -1099,19 +1099,13 @@ async fn d15_hostile_tasks_never_write_outside() {
     escape.destination_dir = dest.clone();
     let mut nested = file_task(&dest, "@a/x.pbo", 4);
     nested.relative_path = "@a/../../evil".to_owned();
-    let mut dotdot_dir = file_task(&dest, "@a/x.pbo", 4);
-    dotdot_dir.destination_dir = dest.join("@a/../..");
+    let mut absolute = file_task(&dest, "@a/x.pbo", 4);
+    absolute.relative_path = "/evil".to_owned();
+    let mut backslash = file_task(&dest, "@a/x.pbo", 4);
+    backslash.relative_path = "@a/..\\..\\evil".to_owned();
     let mut dir = dir_task(&dest, "@a");
     dir.relative_path = "..".to_owned();
-    let mut tasks = vec![dir, escape, nested, dotdot_dir];
-    #[cfg(unix)]
-    {
-        let outside = outer.path().join("outside");
-        std::fs::create_dir_all(&outside).expect("mkdir");
-        std::os::unix::fs::symlink(&outside, dest.join("@link")).expect("symlink");
-        tasks.push(file_task(&dest, "@link/x.pbo", 4));
-        server.put("@link/x.pbo", b"link");
-    }
+    let mut tasks = vec![dir, escape, nested, absolute, backslash];
     let n = tasks.len();
     let cancel = CancellationToken::new();
     let (report, events) = run(
@@ -1133,11 +1127,217 @@ async fn d15_hostile_tasks_never_write_outside() {
     assert!(server.seen().is_empty(), "no request for hostile tasks");
     assert!(!outer.path().join("evil").exists());
     assert!(!outer.path().join("evil.part").exists());
-    #[cfg(unix)]
-    assert_eq!(
-        std::fs::read_dir(outer.path().join("outside"))
-            .expect("outside")
-            .count(),
-        0
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a10_cancel_during_zsync_assembly() {
+    const LEN: usize = 64 * 1024 * 1024;
+    let server = HttpServer::start().await;
+    let dest_dir = tempfile::tempdir().expect("tempdir");
+    let dest = dest_dir.path();
+    // The new file differs from the local one in its last block only: assembly copies 64 MiB
+    // of local blocks.
+    let mut new = random_bytes(LEN, 31);
+    let old = new.clone();
+    let last = LEN - 8192;
+    new[last..].copy_from_slice(&random_bytes(8192, 32));
+    server.put("@a/big.pbo", &new);
+    let control = control_for(&new, &server.path("@a/big.pbo"));
+    drop(new);
+    server.put("@a/big.pbo.zsync", &control.to_bytes());
+    std::fs::create_dir_all(dest.join("@a")).expect("mkdir");
+    let local = dest.join("@a/big.pbo");
+    std::fs::write(&local, &old).expect("local");
+    let mut tasks = vec![with_complete(
+        file_task(dest, "@a/big.pbo", LEN as u64),
+        99.0,
+    )];
+
+    let cancel = CancellationToken::new();
+    let part = dest.join("@a/big.pbo.part");
+    let watcher = {
+        let cancel = cancel.clone();
+        tokio::spawn(async move {
+            while !part.exists() {
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+            cancel.cancel();
+            Instant::now()
+        })
+    };
+    let (report, events) = run(
+        &request(server.protocol(), 1),
+        &mut tasks,
+        Arc::new(NoZipSink),
+        &cancel,
+    )
+    .await;
+    let returned = Instant::now();
+    let cancelled_at = watcher.await.expect("watcher");
+    assert!(returned.duration_since(cancelled_at) < Duration::from_secs(1));
+    assert!(
+        matches!(report.end, DownloadEnd::Cancelled),
+        "{:?}",
+        report.end
     );
+    assert!(part_files(dest).is_empty(), "zsync .part must be deleted");
+    assert_eq!(file_failed(&events), 0);
+    assert_eq!(tasks[0].status, DownloadStatus::Running);
+    assert!(
+        std::fs::read(&local).expect("local") == old,
+        "local file intact"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a12_zsync_range_416_or_short_body_falls_back() {
+    let server = HttpServer::start().await;
+    let dest_dir = tempfile::tempdir().expect("tempdir");
+    let dest = dest_dir.path();
+    let (old, new) = zsync_contents();
+    server.put("@a/x.pbo", &new);
+    let control = control_for(&new, &server.path("@a/x.pbo"));
+    server.put("@a/x.pbo.zsync", &control.to_bytes());
+    let zip = random_bytes(4000, 33);
+    server.put("@a/x.pbo.zip", &zip);
+    let local = dest.join("@a/x.pbo");
+    std::fs::create_dir_all(dest.join("@a")).expect("mkdir");
+    let task = with_complete(
+        compressed_task(dest, "@a/x.pbo", new.len() as u64, zip.len() as u64, "s"),
+        50.0,
+    );
+
+    for (label, rule) in [
+        (
+            "416",
+            Rule {
+                status: Some(416),
+                ..Rule::default()
+            },
+        ),
+        (
+            "short body",
+            Rule {
+                truncate_body: Some(100),
+                ..Rule::default()
+            },
+        ),
+    ] {
+        std::fs::write(&local, &old).expect("old");
+        std::fs::remove_file(dest.join("@a/x.pbo.zip")).ok();
+        server.clear_seen();
+        server.rule("@a/x.pbo", rule);
+        let mut tasks = vec![task.clone()];
+        let (report, events) = run(
+            &request(server.protocol(), 1),
+            &mut tasks,
+            Arc::new(NoZipSink),
+            &CancellationToken::new(),
+        )
+        .await;
+        assert!(matches!(report.end, DownloadEnd::Completed), "{label}");
+        assert!(report.errors.is_empty(), "{label}: {:?}", report.errors);
+        assert_eq!(
+            count(&events, |e| matches!(e, SyncEvent::ConnectionLost)),
+            0
+        );
+        assert_eq!(tasks[0].status, DownloadStatus::Done, "{label}");
+        let paths = server.paths();
+        assert_eq!(paths.first().map(String::as_str), Some("@a/x.pbo.zsync"));
+        assert_eq!(
+            paths.last().map(String::as_str),
+            Some("@a/x.pbo.zip"),
+            "{label}"
+        );
+        assert_eq!(std::fs::read(dest.join("@a/x.pbo.zip")).expect("zip"), zip);
+        assert_eq!(
+            std::fs::read(&local).expect("local"),
+            old,
+            "{label}: old file intact"
+        );
+        assert!(part_files(dest).is_empty(), "{label}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a6_resume_against_a_server_ignoring_range() {
+    let server = HttpServer::start().await;
+    let dest_dir = tempfile::tempdir().expect("tempdir");
+    let dest = dest_dir.path();
+    let content = random_bytes(300 * 1024, 41);
+    server.put("@a/x.pbo", &content);
+    server.rule(
+        "@a/x.pbo",
+        Rule {
+            no_range: true,
+            ..Rule::default()
+        },
+    );
+    std::fs::create_dir_all(dest.join("@a")).expect("mkdir");
+    std::fs::write(dest.join("@a/x.pbo.part"), &content[..100 * 1024]).expect("part");
+    let mut task = file_task(dest, "@a/x.pbo", content.len() as u64);
+    task.status = DownloadStatus::Running;
+    let mut tasks = vec![task];
+    let (report, events) = run(
+        &request(server.protocol(), 1),
+        &mut tasks,
+        Arc::new(NoZipSink),
+        &CancellationToken::new(),
+    )
+    .await;
+    assert!(
+        matches!(report.end, DownloadEnd::Completed),
+        "{:?}",
+        report.errors
+    );
+    let seen = server.seen();
+    assert_eq!(seen.len(), 1);
+    assert_eq!(seen[0].range.as_deref(), Some("bytes=102400-"));
+    assert_eq!(std::fs::read(dest.join("@a/x.pbo")).expect("file"), content);
+    assert_eq!(report.bytes_received, content.len() as u64);
+    let last = events
+        .iter()
+        .rev()
+        .find_map(|e| match e {
+            SyncEvent::Transfer(p) => Some(p.transferred),
+            _ => None,
+        })
+        .expect("transfer");
+    assert_eq!(last, content.len() as u64);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a12_resumable_full_download_wins_over_zsync() {
+    let server = HttpServer::start().await;
+    let dest_dir = tempfile::tempdir().expect("tempdir");
+    let dest = dest_dir.path();
+    let (old, new) = zsync_contents();
+    server.put("@a/x.pbo", &new);
+    let control = control_for(&new, &server.path("@a/x.pbo"));
+    server.put("@a/x.pbo.zsync", &control.to_bytes());
+    std::fs::create_dir_all(dest.join("@a")).expect("mkdir");
+    std::fs::write(dest.join("@a/x.pbo"), &old).expect("old");
+    // A full download (after an earlier zsync fallback) left a resumable `.part`.
+    std::fs::write(dest.join("@a/x.pbo.part"), &new[..50_000]).expect("part");
+    let mut task = with_complete(file_task(dest, "@a/x.pbo", new.len() as u64), 50.0);
+    task.status = DownloadStatus::Running;
+    let mut tasks = vec![task];
+    let (report, _) = run(
+        &request(server.protocol(), 1),
+        &mut tasks,
+        Arc::new(NoZipSink),
+        &CancellationToken::new(),
+    )
+    .await;
+    assert!(
+        matches!(report.end, DownloadEnd::Completed),
+        "{:?}",
+        report.errors
+    );
+    let seen = server.seen();
+    assert_eq!(seen.len(), 1, "{seen:?}");
+    assert_eq!(seen[0].path, "@a/x.pbo");
+    assert_eq!(seen[0].range.as_deref(), Some("bytes=50000-"));
+    assert_eq!(std::fs::read(dest.join("@a/x.pbo")).expect("file"), new);
+    assert!(part_files(dest).is_empty());
 }

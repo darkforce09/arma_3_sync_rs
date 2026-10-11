@@ -17,6 +17,22 @@ use crate::DownloadTask;
 /// Range bodies buffered between the network and the assembler.
 const CHANNEL_CAPACITY: usize = 4;
 
+/// Largest supported block size; bounds a range body to 100 blocks of 64 KiB.
+const MAX_BLOCK_SIZE: usize = 64 * 1024;
+
+/// Allowed control-file bytes per block (jazsync writes at most 20).
+const CONTROL_BYTES_PER_BLOCK: u64 = 40;
+
+/// Allowed control-file bytes on top of the blocks (header).
+const CONTROL_SLACK: u64 = 64 * 1024;
+
+/// Completes once `progress` exceeds `cap`.
+async fn exceeds(progress: &AtomicU64, cap: u64) {
+    while progress.load(Ordering::Relaxed) <= cap {
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+}
+
 /// How a zsync attempt ended.
 #[derive(Debug)]
 pub(crate) enum ZsyncEnd {
@@ -90,7 +106,8 @@ struct CancelWriter<W> {
 impl<W: Write> Write for CancelWriter<W> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         if self.cancel.load(Ordering::Relaxed) {
-            return Err(io::Error::new(io::ErrorKind::Interrupted, "cancelled"));
+            // Not `Interrupted`: `write_all` would retry it forever.
+            return Err(io::Error::other("cancelled"));
         }
         self.inner.write(buf)
     }
@@ -133,7 +150,13 @@ pub(crate) async fn run(worker: &mut Worker, index: usize, task: &DownloadTask) 
                 {
                     return ZsyncEnd::End(TaskEnd::Cancelled);
                 }
-                if matches!(err, a3s_transport::Error::Unsupported { .. }) {
+                // B22: the server ignored `Range`, refused it (416) or sent a short body.
+                if matches!(
+                    err,
+                    a3s_transport::Error::Unsupported { .. }
+                        | a3s_transport::Error::HttpStatus { status: 416, .. }
+                        | a3s_transport::Error::Incomplete { .. }
+                ) {
                     return ZsyncEnd::Fallback(err.to_string());
                 }
                 if is_connection_class(&err) {
@@ -184,12 +207,20 @@ async fn attempt(worker: &mut Worker, task: &DownloadTask, size: u64) -> Attempt
     let Some(transport) = worker.transport.as_mut() else {
         return ZsyncEnd::End(TaskEnd::Cancelled).into();
     };
-    let bytes = match race(
-        &worker.shared.run,
-        transport.fetch(&control_remote, &control_ctx),
-    )
-    .await
-    {
+    // A control file holds at most ~20 bytes per 8 KiB block: refuse to buffer much more.
+    let cap = (size / a3s_zsync::BLOCK_SIZE as u64)
+        .saturating_mul(CONTROL_BYTES_PER_BLOCK)
+        .saturating_add(CONTROL_SLACK);
+    let fetched = tokio::select! {
+        biased;
+        () = worker.shared.run.cancelled() => Err(a3s_transport::Error::Cancelled),
+        result = transport.fetch(&control_remote, &control_ctx) => result,
+        () = exceeds(&control_ctx.progress, cap) => {
+            return ZsyncEnd::Fallback(format!("{control_remote} is larger than {cap} bytes"))
+                .into();
+        }
+    };
+    let bytes = match fetched {
         Ok(bytes) => bytes,
         Err(a3s_transport::Error::NotFound(_)) => {
             return ZsyncEnd::Fallback(format!("{control_remote} not found")).into();
@@ -206,6 +237,10 @@ async fn attempt(worker: &mut Worker, task: &DownloadTask, size: u64) -> Attempt
         Ok(control) => Arc::new(control),
         Err(err) => return ZsyncEnd::Fallback(err.to_string()).into(),
     };
+    let block_size = control.header.block_size;
+    if block_size == 0 || block_size > MAX_BLOCK_SIZE {
+        return ZsyncEnd::Fallback(format!("unsupported block size {block_size}")).into();
+    }
     if control.header.length != size {
         return ZsyncEnd::Fallback(format!(
             "control file length {} differs from the file size {size}",

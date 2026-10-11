@@ -68,11 +68,19 @@ pub enum DownloadError {
         source: a3s_zsync::Error,
     },
 
-    /// A task whose local path would leave its destination folder (decision D-15).
+    /// A task with an unsafe remote name: a tree segment that is empty, `.`, `..`, absolute or
+    /// contains a separator (decisions D-15, D-16). Nothing is written for it.
     #[error("{message}")]
     UnsafePath {
-        /// The rejected path.
+        /// The local path the task would have written.
         path: PathBuf,
+        /// The message.
+        message: String,
+    },
+
+    /// An internal failure (a worker panicked).
+    #[error("{message}")]
+    Internal {
         /// The message.
         message: String,
     },
@@ -97,6 +105,7 @@ impl DownloadError {
                 _ => ErrorKind::InvalidData,
             },
             Self::UnsafePath { .. } => ErrorKind::InvalidData,
+            Self::Internal { .. } => ErrorKind::Internal,
             Self::Cancelled => ErrorKind::Cancelled,
         }
     }
@@ -156,14 +165,11 @@ impl DownloadError {
         }
     }
 
-    /// A [`DownloadError::UnsafePath`].
-    pub(crate) fn unsafe_path(path: &Path, reason: &str) -> Self {
+    /// A [`DownloadError::UnsafePath`] for the task of tree path `relative_path`.
+    pub(crate) fn unsafe_path(path: &Path, relative_path: &str) -> Self {
         Self::UnsafePath {
             path: path.to_owned(),
-            message: format!(
-                "Refusing to write outside the destination folder: {} ({reason})",
-                path.display()
-            ),
+            message: format!("Unsafe remote file name refused: /{relative_path}"),
         }
     }
 }
@@ -201,7 +207,7 @@ pub(crate) fn absolute(path: &Path) -> PathBuf {
     std::path::absolute(path).unwrap_or_else(|_| path.to_owned())
 }
 
-/// Whether an I/O error is about the local file system rather than the network.
+/// Whether an I/O error is about the local file system rather than the network (B15 list).
 pub(crate) fn is_local_io(err: &io::Error) -> bool {
     use io::ErrorKind as K;
     matches!(
@@ -223,13 +229,40 @@ pub(crate) fn is_local_io(err: &io::Error) -> bool {
     )
 }
 
+/// Whether an I/O error comes from the network: a socket error kind, or a body error the HTTP
+/// transport wraps in `io::Error::other`. Any other I/O error (e.g. a local `EIO`) is local.
+pub(crate) fn is_network_io(err: &io::Error) -> bool {
+    use io::ErrorKind as K;
+    if is_local_io(err) {
+        return false;
+    }
+    match err.kind() {
+        K::ConnectionRefused
+        | K::ConnectionReset
+        | K::ConnectionAborted
+        | K::NotConnected
+        | K::BrokenPipe
+        | K::TimedOut
+        | K::HostUnreachable
+        | K::NetworkUnreachable
+        | K::NetworkDown
+        | K::AddrNotAvailable
+        | K::AddrInUse
+        | K::UnexpectedEof
+        | K::WouldBlock => true,
+        _ => err.get_ref().is_some_and(|inner| {
+            inner.is::<reqwest::Error>() || inner.is::<a3s_transport::Error>()
+        }),
+    }
+}
+
 /// B15: a transport error that a new connection may fix, excluding incomplete transfers and
 /// local file-system errors.
 // Mirrors service/connection/ConnectionDownloadProcessor.java:116-117
 pub(crate) fn is_connection_class(err: &a3s_transport::Error) -> bool {
     match err {
         a3s_transport::Error::Incomplete { .. } => false,
-        a3s_transport::Error::Io(e) if is_local_io(e) => false,
+        a3s_transport::Error::Io(e) => is_network_io(e),
         other => other.is_connection_lost(),
     }
 }
@@ -412,6 +445,23 @@ mod tests {
             Attempt::FileError
         );
         assert_eq!(classify(&E::Cancelled, 10, true), Attempt::Cancelled);
+
+        // Local I/O failures are file errors, network body errors are connection-class.
+        let eio = E::Io(io::Error::from_raw_os_error(5));
+        assert_eq!(classify(&eio, 100, true), Attempt::FileError);
+        assert_eq!(
+            classify(&E::Io(io::Error::other("disk")), 100, true),
+            Attempt::FileError
+        );
+        let E::Http(reqwest_error) = http_connect_error().await else {
+            panic!("expected an HTTP error");
+        };
+        let body = E::Io(io::Error::other(reqwest_error));
+        assert_eq!(
+            classify(&body, 100, false),
+            Attempt::Retry { reconnect: true }
+        );
+        assert_eq!(classify(&body, 0, false), Attempt::ConnectionLost);
     }
 
     #[test]

@@ -186,9 +186,15 @@ impl DownloadReport {
                 errors,
             },
             DownloadEnd::ConnectionLost { .. } => return None,
-            DownloadEnd::Failed { error } => Outcome::Failed {
-                error: EventError::new(error.kind(), error.to_string()),
-            },
+            DownloadEnd::Failed { error } => {
+                // `Outcome::Failed` carries one error: log the others so they are not lost.
+                for dropped in &errors {
+                    tracing::warn!("Download error: {}", dropped.message);
+                }
+                Outcome::Failed {
+                    error: EventError::new(error.kind(), error.to_string()),
+                }
+            }
             DownloadEnd::Cancelled => Outcome::Cancelled,
         })
     }

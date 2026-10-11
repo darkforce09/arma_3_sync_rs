@@ -1,13 +1,16 @@
 //! One task: directory creation, full download with resume, finalization (B5, B7-B16), and the
 //! local path checks of decision D-15.
 
-use std::ffi::{OsStr, OsString};
-use std::path::{Component, Path, PathBuf};
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 use a3s_transport::{CancellationToken, Transport};
 
 use super::error::{Attempt, DownloadError, RetryState};
-use super::executor::{TaskEnd, Worker};
+use super::executor::{Shared, TaskEnd, Worker};
 use super::sink::DownloadedZip;
 use super::{PART_EXTENSION, ZIP_EXTENSION, ZSYNC_EXTENSION, zsync};
 use crate::remote::RemoteFile;
@@ -50,67 +53,27 @@ pub(crate) fn resume_offset(
     (status == DownloadStatus::Running && len > 0 && len < expected).then_some(len)
 }
 
-/// The folder of the task's top-level tree ancestor: `destination_dir` without the trailing
-/// folders that are the task's parent path segments.
-fn destination_root(task: &DownloadTask) -> PathBuf {
-    let mut root = task.destination_dir.clone();
-    for segment in task.parent_relative_path().rsplit('/') {
-        if root.file_name() == Some(OsStr::new(segment)) && root.pop() {
-            continue;
-        }
-        break;
-    }
-    root
-}
-
-/// Checks that the task's local path stays inside its destination (decision D-15): every tree
-/// segment is a plain name, the destination has no `..`, and no existing folder on the way is a
-/// symbolic link leading out of the destination root.
+/// Checks the task's tree path before anything is written (decisions D-15, D-16): every segment
+/// must be a plain name ([`crate::plan::is_safe_name`]), so the local path cannot leave the
+/// destination folder through `..`, an absolute path or a separator. Symbolic links the user
+/// created inside the destination (e.g. an `@mod` folder on another disk) are followed: a remote
+/// repository cannot create local links. Returns the error for a rejected task.
 // Mirrors none: Java joins names unchecked (service/RepositoryService.java:487-508)
-/// The error is the reason of the rejection.
-pub(crate) fn check_local_path(task: &DownloadTask) -> Result<(), &'static str> {
-    if !task.relative_path.split('/').all(crate::plan::is_safe_name) {
-        return Err("unsafe remote name");
+pub(crate) fn check_local_path(task: &DownloadTask) -> Option<DownloadError> {
+    if task.relative_path.split('/').all(crate::plan::is_safe_name) {
+        None
+    } else {
+        Some(DownloadError::unsafe_path(
+            &task.local_path(),
+            &task.relative_path,
+        ))
     }
-    if task
-        .destination_dir
-        .components()
-        .any(|c| matches!(c, Component::ParentDir))
-    {
-        return Err("destination contains '..'");
-    }
-    let root = destination_root(task);
-    let Ok(canonical_root) = std::fs::canonicalize(&root) else {
-        // Nothing exists yet: every folder will be created fresh.
-        return Ok(());
-    };
-    let mut probe = task.destination_dir.clone();
-    loop {
-        if let Ok(canonical) = std::fs::canonicalize(&probe) {
-            if !canonical.starts_with(&canonical_root) {
-                return Err("a symbolic link leads out of the destination");
-            }
-            return Ok(());
-        }
-        if !probe.pop() {
-            return Ok(());
-        }
-    }
-}
-
-/// [`check_local_path`] on the blocking pool; `Some(error)` when the task is rejected.
-async fn check_local_path_async(task: &DownloadTask) -> Option<DownloadError> {
-    let probe = task.clone();
-    let reason = tokio::task::spawn_blocking(move || check_local_path(&probe).err())
-        .await
-        .unwrap_or(Some("path check failed"))?;
-    Some(DownloadError::unsafe_path(&task.local_path(), reason))
 }
 
 /// Creates a directory task's folder (B5).
 // Mirrors dao/connection/AbstractConnexionDAO.java:339-347
 pub(crate) async fn create_directory(task: &DownloadTask) -> TaskEnd {
-    if let Some(error) = check_local_path_async(task).await {
+    if let Some(error) = check_local_path(task) {
         return TaskEnd::Failed(error);
     }
     let path = task.local_path();
@@ -128,21 +91,52 @@ pub(crate) async fn run_task(worker: &mut Worker, index: usize) -> TaskEnd {
     let DownloadTaskKind::File { complete, .. } = task.kind else {
         return create_directory(&task).await;
     };
-    if let Some(error) = check_local_path_async(&task).await {
+    if let Some(error) = check_local_path(&task) {
         return TaskEnd::Failed(error);
     }
     if complete > 0.0 {
-        match zsync::run(worker, index, &task).await {
-            zsync::ZsyncEnd::End(end) => return end,
-            zsync::ZsyncEnd::Fallback(reason) => {
-                tracing::warn!(
-                    "Partial transfer failed for {}: {reason}; downloading the whole file",
-                    task.relative_path
-                );
+        // A resumable full download (from an earlier fallback) wins over zsync, which would
+        // otherwise reuse the same `.part` name.
+        let (_, part, expected) = full_target(&task);
+        let status = worker.shared.status(index);
+        if resume_offset(status, regular_file_len(&part).await, expected).is_some() {
+            tracing::info!(
+                "Resuming the full download of {} instead of patching it",
+                task.relative_path
+            );
+        } else {
+            match zsync::run(worker, index, &task).await {
+                zsync::ZsyncEnd::End(end) => return end,
+                zsync::ZsyncEnd::Fallback(reason) => {
+                    tracing::warn!(
+                        "Partial transfer failed for {}: {reason}; downloading the whole file",
+                        task.relative_path
+                    );
+                }
             }
         }
     }
     full_download(worker, index, &task).await
+}
+
+/// The local target, its `.part` and the expected size of a full download (B8).
+// Mirrors dao/connection/AbstractConnexionDAO.java:266-280
+fn full_target(task: &DownloadTask) -> (PathBuf, PathBuf, u64) {
+    let (target, expected) = match task.kind {
+        DownloadTaskKind::File {
+            compressed: true,
+            compressed_size,
+            ..
+        } => (
+            task.destination_dir
+                .join(format!("{}{ZIP_EXTENSION}", task.name())),
+            compressed_size,
+        ),
+        DownloadTaskKind::File { size, .. } => (task.local_path(), size),
+        DownloadTaskKind::Directory => (task.local_path(), 0),
+    };
+    let part = part_path(&target);
+    (target, part, expected)
 }
 
 /// The `RemoteFile` of a remote path below the repository root.
@@ -220,11 +214,35 @@ pub(crate) async fn finalize(part: &Path, target: &Path) -> Result<(), DownloadE
         .map_err(|err| DownloadError::local_io(target, err))
 }
 
-/// Whether the transport reports no reliable size itself (FTP, SFTP), so the final length is
-/// checked against the expected size (B12, DV13).
-fn checks_size_locally(transport: &Transport) -> bool {
-    matches!(transport, Transport::Ftp(_) | Transport::Sftp(_))
+/// Whether the transport can continue a partial file (WebDAV always restarts from 0).
+// Mirrors dao/connection/webdav/WebdavDAO.java:188
+fn can_resume(transport: &Transport) -> bool {
+    !matches!(transport, Transport::Webdav(_))
 }
+
+/// Watches the first bytes of an attempt that asked to resume at `offset`: when the transport
+/// restarted from 0 instead (HTTP `200`, FTP without `REST`), the `.part` is shorter than
+/// `offset` and the progress offset is corrected. Never completes.
+async fn watch_effective_offset(
+    shared: &Shared,
+    id: usize,
+    part: &Path,
+    offset: u64,
+    progress: &AtomicU64,
+) {
+    if offset > 0 {
+        while progress.load(Ordering::Relaxed) == 0 {
+            tokio::time::sleep(OFFSET_PROBE_INTERVAL).await;
+        }
+        if regular_file_len(part).await.is_some_and(|len| len < offset) {
+            shared.set_attempt_offset(id, 0);
+        }
+    }
+    std::future::pending::<()>().await;
+}
+
+/// Polling interval of [`watch_effective_offset`].
+const OFFSET_PROBE_INTERVAL: Duration = Duration::from_millis(20);
 
 /// A full download with resume (B7-B16).
 // Mirrors dao/connection/AbstractConnexionDAO.java:243-318
@@ -233,7 +251,6 @@ async fn full_download(worker: &mut Worker, index: usize, task: &DownloadTask) -
     let DownloadTaskKind::File {
         size,
         compressed,
-        compressed_size,
         ref sha1,
         ..
     } = task.kind
@@ -247,56 +264,54 @@ async fn full_download(worker: &mut Worker, index: usize, task: &DownloadTask) -
     }
 
     // B8
-    let target = if compressed {
-        task.destination_dir
-            .join(format!("{}{ZIP_EXTENSION}", task.name()))
-    } else {
-        task.local_path()
-    };
-    let expected = if compressed { compressed_size } else { size };
-    let part = part_path(&target);
+    let (target, part, expected) = full_target(task);
     let remote = remote_path(task);
+    let shared = Arc::clone(&worker.shared);
 
     let mut retry = RetryState::default();
     loop {
+        let resumable = worker.transport.as_ref().is_some_and(can_resume);
         // B9
-        let status = worker.shared.status(index);
+        let status = shared.status(index);
         let part_len = regular_file_len(&part).await;
-        let offset = if let Some(offset) = resume_offset(status, part_len, expected) {
-            tracing::info!(
-                "Resuming file: {} at offset: {offset}",
-                super::error::absolute(&part).display()
-            );
-            offset
-        } else {
-            if let Err(err) = remove_if_exists(&part).await {
-                return TaskEnd::Failed(DownloadError::local_io(&part, err));
-            }
-            tracing::info!(
-                "Downloading file: {}",
-                super::error::absolute(&part).display()
-            );
-            0
-        };
+        let offset =
+            if let Some(offset) = resume_offset(status, part_len, expected).filter(|_| resumable) {
+                tracing::info!(
+                    "Resuming file: {} at offset: {offset}",
+                    super::error::absolute(&part).display()
+                );
+                offset
+            } else {
+                if let Err(err) = remove_if_exists(&part).await {
+                    return TaskEnd::Failed(DownloadError::local_io(&part, err));
+                }
+                tracing::info!(
+                    "Downloading file: {}",
+                    super::error::absolute(&part).display()
+                );
+                0
+            };
 
         // B10, B11
-        worker.shared.set_running(index);
-        let progress = worker.shared.begin_attempt(worker.id, offset, expected);
-        let ctx = worker.transfer_ctx(progress);
+        shared.set_running(index);
+        let progress = shared.begin_attempt(worker.id, offset, expected);
+        let ctx = worker.transfer_ctx(Arc::clone(&progress));
         let Some(transport) = worker.transport.as_mut() else {
             return TaskEnd::Cancelled;
         };
-        let local_check = checks_size_locally(transport);
         let result = tokio::select! {
             biased;
-            () = worker.shared.run.cancelled() => Err(a3s_transport::Error::Cancelled),
+            () = shared.run.cancelled() => Err(a3s_transport::Error::Cancelled),
             result = transport.download_file(&remote, &part, offset, &ctx) => result,
+            () = watch_effective_offset(&shared, worker.id, &part, offset, &progress) => {
+                Err(a3s_transport::Error::Cancelled)
+            }
         };
-        let received = worker.shared.end_attempt(worker.id);
+        let received = shared.end_attempt(worker.id);
 
-        // B12
+        // B12: a short file is incomplete on every protocol (DV13); a longer one is kept.
         let result = result.and_then(|len| {
-            if local_check && len < expected {
+            if len < expected {
                 Err(a3s_transport::Error::Incomplete {
                     expected,
                     actual: len,
@@ -312,7 +327,7 @@ async fn full_download(worker: &mut Worker, index: usize, task: &DownloadTask) -
         });
 
         let Err(err) = result else {
-            if worker.shared.run.is_cancelled() {
+            if shared.run.is_cancelled() {
                 return TaskEnd::Cancelled;
             }
             // Empty remote files still produce an (empty) file.
@@ -335,8 +350,15 @@ async fn full_download(worker: &mut Worker, index: usize, task: &DownloadTask) -
             return TaskEnd::Done(zip);
         };
 
-        if worker.shared.run.is_cancelled() {
+        if shared.run.is_cancelled() {
             return TaskEnd::Cancelled;
+        }
+        // The server has fewer bytes than the partial file: resuming cannot help.
+        if offset > 0 && matches!(err, a3s_transport::Error::HttpStatus { status: 416, .. }) {
+            if let Err(err) = remove_if_exists(&part).await {
+                tracing::warn!("cannot delete {}: {err}", part.display());
+            }
+            return TaskEnd::Failed(DownloadError::incomplete(&target, expected, offset));
         }
         // B14, B15
         match retry.decide(&err, received, worker.reused()) {
@@ -417,19 +439,6 @@ mod tests {
     }
 
     #[test]
-    fn a2_destination_root_strips_tree_folders() {
-        let task = file_task("@a/addons/x.pbo", false);
-        assert_eq!(destination_root(&task), PathBuf::from("/dest"));
-        let mut redirected = task.clone();
-        redirected.destination_dir = PathBuf::from("/other/@a/addons");
-        assert_eq!(destination_root(&redirected), PathBuf::from("/other"));
-        let mut root_level = task;
-        root_level.relative_path = "x.pbo".to_owned();
-        root_level.destination_dir = PathBuf::from("/dest");
-        assert_eq!(destination_root(&root_level), PathBuf::from("/dest"));
-    }
-
-    #[test]
     fn a2_check_local_path_rejects_hostile_tasks() {
         let dir = tempfile::tempdir().expect("tempdir");
         let dest = dir.path().join("dest");
@@ -438,29 +447,30 @@ mod tests {
             destination_dir: destination,
             ..file_task(relative, false)
         };
-        assert!(check_local_path(&task("@a/x.pbo", dest.join("@a"))).is_ok());
-        assert!(check_local_path(&task("@new/sub/x.pbo", dest.join("@new/sub"))).is_ok());
+        assert!(check_local_path(&task("@a/x.pbo", dest.join("@a"))).is_none());
+        assert!(check_local_path(&task("@new/sub/x.pbo", dest.join("@new/sub"))).is_none());
         for (relative, destination) in [
             ("..", dest.clone()),
             ("@a/..", dest.join("@a")),
             ("../x", dest.clone()),
             ("@a/a\\b", dest.join("@a")),
             ("/x", dest.clone()),
-            ("@a/x", dest.join("@a/../..")),
+            ("", dest.clone()),
+            ("@a//x", dest.join("@a")),
         ] {
-            check_local_path(&task(relative, destination)).expect_err(relative);
+            let err = check_local_path(&task(relative, destination)).expect(relative);
+            assert!(matches!(err, DownloadError::UnsafePath { .. }), "{err:?}");
+            assert_eq!(err.kind(), a3s_error::ErrorKind::InvalidData);
         }
 
+        // D-16: symbolic links the user created inside the destination are followed.
         #[cfg(unix)]
         {
             let outside = dir.path().join("outside");
             std::fs::create_dir_all(&outside).expect("mkdir");
             std::os::unix::fs::symlink(&outside, dest.join("@link")).expect("symlink");
-            let reason = check_local_path(&task("@link/x.pbo", dest.join("@link")))
-                .expect_err("symlink escapes");
-            assert!(reason.contains("symbolic link"), "{reason}");
-            // A missing folder below the link escapes too.
-            assert!(check_local_path(&task("@link/a/x.pbo", dest.join("@link/a"))).is_err());
+            assert!(check_local_path(&task("@link/x.pbo", dest.join("@link"))).is_none());
+            assert!(check_local_path(&task("@link/a/x.pbo", dest.join("@link/a"))).is_none());
         }
     }
 }

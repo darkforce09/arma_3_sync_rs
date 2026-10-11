@@ -44,6 +44,9 @@ pub struct Rule {
 
     /// Answer this status with an empty body.
     pub status: Option<u16>,
+
+    /// Send at most this many body bytes, with a matching `Content-Length` (a short body).
+    pub truncate_body: Option<usize>,
 }
 
 /// One request seen by the server.
@@ -166,7 +169,7 @@ async fn handle(State(state): State<Arc<ServerState>>, request: Request) -> Resp
         .as_deref()
         .filter(|_| !rule.no_range)
         .map(|value| parse_range(value, len));
-    let body: Vec<u8> = if let Some(Some(parsed)) = ranged {
+    let mut body: Vec<u8> = if let Some(Some(parsed)) = ranged {
         let Ok((start, end)) = parsed else {
             return Response::builder()
                 .status(StatusCode::RANGE_NOT_SATISFIABLE)
@@ -186,6 +189,9 @@ async fn handle(State(state): State<Arc<ServerState>>, request: Request) -> Resp
         builder = builder.status(StatusCode::OK);
         content
     };
+    if let Some(limit) = rule.truncate_body {
+        body.truncate(limit);
+    }
     builder = builder.header(header::CONTENT_LENGTH, body.len());
 
     let drop_after = rule
