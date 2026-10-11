@@ -1,8 +1,8 @@
 # Rewrite progress
 
-Mode: RUNNING (resumed via /orchestrate)            Updated: 2026-10-10
-Current wave: 0/1          Next action: on resume — live-check WP06 FTP resume fix (`scripts/gate.sh --slot 3 live a3s_transport` in its worktree); rebase WP03 on main; verify+review+merge WP02, WP03, WP06; then start WP20, WP17, WP31; consider 2 compiling slots (HDD load)
-Waiting-on: impl WP20 (slot 1), verify+review WP07 (slot 2), impl WP01 (slot 3)
+Mode: PAUSED (user restarting PC; resume with /orchestrate)            Updated: 2026-10-11
+Current wave: 0/1          Next action: on resume — check WP11 worktree (.claude/worktrees/agent-a39b7a5c85d46a5e2): if its agent is gone, spawn a new rust-implementer told to `git merge --ff-only worktree-agent-a39b7a5c85d46a5e2` in its fresh worktree and finish WP11 fix round 1 (items listed in docs/specs/WP11.md 2026-10-11 lines + the fix-round message: Java ref-count limit via a3s_jserial reader exception, cache commit after zip/zsync, umask perms, .a3s.tmp temp names, D-17, ZIP64 margin, minors). Then: start WP10 (sync pipeline, deps merged), WP14 needs WP05 → start WP05, WP13, WP15; then WP21.
+Waiting-on: WP11 fix round 1 (interrupted)
 Blockers: none
 
 ## In flight
@@ -11,8 +11,6 @@ Blockers: none
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-10-11 | a3s_sync (WP09 branch) | a17_live_wog_download (≤3 files, ≤1 MB) | PASS |
 | 2026-10-11 | a3s_sync (WP07 branch) | a19_live_wog_check, import_autoconfig WOG | PASS |
-| WP09 | a3s_sync download | RE-REVIEW after fix round 1 | 1 | impl=ab815ed7 ver=ae84c937 rev=a6ecc9b9 | 1 | worktree-agent-ab815ed72afe7c2df | .claude/worktrees/agent-ab815ed72afe7c2df | 02619c7 | 2026-10-11 |
-| WP04 | a3s_repo_files local/legacy | RE-REVIEW after fix round 1 | 1 | impl=a20b9ae5 ver=aab7bf75 rev=a18f8f57 | 2 | worktree-agent-a20b9ae5ecc809758 | .claude/worktrees/agent-a20b9ae5ecc809758 | c7513a5 | 2026-10-11 |
 | WP11 | a3s_admin build | FIX round 1 (Java ref-count limit, cache commit, umask, temp names, D-17; Java reads Rust PASS) | 1 | impl=a39b7a5c ver=aee386a7 rev=a4b331ee | 3 | worktree-agent-a39b7a5c85d46a5e2 | .claude/worktrees/agent-a39b7a5c85d46a5e2 | 504cd66 | 2026-10-11 |
 
 ## Done before orchestration
@@ -42,14 +40,14 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 | 0 | WP17 | a3s_tools bikey/rpt/radio | — | SPEC_OK | | |
 | 0 | WP20 | a3s_ui | — | MERGED | | |
 | 0 | WP31 | a3s_updater core | — | SPEC_OK | | |
-| 1 | WP04 | a3s_repo_files local/legacy | WP02, WP03 | VERIFY | | |
+| 1 | WP04 | a3s_repo_files local/legacy | WP02, WP03 | MERGED | | |
 | 1 | WP05 | autoconfig url/export | WP03 | SPEC_OK | | |
 | 1 | WP07 | a3s_sync model/remote/status | WP02, WP03 | MERGED | (git log) | | critical path |
 | 1 | WP11 | a3s_admin build | WP03 | VERIFY | | wire-touching |
 | 1 | WP13 | a3s_addons | WP03 | SPEC_OK | | |
 | 1 | WP15 | a3s_platform | WP02 | SPEC_OK | | |
 | 2 | WP08 | a3s_sync plan | WP07 | MERGED | | |
-| 2 | WP09 | a3s_sync download | WP07 | VERIFY | | |
+| 2 | WP09 | a3s_sync download | WP07 | MERGED | | |
 | 2 | WP12 | a3s_admin upload/check/events | WP06, WP07, WP11 | SPEC_OK | | split WP12a → WP12b |
 | 2 | WP14 | app services | WP04, WP05 | SPEC_OK | | |
 | 2 | WP16 | a3s_launch | WP13, WP15 | SPEC_OK | | |
@@ -109,6 +107,8 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 - F-16 a3s_ui dialog focus MINORs: popup press steals dialog focus; focus not handed back when focused dialog closes; Escape not gated by egui_wants_keyboard_input when focus moved by Tab; modal keys only from 2nd frame (document).
 - F-17 a3s_sync: expose RemoteConnection::fetch_file (poisons + B13 error) and use it from completion.rs; run classify_leaves off the async thread.
 - F-18 WP08 MINORs: matched remote folder that is a local symlink is still listed (doc says never followed — narrow doc or skip); completion take() empties tree on future drop (document/clone); reject Windows trailing dot/space and reserved device names; symlinked dir delete needs remove_dir on Windows (WP10); validate_names runs twice.
+- F-19 WP09 MINORs: watch_effective_offset single probe; a6 resume test can't prove offset correction; tests for 416-on-resume, WebDAV no-resume, worker panic → Failed. reqwest dep in a3s_sync approved post hoc.
+- F-20 WP04 MINORs: unreadable non-canonical profile/repo files don't block duplicates; Default fallback should persist profile_name=Default; inner sealed-stream Types error → Java 'Failed to decrypt serialized file'.
 - F-2 CI: add mesa Vulkan drivers to rust.yml for egui_kittest snapshot tests (WP20 Q10).
 
 ## Live test log
