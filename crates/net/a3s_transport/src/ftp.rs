@@ -349,7 +349,14 @@ impl FtpTransport {
         let copied = copy(&mut transfer, writer, ctx, self.read_timeout).await;
         match copied {
             Ok(n) => {
-                let finished = with_timeout(self.read_timeout, transfer.finish()).await;
+                // Servers such as libunftp accept `RETR` (150) and report a missing file on
+                // completion (550).
+                let finished = with_timeout(self.read_timeout, transfer.finish())
+                    .await
+                    .map_err(|err| match err {
+                        Error::Ftp(err) => map_ftp_error(err, relative),
+                        other => other,
+                    });
                 self.poison_on_timeout(finished)?;
                 Ok(n)
             }
@@ -751,7 +758,14 @@ impl FtpTransport {
             .map_err(|e| map_ftp_error(e, relative))?;
         match copy_upload(&mut source.reader, &mut transfer, ctx, self.read_timeout).await {
             Ok(n) => {
-                let finished = with_timeout(self.read_timeout, transfer.finish()).await;
+                // Servers such as libunftp accept `RETR` (150) and report a missing file on
+                // completion (550).
+                let finished = with_timeout(self.read_timeout, transfer.finish())
+                    .await
+                    .map_err(|err| match err {
+                        Error::Ftp(err) => map_ftp_error(err, relative),
+                        other => other,
+                    });
                 self.poison_on_timeout(finished)?;
                 Ok(n)
             }

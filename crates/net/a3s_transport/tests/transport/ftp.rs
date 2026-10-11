@@ -101,6 +101,9 @@ async fn base_directory() {
         b"in repo"
     );
     assert_eq!(t.fetch("a/x.bin", &ctx).await.unwrap(), b"in repo");
+    let missing = t.fetch("a/missing.bin", &ctx).await;
+    assert!(matches!(missing, Err(Error::NotFound(_))), "{missing:?}");
+    assert_eq!(t.fetch("a/x.bin", &ctx).await.unwrap(), b"in repo");
     t.close().await;
 
     // Missing remote path: connect fails.
