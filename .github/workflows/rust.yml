@@ -39,7 +39,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.95
       - uses: Swatinem/rust-cache@v2
-      - name: Install system libraries (mesa-vulkan-drivers: lavapipe for the UI snapshot tests)
+      - name: "Install system libraries (mesa-vulkan-drivers: lavapipe for the UI snapshot tests)"
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libgtk-3-dev libxdo-dev mesa-vulkan-drivers
       - run: cargo test --workspace --all-features
