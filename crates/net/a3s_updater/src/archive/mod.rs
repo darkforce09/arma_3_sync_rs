@@ -301,6 +301,10 @@ pub(crate) fn set_permissions(file: &File, unix_mode: Option<u32>) -> io::Result
 }
 
 #[cfg(not(unix))]
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "same signature as the Unix version, which can fail"
+)]
 pub(crate) fn set_permissions(_file: &File, _unix_mode: Option<u32>) -> io::Result<()> {
     Ok(())
 }

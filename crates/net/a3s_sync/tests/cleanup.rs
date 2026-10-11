@@ -2,11 +2,11 @@
 //! folders.
 
 use std::collections::{BTreeSet, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 use a3s_sync::cleanup::{DeleteRoots, copy_directory, delete_extra_files, protected_paths};
-use a3s_sync::plan::{NoAddons, plan_repository, select_all_except_root};
+use a3s_sync::plan::{plan_repository, select_all_except_root};
 use a3s_sync::{
     DeleteTask, DownloadStatus, DownloadTask, DownloadTaskKind, EventSender, Phase, PlanSummary,
     RemoteMetadata, SyncEvent, SyncOptions,
@@ -333,7 +333,7 @@ fn extras_inside_a_user_linked_addon_folder_are_listed_through_the_link() {
     let (_, summary) = plan(
         vec![dir("@a", vec![dir("addons", vec![leaf("a.pbo")])])],
         &dest,
-        &NoAddons,
+        &a3s_sync::plan::NoAddons,
     );
     let deleted: Vec<&str> = summary
         .delete_tasks
@@ -355,7 +355,8 @@ fn extras_inside_a_user_linked_addon_folder_are_listed_through_the_link() {
     assert!(std::fs::symlink_metadata(dest.join("@a")).is_ok_and(|m| m.file_type().is_symlink()));
 }
 
-fn files_below(dir: &Path) -> Vec<PathBuf> {
+#[cfg(unix)]
+fn files_below(dir: &Path) -> Vec<std::path::PathBuf> {
     let mut out = Vec::new();
     for entry in std::fs::read_dir(dir).expect("read_dir") {
         let path = entry.expect("entry").path();
