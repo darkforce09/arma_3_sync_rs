@@ -108,17 +108,20 @@ dependencies = [
  "a3s_types",
  "a3s_zsync",
  "axum",
+ "chrono",
  "fs4",
  "futures",
  "libunftp",
  "parking_lot",
  "reqwest",
+ "sha1 0.11.0",
  "suppaftp",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
  "unftp-sbe-fs",
+ "zip",
 ]
 
 [[package]]

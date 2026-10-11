@@ -121,13 +121,28 @@ Wire compatibility is the requirement; these differences are deliberate.
   linked folder (Java reports 0). `.zip` and `.zsync` files are written to
   `<name>.<random>.a3s.tmp` (umask permissions, a name every builder skips) and renamed, where
   Java writes them in place. The `.a3s` metadata files get umask permissions too (Java leaves
-  them `0600`, unreadable to a web server running as another user). A cancelled build stops and writes no `.a3s` file (Java writes
-  partial metadata), and a re-hashed file enters the SHA-1 cache only once its `.zip`/`.zsync`
-  is regenerated or deleted, so the next build never reuses stale ones.
-* **Sync safety:** the plan rejects remote names that are empty, `.`, `..`, absolute or contain a
-  separator, and every write and delete stays inside the destination. The extra-file scan never
-  follows a symbolic link (it is one file node); deletions remove the link, never its target.
-  Downloads do follow links the user created inside the destination. Java has none of these checks.
+  them `0600`, unreadable to a web server running as another user). A cancelled build stops
+  and writes no `.a3s` file (Java writes partial metadata), and a re-hashed file enters the SHA-1
+  cache only once its `.zip`/`.zsync` is regenerated or deleted, so the next build never reuses
+  stale ones.
+* **Sync safety:** the plan rejects remote names that are empty, `.`, `..`, absolute, contain a
+  separator, end with `.` or a space, or are Windows device names (`CON`, `NUL`, `COM1`, ...), and
+  every write and delete stays inside the destination. An extra local symbolic link is never
+  followed (it is one file node); deletions remove the link, never its target (a Windows directory
+  link or junction with `remove_dir`), and are checked again against the destination and the
+  auto-discovered addon folders before anything is removed. Downloads, and the extra-file scan of a
+  repository folder, do follow links the user created inside the destination. Archives a run still
+  needs (`.zip`, `.part`) are never deleted as extra files. Java has none of these checks.
+* **Uncompressing:** every compressed leaf is uncompressed, `.ebo.zip` included (Java only
+  `.pbo.zip`). Only the first entry is used and its name ignored; link and directory entries are
+  refused, the extracted size and SHA-1 must match the leaf, and the old file is replaced only once
+  the new one is complete. A leaf patched with zsync is never overwritten by a stale archive.
+* **Synchronization state:** a check persists the repository and configuration changes at once; a
+  failed synchronization persists the revision -1 at once (Java only in memory); a cancelled one
+  leaves the revision alone (Java re-checks and takes the server revision); the headless
+  synchronization updates the revision for the command line too. A silent `userconfig` copy with a
+  missing source does nothing, and copies skip symbolic links. Error reports list messages, never
+  stack traces. `ConnectionLost` is the last event of a download run.
 * **Autoconfig export and import** (`export.a3s.autoconfig`): an export that Java's own reader
   would reject (a profile tree nested deeper than about 47 groups, or over the reference or size
   limits) is refused instead of written. On import, a profile or repository element that is

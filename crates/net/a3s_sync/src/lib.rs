@@ -11,7 +11,12 @@
 //!   summarizes a selection ([`PlanSummary`]).
 //! * [`completion`]: zsync completion of outdated local files.
 //! * [`download`]: the download executor (parallel transfers, resume, zsync, progress).
+//! * [`unzip`]: uncompressing downloaded `.zip` files.
+//! * [`cleanup`]: deleting extra local files without following links.
+//! * [`report`]: the download report.
+//! * [`pipeline`]: the end-to-end synchronization ([`SyncSession`], [`sync_repository`]).
 
+pub mod cleanup;
 pub mod completion;
 pub mod download;
 pub mod error;
@@ -19,9 +24,12 @@ pub mod event_filter;
 pub mod events;
 pub mod model;
 pub mod options;
+pub mod pipeline;
 pub mod plan;
 pub mod remote;
+pub mod report;
 pub mod status;
+pub mod unzip;
 
 pub use completion::{CompletionError, CompletionStats};
 pub use error::RemoteError;
@@ -34,5 +42,10 @@ pub use model::{
     PlanTree, ROOT_NAME, file_name, parent_relative_path,
 };
 pub use options::{MAX_DOWNLOAD_ERRORS, SyncOptions, SyncOptionsError};
+pub use pipeline::{
+    CheckError, CheckRequest, MemoryStore, SyncEnd, SyncJob, SyncRunReport, SyncSession, SyncStore,
+    sync_repository,
+};
 pub use plan::{AddonLocator, NoAddons, PlanError, PlanSummary, ReportTotals};
 pub use remote::{PartialTransferSupport, RemoteConnection, RemoteFile, RemoteMetadata};
+pub use unzip::{UnzipPool, UnzipSummary};
