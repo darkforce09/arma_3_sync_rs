@@ -206,7 +206,7 @@ mod tests {
         root.children = children;
         root.sort_children();
         let mut tree = PlanTree::from_sync_tree(&root);
-        assign_destinations(&mut tree, base, false, &NoAddons);
+        assign_destinations(&mut tree, base, false, &NoAddons).expect("safe names");
         tree
     }
 

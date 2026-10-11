@@ -1,5 +1,6 @@
 //! Selection totals and work lists (port of `FilesSynchronizationManager`).
 
+use super::is_safe_name;
 use crate::model::{
     DeleteTask, DownloadStatus, DownloadTask, DownloadTaskKind, PlanDirectory, PlanNode, PlanTree,
 };
@@ -71,9 +72,17 @@ impl PlanSummary {
 
     fn add_node(&mut self, relative_path: &str, node: &PlanNode) {
         self.count(node.updated(), node.deleted(), node.selected());
+        // Planning rejects such trees (D-15); never build a task from one anyway.
+        let safe = is_safe_name(node.name()) && relative_path.split('/').all(is_safe_name);
+        if !safe && node.selected() && (node.updated() || node.deleted()) {
+            tracing::warn!("Unsafe file name {relative_path:?}; not synchronized");
+            return;
+        }
         if node.selected() && node.updated() {
             if let Some(task) = DownloadTask::from_node(relative_path, node) {
-                self.total_download_size += task.download_size();
+                self.total_download_size = self
+                    .total_download_size
+                    .saturating_add(task.download_size());
                 self.download_tasks.push(task);
             } else {
                 tracing::warn!("No destination for {relative_path}; not downloaded");
@@ -193,15 +202,20 @@ impl ReportTotals {
             else {
                 continue;
             };
-            totals.disk_files_size += size;
+            totals.disk_files_size = totals.disk_files_size.saturating_add(*size);
             if *complete != 0.0 {
                 totals.incomplete_files += 1;
-                totals.incomplete_expected_size += task.download_size();
-                totals.incomplete_disk_size += size;
+                totals.incomplete_expected_size = totals
+                    .incomplete_expected_size
+                    .saturating_add(task.download_size());
+                totals.incomplete_disk_size = totals.incomplete_disk_size.saturating_add(*size);
             } else if *compressed {
                 totals.compressed_files += 1;
-                totals.compressed_files_size += compressed_size;
-                totals.uncompressed_files_size += size;
+                totals.compressed_files_size = totals
+                    .compressed_files_size
+                    .saturating_add(*compressed_size);
+                totals.uncompressed_files_size =
+                    totals.uncompressed_files_size.saturating_add(*size);
             }
         }
         totals

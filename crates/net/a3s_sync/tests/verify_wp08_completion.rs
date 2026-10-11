@@ -176,7 +176,7 @@ fn tree_with(base: &Path, names: &[String]) -> PlanTree {
     }
     sync.add_child(SyncTreeNode::Directory(a));
     let mut tree = PlanTree::from_sync_tree(&sync);
-    assign_destinations(&mut tree, base, false, &NoAddons);
+    assign_destinations(&mut tree, base, false, &NoAddons).expect("safe names");
     tree
 }
 

@@ -205,7 +205,7 @@ fn planned(base: &Path, files: &[Remote]) -> PlanTree {
     a.add_child(SyncTreeNode::Directory(dir));
     sync.add_child(SyncTreeNode::Directory(a));
     let mut tree = PlanTree::from_sync_tree(&sync);
-    assign_destinations(&mut tree, base, false, &NoAddons);
+    assign_destinations(&mut tree, base, false, &NoAddons).expect("safe names");
     tree
 }
 
@@ -496,6 +496,9 @@ async fn a9_completion_concurrency_bound() {
     let cpus = std::thread::available_parallelism().map_or(1, std::num::NonZero::get);
     let max = server.state.max_in_flight.load(Ordering::SeqCst);
     assert!(max >= 1 && max <= 2.min(cpus), "max in flight {max}");
+    if cpus >= 2 {
+        assert_eq!(max, 2, "both connections work in parallel");
+    }
     assert_eq!(server.zsync_requests().len(), 6);
 }
 

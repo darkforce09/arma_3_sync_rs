@@ -75,6 +75,16 @@ fn plan(metadata: &RemoteMetadata, options: &SyncOptions) -> Result<PlanTree, Pl
     plan_with(metadata, options, &mut a3s_hash::Sha1Cache::default())
 }
 
+/// The plan, or `None` when it is rejected for an unsafe name (D-15, fix round 1: hostile names
+/// may be rejected instead of planned).
+fn plan_or_unsafe(metadata: &RemoteMetadata, options: &SyncOptions) -> Option<PlanTree> {
+    match plan(metadata, options) {
+        Ok(tree) => Some(tree),
+        Err(PlanError::UnsafeName { .. }) => None,
+        Err(other) => panic!("{other:?}"),
+    }
+}
+
 fn leaf(name: &str, sha1: Option<&str>, size: i64) -> SyncTreeNode {
     SyncTreeNode::Leaf(SyncTreeLeaf {
         name: name.to_owned(),
@@ -380,7 +390,9 @@ fn verify_hostile_absolute_names_stay_inside() {
         ),
         dir("ok", false, vec![leaf("/etc/passwd", Some("x"), 1)]),
     ]));
-    let tree = plan(&metadata, &options(base.path(), false)).expect("plan");
+    let Some(tree) = plan_or_unsafe(&metadata, &options(base.path(), false)) else {
+        return;
+    };
     let escaped = escapes(&tree, base.path());
     assert!(
         escaped.is_empty(),
@@ -397,7 +409,9 @@ fn verify_hostile_dotdot_names_stay_inside() {
         dir("..", false, vec![leaf("evil.txt", Some("x"), 1)]),
         dir("ok", false, vec![leaf("..", Some("x"), 1)]),
     ]));
-    let tree = plan(&metadata, &options(&dest, false)).expect("plan");
+    let Some(tree) = plan_or_unsafe(&metadata, &options(&dest, false)) else {
+        return;
+    };
     let escaped = escapes(&tree, &dest);
     assert!(
         escaped.is_empty(),
@@ -414,7 +428,9 @@ fn verify_hostile_dotdot_dir_never_deletes_outside() {
     std::fs::create_dir(&dest).expect("mkdir");
     touch(&base.path().join("precious/data.bin"), b"keep me");
     let metadata = metadata_of(root(vec![dir("..", false, vec![])]));
-    let mut tree = plan(&metadata, &options(&dest, false)).expect("plan");
+    let Some(mut tree) = plan_or_unsafe(&metadata, &options(&dest, false)) else {
+        return;
+    };
     select_all_except_root(&mut tree);
     let s = PlanSummary::compute(&tree);
     let dest_norm = normalize(&dest);
@@ -438,7 +454,9 @@ fn verify_hostile_empty_dir_name_without_exact_match() {
     let b = base.path();
     touch(&b.join("@mine/keep.pbo"), b"x");
     let metadata = metadata_of(root(vec![dir("", false, vec![]), dir("@a", true, vec![])]));
-    let tree = plan(&metadata, &options(b, false)).expect("plan");
+    let Some(tree) = plan_or_unsafe(&metadata, &options(b, false)) else {
+        return;
+    };
     let deleted = deleted_paths(&tree);
     assert!(
         !deleted.iter().any(|p| p.contains("@mine")),
@@ -446,7 +464,8 @@ fn verify_hostile_empty_dir_name_without_exact_match() {
     );
 }
 
-/// Windows separators in names are plain characters on Unix: no traversal.
+/// Windows separators in names are plain characters on Unix: no traversal (or the plan is
+/// rejected, D-15).
 #[cfg(unix)]
 #[test]
 fn verify_backslash_names_are_literal_on_unix() {
@@ -455,7 +474,9 @@ fn verify_backslash_names_are_literal_on_unix() {
         leaf("..\\..\\evil.txt", Some("x"), 1),
         dir("a\\b", false, vec![leaf("c", Some("x"), 1)]),
     ]));
-    let tree = plan(&metadata, &options(base.path(), false)).expect("plan");
+    let Some(tree) = plan_or_unsafe(&metadata, &options(base.path(), false)) else {
+        return;
+    };
     assert!(escapes(&tree, base.path()).is_empty());
     assert_eq!(
         tree.get("..\\..\\evil.txt")
@@ -467,6 +488,10 @@ fn verify_backslash_names_are_literal_on_unix() {
 
 /// A symlink inside a remote folder pointing outside the destination: its content is offered
 /// for deletion (Java follows it too), so a delete task resolves outside the root.
+///
+/// Fix round 1 (D-15): the link itself may be offered for deletion as a file (removing the
+/// link, not its target), so the check is lexical: no task below the link, no directory task
+/// for the link, every task inside the destination.
 #[cfg(unix)]
 #[test]
 fn verify_symlinked_extra_dir_never_deletes_outside() {
@@ -479,14 +504,15 @@ fn verify_symlinked_extra_dir_never_deletes_outside() {
     let mut tree = plan(&metadata, &options(&dest, false)).expect("plan");
     select_all_except_root(&mut tree);
     let s = PlanSummary::compute(&tree);
-    let dest_canon = dest.canonicalize().expect("canon");
+    let dest_norm = normalize(&dest);
+    let link = dest.join("@a/link");
     let outside: Vec<_> = s
         .delete_tasks
         .iter()
         .filter(|t| {
-            t.local_path
-                .canonicalize()
-                .is_ok_and(|c| !c.starts_with(&dest_canon))
+            !normalize(&t.local_path).starts_with(&dest_norm)
+                || (t.local_path.starts_with(&link) && t.local_path != link)
+                || (t.local_path == link && t.is_directory)
         })
         .map(|t| t.local_path.clone())
         .collect();
@@ -584,7 +610,7 @@ fn verify_hidden_path_edge_cases() {
         leaf("@a", Some("x"), 1),
         dir("@ab", false, vec![]),
     ]));
-    assign_destinations(&mut tree, Path::new("/d"), false, &NoAddons);
+    assign_destinations(&mut tree, Path::new("/d"), false, &NoAddons).expect("safe names");
     mark_hidden(&mut tree, &set(&["@a"]));
     assert!(matches!(tree.get("@ab"), Some(PlanNode::Directory(d)) if d.hidden));
 }
@@ -599,7 +625,7 @@ fn verify_steps_never_touch_remote_deleted_flag() {
         d.deleted = true;
     }
     let mut tree = PlanTree::from_sync_tree(&r);
-    assign_destinations(&mut tree, b, false, &NoAddons);
+    assign_destinations(&mut tree, b, false, &NoAddons).expect("safe names");
     compute_local_sha1(
         &mut tree,
         &mut a3s_hash::Sha1Cache::default(),
@@ -735,7 +761,7 @@ fn verify_huge_sizes_do_not_overflow() {
             leaf("max3", Some("x"), i64::MAX),
         ],
     )]));
-    assign_destinations(&mut tree, Path::new("/d"), false, &NoAddons);
+    assign_destinations(&mut tree, Path::new("/d"), false, &NoAddons).expect("safe names");
     mark_updated(&mut tree);
     select_all_except_root(&mut tree);
     let r = std::panic::catch_unwind(|| PlanSummary::compute(&tree));
@@ -752,7 +778,7 @@ fn verify_huge_sizes_do_not_overflow() {
 fn verify_five_gib_download_size() {
     let five_gib: i64 = 5 * 1024 * 1024 * 1024;
     let mut tree = PlanTree::from_sync_tree(&root(vec![leaf("big", Some("x"), five_gib)]));
-    assign_destinations(&mut tree, Path::new("/d"), false, &NoAddons);
+    assign_destinations(&mut tree, Path::new("/d"), false, &NoAddons).expect("safe names");
     mark_updated(&mut tree);
     select_all_except_root(&mut tree);
     assert_eq!(

@@ -209,7 +209,8 @@ pub fn local_completion(
 ///
 /// After the first error, no new file is started and the first error is returned (approved
 /// deviation DV-P6); completions already computed are written to the tree but must be
-/// considered unreliable. Cancellation returns [`CompletionError::Cancelled`].
+/// considered unreliable. Cancellation returns [`CompletionError::Cancelled`] (if the runtime
+/// shuts down while classifying, the tree is left empty).
 ///
 /// Emits [`Phase::DeterminingCompletion`], then a [`SyncEvent::Progress`] per percent of the
 /// checked files.
@@ -249,16 +250,33 @@ pub async fn determine_completion(
         probe_connection = Some(connection);
     }
 
-    let candidates: Vec<Candidate> = classify_leaves(tree, server_info, partial_supported)
-        .into_iter()
-        .filter_map(|relative_path| {
-            let local_path = tree.get(&relative_path)?.local_path()?;
-            Some(Candidate {
-                relative_path,
-                local_path,
+    // Classification stats every outdated local file: run it on a blocking thread.
+    let owned = std::mem::take(tree);
+    let info = server_info.clone();
+    let classified = tokio::task::spawn_blocking(move || {
+        let mut owned = owned;
+        let candidates: Vec<Candidate> = classify_leaves(&mut owned, &info, partial_supported)
+            .into_iter()
+            .filter_map(|relative_path| {
+                let local_path = owned.get(&relative_path)?.local_path()?;
+                Some(Candidate {
+                    relative_path,
+                    local_path,
+                })
             })
-        })
-        .collect();
+            .collect();
+        (owned, candidates)
+    })
+    .await;
+    let candidates = match classified {
+        Ok((owned, candidates)) => {
+            *tree = owned;
+            candidates
+        }
+        Err(join) if join.is_panic() => std::panic::resume_unwind(join.into_panic()),
+        // The runtime is shutting down; the tree is lost with the task.
+        Err(_) => return Err(CompletionError::Cancelled),
+    };
     if ctx.cancel.is_cancelled() {
         return Err(CompletionError::Cancelled);
     }
@@ -566,7 +584,7 @@ mod tests {
         })];
         let build = || {
             let mut tree = PlanTree::from_sync_tree(&root);
-            assign_destinations(&mut tree, b, false, &NoAddons);
+            assign_destinations(&mut tree, b, false, &NoAddons).expect("safe names");
             if let Some(PlanNode::Leaf(l)) = tree.get_mut("d/deleted") {
                 l.deleted = true;
             }

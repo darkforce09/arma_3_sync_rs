@@ -20,7 +20,7 @@ mod summary;
 
 use std::collections::HashMap;
 use std::hash::BuildHasher;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use a3s_error::{ErrorKind, UserFacing};
 use a3s_transport::CancellationToken;
@@ -129,6 +129,15 @@ pub enum PlanError {
     /// The plan was cancelled.
     #[error("Cancelled")]
     Cancelled,
+
+    /// A remote node name is not a single plain path component (e.g. `..`, `/etc`, `a/b`,
+    /// `C:x`): joining it to a local folder could reach outside the destination (D-15).
+    #[error("Unsafe file name in the repository: {relative_path}")]
+    #[non_exhaustive]
+    UnsafeName {
+        /// Path of the offending node in the plan tree.
+        relative_path: String,
+    },
 }
 
 impl UserFacing for PlanError {
@@ -140,6 +149,7 @@ impl UserFacing for PlanError {
             Self::Options(e) => e.kind(),
             Self::Hash { source, .. } => ErrorKind::from_io(source),
             Self::Cancelled => ErrorKind::Cancelled,
+            Self::UnsafeName { .. } => ErrorKind::InvalidData,
         }
     }
 
@@ -194,13 +204,15 @@ pub fn plan_repository(
             .ok_or_else(|| PlanError::EventNotFound { name: name.clone() })?;
         tree = event_filter::filter(tree, event);
     }
+    // Remote names are joined to local folders below: reject traversal first (D-15).
+    validate_names(&tree)?;
     // 2. Destination paths.
     assign_destinations(
         &mut tree,
         &options.destination,
         options.auto_discover,
         addons,
-    );
+    )?;
     // 3. Local SHA-1.
     compute_local_sha1(&mut tree, cache, cancel, events)?;
     // 4. New or updated files.
@@ -230,6 +242,38 @@ fn check_destination(destination: &Path) -> Result<(), SyncOptionsError> {
         ));
     }
     Ok(())
+}
+
+/// Checks that every node name below the root is a single plain path component.
+///
+/// A name is accepted only if `Path::new(name)` has exactly one [`Component::Normal`] equal to
+/// the name, and it contains none of `/`, `\`, `\0`, `:` (on every platform, so a repository is
+/// planned the same way everywhere). Java joins names unchecked
+/// (`RepositoryService.java:487-508, 613-656`), so a hostile `.a3s/sync` could make it read,
+/// write or delete outside the destination; this is approved deviation D-15.
+pub fn validate_names(tree: &PlanTree) -> Result<(), PlanError> {
+    let mut unsafe_path = None;
+    tree.walk(&mut |relative_path, node| {
+        if unsafe_path.is_none() && !is_safe_name(node.name()) {
+            unsafe_path = Some(relative_path.to_owned());
+        }
+    });
+    match unsafe_path {
+        Some(relative_path) => Err(PlanError::UnsafeName { relative_path }),
+        None => Ok(()),
+    }
+}
+
+/// Whether `name` is a single plain path component (see [`validate_names`]).
+pub fn is_safe_name(name: &str) -> bool {
+    if name.contains(['/', '\\', '\0', ':']) {
+        return false;
+    }
+    let mut components = Path::new(name).components();
+    matches!(
+        (components.next(), components.next()),
+        (Some(Component::Normal(c)), None) if c == std::ffi::OsStr::new(name)
+    )
 }
 
 /// `std::path::absolute(path)`, or `path` itself if that fails (empty path, no current dir).

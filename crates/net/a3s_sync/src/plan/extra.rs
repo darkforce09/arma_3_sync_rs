@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 use std::path::Path;
 
-use super::{PART_EXTENSION, PBO_ZIP_EXTENSION};
+use super::{PART_EXTENSION, PBO_ZIP_EXTENSION, is_safe_name};
 use crate::model::{PlanDirectory, PlanLeaf, PlanNode, PlanTree};
 
 /// Adds every local file or folder that the repository doesn't have as a `deleted` node, and
@@ -15,6 +15,11 @@ use crate::model::{PlanDirectory, PlanLeaf, PlanNode, PlanTree};
 /// Names are compared case-insensitively. Local files whose name contains
 /// [`PART_EXTENSION`] or [`PBO_ZIP_EXTENSION`] are never extra. The content of an extra folder
 /// is added too. Unreadable folders are silently skipped.
+///
+/// A local symbolic link is never followed: it becomes one deleted file node for the link
+/// itself, even when it points to a folder (D-15; Java lists the target's content, so a link
+/// could make it delete outside the destination, and link loops never end). Folders whose name
+/// is not a plain path component (see [`super::validate_names`]) are not listed.
 // Mirrors service/RepositoryService.java:607-659
 pub fn add_extra_local_files(tree: &mut PlanTree, destination: &Path, exact_match: bool) -> usize {
     scan(&mut tree.root, true, destination, exact_match)
@@ -26,7 +31,7 @@ fn scan(
     destination: &Path,
     exact_match: bool,
 ) -> usize {
-    if directory.hidden {
+    if directory.hidden || (!is_root && !is_safe_name(&directory.name)) {
         return 0;
     }
     let listed = if !is_root {
@@ -49,16 +54,25 @@ fn scan(
             .local_path()
             .unwrap_or_else(|| destination.to_path_buf());
         let mut new_nodes = Vec::new();
-        for (name, is_dir) in entries {
+        for LocalEntry {
+            name,
+            is_dir,
+            is_symlink,
+        } in entries
+        {
             if remote_names.contains(&name.to_lowercase()) {
                 continue;
             }
-            if is_dir {
+            if is_dir && !is_symlink {
                 let mut d = PlanDirectory::new(name);
                 d.deleted = true;
                 d.destination_path = Some(child_destination.clone());
                 new_nodes.push(PlanNode::Directory(d));
-            } else if !name.contains(PART_EXTENSION) && !name.contains(PBO_ZIP_EXTENSION) {
+            } else if is_dir
+                || (!name.contains(PART_EXTENSION) && !name.contains(PBO_ZIP_EXTENSION))
+            {
+                // A link to a folder is offered like a folder (Java applies the name filters to
+                // files only), but as a file node: deleting it removes the link only.
                 let mut l = PlanLeaf::new(name);
                 l.deleted = true;
                 l.destination_path = Some(child_destination.clone());
@@ -89,9 +103,20 @@ fn insert_all(directory: &mut PlanDirectory, mut nodes: Vec<PlanNode>) {
     directory.add_child(last);
 }
 
-/// The entries of `path` as `(name, is_dir)`, or `None` when it can't be listed (Java
-/// `File.listFiles()` returning `null`).
-fn list(path: &Path) -> Option<Vec<(String, bool)>> {
+/// One entry of a local folder.
+struct LocalEntry {
+    name: String,
+
+    /// A folder, or a link to one (Java `File.isDirectory()` follows links).
+    is_dir: bool,
+
+    /// A symbolic link (never followed by the scan).
+    is_symlink: bool,
+}
+
+/// The entries of `path`, or `None` when it can't be listed (Java `File.listFiles()` returning
+/// `null`).
+fn list(path: &Path) -> Option<Vec<LocalEntry>> {
     let read_dir = match std::fs::read_dir(path) {
         Ok(read_dir) => read_dir,
         Err(err) => {
@@ -110,8 +135,15 @@ fn list(path: &Path) -> Option<Vec<(String, bool)>> {
         };
         let entry_path = entry.path();
         match entry.file_name().into_string() {
-            // `is_dir` follows symlinks, like Java `File.isDirectory()`.
-            Ok(name) => out.push((name, entry_path.is_dir())),
+            Ok(name) => {
+                let is_symlink = std::fs::symlink_metadata(&entry_path)
+                    .is_ok_and(|m| m.file_type().is_symlink());
+                out.push(LocalEntry {
+                    name,
+                    is_dir: entry_path.is_dir(),
+                    is_symlink,
+                });
+            }
             Err(name) => tracing::debug!("Skipping non-UTF-8 local name {name:?}"),
         }
     }
@@ -168,7 +200,7 @@ mod tests {
         let mut root = SyncTreeDirectory::new_root();
         root.children = vec![dir("@a", vec![dir("addons", vec![leaf("a.pbo")])])];
         let mut tree = PlanTree::from_sync_tree(&root);
-        assign_destinations(&mut tree, b, false, &NoAddons);
+        assign_destinations(&mut tree, b, false, &NoAddons).expect("safe names");
         (base, tree)
     }
 
@@ -258,10 +290,42 @@ mod tests {
         let mut root = SyncTreeDirectory::new_root();
         root.children = vec![dir("@a", vec![])];
         let mut tree = PlanTree::from_sync_tree(&root);
-        assign_destinations(&mut tree, b, false, &NoAddons);
+        assign_destinations(&mut tree, b, false, &NoAddons).expect("safe names");
         assert_eq!(add_extra_local_files(&mut tree, b, false), 1);
         tree.recompute_changed();
         assert!(!tree.root.changed);
         assert!(matches!(tree.get("@a/empty"), Some(n) if n.deleted()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn d15_symlinks_are_never_followed() {
+        let base = tempfile::tempdir().expect("tempdir");
+        let dest = base.path().join("dest");
+        touch(&base.path().join("outside/data.bin"));
+        std::fs::create_dir_all(dest.join("@a")).expect("mkdir");
+        let link = |target: &Path, name: &str| {
+            std::os::unix::fs::symlink(target, dest.join("@a").join(name)).expect("ln");
+        };
+        link(&base.path().join("outside"), "to_dir");
+        link(&base.path().join("outside/data.bin"), "to_file");
+        link(Path::new("."), "loop");
+        link(&base.path().join("missing"), "dangling.part");
+        let mut root = SyncTreeDirectory::new_root();
+        root.children = vec![dir("@a", vec![])];
+        for exact_match in [false, true] {
+            let mut tree = PlanTree::from_sync_tree(&root);
+            assign_destinations(&mut tree, &dest, false, &NoAddons).expect("safe names");
+            assert_eq!(add_extra_local_files(&mut tree, &dest, exact_match), 3);
+            // Each link is one deleted file node; nothing below it.
+            assert_eq!(
+                deleted(&tree),
+                [
+                    ("@a/loop".to_owned(), false, dest.join("@a")),
+                    ("@a/to_dir".to_owned(), false, dest.join("@a")),
+                    ("@a/to_file".to_owned(), false, dest.join("@a")),
+                ]
+            );
+        }
     }
 }
