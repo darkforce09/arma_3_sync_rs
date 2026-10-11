@@ -1,4 +1,4 @@
-//! Decoding the real Java-written client files of `tests/fixtures/java_local` (A17).
+//! Decoding the real Java-written client files of `tests/fixtures/java_local`.
 //!
 //! Expected values are transcribed from the Java identity dumps in
 //! `tests/fixtures/java_local/dumps/` and the harness inputs (`LocalData.java`).
@@ -315,7 +315,7 @@ fn gunzip(path: &Path) -> Vec<u8> {
 }
 
 #[test]
-fn a17_configuration_and_preferences() {
+fn configuration_and_preferences() {
     for dir in [
         format!("{PERUSER_CONFIG}/configuration"),
         PORTABLE_CONFIG.to_owned(),
@@ -331,7 +331,7 @@ fn a17_configuration_and_preferences() {
 }
 
 #[test]
-fn a17_profiles() {
+fn profiles() {
     for dir in [
         format!("{PERUSER_CONFIG}/profiles"),
         "portable/profiles".to_owned(),
@@ -347,7 +347,7 @@ fn a17_profiles() {
 }
 
 #[test]
-fn a17_encrypted_repositories() {
+fn encrypted_repositories() {
     let http = read_repository_file(&fixture(&format!(
         "{PERUSER_REPOS}/Sample_HTTP__5ab39964a7ab.a3s.repository"
     )))
@@ -412,7 +412,7 @@ fn a17_encrypted_repositories() {
 }
 
 #[test]
-fn a17_sealed_object_descriptor_and_byte_identical_seal() {
+fn sealed_object_descriptor_and_byte_identical_seal() {
     let path = fixture(&format!(
         "{PERUSER_REPOS}/Sample_HTTP__5ab39964a7ab.a3s.repository"
     ));
@@ -466,7 +466,7 @@ fn a17_sealed_object_descriptor_and_byte_identical_seal() {
 }
 
 #[test]
-fn a17_historical_variants() {
+fn historical_variants() {
     // Written by an older `Repository` class without the two connection fields.
     let old = read_repository_file(&fixture(
         "variants/repository_pre_connections.a3s.repository",

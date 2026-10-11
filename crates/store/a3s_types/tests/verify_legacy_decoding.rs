@@ -1,6 +1,6 @@
-//! WP03 verifier: adversarial lenient-decoding cases (Java-like streams built with `Builder`).
+//! Adversarial lenient-decoding cases (Java-like streams built with `Builder`).
 //!
-//! Covers spec B35-B44 edge cases not exercised by `local_legacy.rs`: unknown protocol types and
+//! Covers edge cases not exercised by `local_legacy.rs`: unknown protocol types and
 //! subclasses, extra fields and UIDs of other class versions, zero values of missing fields,
 //! alternative collection classes, cache edge values (empty SHA-1, Windows paths, i64 extremes),
 //! modified-UTF-8 strings, cyclic and shared profile trees, and malformed streams.
@@ -129,7 +129,7 @@ fn http_protocol(b: &mut Builder) -> Value {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Protocols (B30, B42)
+// Protocols
 
 #[test]
 fn verify_unknown_protocol_type_falls_back_to_class_with_warning() {
@@ -174,7 +174,7 @@ fn verify_unknown_encryption_mode_reads_none_with_warning() {
 #[test]
 fn verify_unknown_protocol_subclass() {
     // A future/unknown subclass of AbstractProtocole with a known protocolType decodes through
-    // the hierarchy check (B42 "any class whose hierarchy contains AbstractProtocole").
+    // the hierarchy check (any class whose hierarchy contains AbstractProtocole).
     let mut b = Builder::new();
     let base = wire::abstract_protocole_desc(&mut b);
     let desc = b.class_desc("fr.soe.a3s.domain.Gopher", 77, S, &[], Some(base));
@@ -187,7 +187,7 @@ fn verify_unknown_protocol_subclass() {
     );
     assert!(warnings.is_empty(), "{warnings:?}");
 
-    // Same subclass with a null protocolType: required `protocole` is a hard error (B41)...
+    // Same subclass with a null protocolType: required `protocole` is a hard error...
     let mut b = Builder::new();
     let base = wire::abstract_protocole_desc(&mut b);
     let desc = b.class_desc("fr.soe.a3s.domain.Gopher", 77, S, &[], Some(base));
@@ -216,7 +216,7 @@ fn verify_unknown_protocol_subclass() {
 
 #[test]
 fn verify_protocol_without_url_and_port_reads_empty_strings() {
-    // An AbstractProtocole class version that only has protocolType (B42: url/port missing
+    // An AbstractProtocole class version that only has protocolType (url/port missing
     // read as "", login/password/timeouts stay None, validateSSL false).
     let mut b = Builder::new();
     let base = b.class_desc(
@@ -258,7 +258,7 @@ fn verify_protocol_without_url_and_port_reads_empty_strings() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Class versions: UIDs, extra and missing fields (B36, B37)
+// Class versions: UIDs, extra and missing fields
 
 #[test]
 fn verify_other_uid_and_extra_fields_are_ignored_silently() {
@@ -301,9 +301,9 @@ fn verify_minimal_repository_takes_java_zero_values() {
     let (decoded, warnings) = decode::<LegacyRepository>(&finish(b, root));
     assert!(warnings.is_empty(), "{warnings:?}");
     let r = decoded.repository;
-    // Java zero values, not field initializers (B37).
+    // Java zero values, not field initializers.
     assert!(!r.no_auto_discover);
-    assert_eq!(r.number_of_connections, 0, "raw value kept (B7)");
+    assert_eq!(r.number_of_connections, 0, "raw value kept");
     assert_eq!(r.number_of_repository_check_connections, 0);
     assert_eq!(r.parallel_upload_connections, 0);
     assert_eq!(r.repository_check_connections(), 4);
@@ -324,11 +324,11 @@ fn verify_empty_configuration_class_takes_zero_values() {
     let root = object(&mut b, CONFIGURATION, 1, Vec::new());
     let (decoded, warnings) = decode::<LegacyConfiguration>(&finish(b, root));
     let c = decoded.configuration;
-    // Missing boolean is Java's zero value `false`, not the initializer `true` (B37).
+    // Missing boolean is Java's zero value `false`, not the initializer `true`.
     assert!(!c.view_mode_tree);
     assert_eq!(c.height, 0);
     assert_eq!(c.width, 0);
-    // Q7: null profileName/gameVersion fall back with a warning each.
+    // Null profileName/gameVersion fall back with a warning each.
     assert_eq!(c.profile_name, "Default");
     assert_eq!(c.game_version, "Arma 3");
     assert_eq!(warnings.len(), 2, "{warnings:?}");
@@ -349,11 +349,7 @@ fn verify_empty_preferences_class_uses_getter_defaults() {
     let (p, warnings) = decode::<Preferences>(&finish(b, root));
     assert!(warnings.is_empty(), "{warnings:?}");
     assert_eq!(p.look_and_feel, LookAndFeel::LafDefault);
-    assert_eq!(
-        p.icon_resize_size,
-        IconResize::Auto,
-        "null getter is AUTO (B18)"
-    );
+    assert_eq!(p.icon_resize_size, IconResize::Auto, "null getter is AUTO");
     assert_eq!(p.start_with_os, StartWithOs::Disabled);
     assert!(p.prefer_github_updates);
     assert_eq!(p.launch_panel_game_launch, MinimizationType::TaskBar);
@@ -526,7 +522,7 @@ fn verify_alternative_collection_classes() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// SHA-1 caches (B10, B28, B40)
+// SHA-1 caches
 
 fn file_attributes(b: &mut Builder, sha1: Option<&str>, last_modified: i64) -> Value {
     let fields = vec![long("lastModified", last_modified), s(b, "sha1", sha1)];
@@ -595,7 +591,7 @@ fn verify_file_cache_edge_values() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Profiles: strings, ordering, cycles, sharing (B12-B13, B41)
+// Profiles: strings, ordering, cycles, sharing
 
 fn tree_dir_desc(b: &mut Builder) -> NodeId {
     b.class_desc(
@@ -704,7 +700,7 @@ fn verify_tree_keeps_stream_order_with_case_duplicates() {
             ("a", true),
             ("z", false)
         ],
-        "decode must keep stream order and not re-sort (B13)"
+        "decode must keep stream order and not re-sort"
     );
 }
 
@@ -792,7 +788,7 @@ fn verify_shared_subtrees_do_not_expand_exponentially() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Malformed input (B41)
+// Malformed input
 
 #[test]
 fn verify_malformed_streams_are_errors() {
@@ -827,7 +823,7 @@ fn verify_malformed_streams_are_errors() {
 
 #[test]
 fn verify_export_elements_with_hard_errors_are_skipped() {
-    // B41 hard errors inside an export element skip that element (with a warning) instead of
+    // Hard errors inside an export element skip that element (with a warning) instead of
     // failing the whole import.
     let mut b = Builder::new();
     let class = a3s_types::local::wire::auto_config_export_desc(&mut b);

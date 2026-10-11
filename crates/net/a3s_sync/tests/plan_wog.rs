@@ -63,7 +63,7 @@ fn non_root_count(tree: &PlanTree) -> usize {
 }
 
 #[test]
-fn a6_wog_plan_into_empty_folder() {
+fn wog_plan_into_empty_folder() {
     let metadata = metadata();
     let sync = metadata.sync.as_deref().expect("sync");
     let base = tempfile::tempdir().expect("tempdir");
@@ -113,7 +113,7 @@ fn a6_wog_plan_into_empty_folder() {
 }
 
 #[test]
-fn a6_wog_plan_exact_match_stale_folder() {
+fn wog_plan_exact_match_stale_folder() {
     let metadata = metadata();
     let base = tempfile::tempdir().expect("tempdir");
     std::fs::create_dir(base.path().join("@stale")).expect("mkdir");
@@ -153,7 +153,7 @@ fn a6_wog_plan_exact_match_stale_folder() {
 }
 
 #[test]
-fn a6_wog_plan_with_event() {
+fn wog_plan_with_event() {
     let mut metadata = metadata();
     let sync = metadata.sync.as_deref().expect("sync");
     let addons: Vec<String> = sync

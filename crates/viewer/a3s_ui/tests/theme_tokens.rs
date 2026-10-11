@@ -1,4 +1,4 @@
-//! Theme token values and their egui mapping (spec B1–B15).
+//! Theme token values and their egui mapping.
 
 use a3s_ui::frames;
 use a3s_ui::theme::{self, ThemeLibrary, ThemeMode, ThemePalette, ThemeShadow};
@@ -40,7 +40,7 @@ fn expected_palette() -> Vec<(&'static str, Color32, Color32)> {
 }
 
 #[test]
-fn a1_palette_metrics_and_shadows() {
+fn palette_metrics_and_shadows() {
     let light = ThemeLibrary::light().palette.named_tokens();
     let dark = ThemeLibrary::dark().palette.named_tokens();
     let expected = expected_palette();
@@ -106,7 +106,7 @@ fn a1_palette_metrics_and_shadows() {
 }
 
 #[test]
-fn a1_palette_aliases() {
+fn palette_aliases() {
     let p: &ThemePalette = &ThemeLibrary::dark().palette;
     assert_eq!(p.selection_background(), p.state_selection_bg);
     assert_eq!(p.selection_foreground(), p.state_selection_fg);
@@ -118,7 +118,7 @@ fn a1_palette_aliases() {
 }
 
 #[test]
-fn a2_default_dark_and_toggle() {
+fn default_dark_and_toggle() {
     assert_eq!(ThemeMode::default(), ThemeMode::Dark);
     assert_eq!(ThemeLibrary::for_mode(ThemeMode::Light).id, "light");
     assert_eq!(ThemeLibrary::for_mode(ThemeMode::Dark).id, "dark");
@@ -137,14 +137,13 @@ fn a2_default_dark_and_toggle() {
 }
 
 #[test]
-fn a3_style_mapping() {
+fn style_mapping() {
     for def in [ThemeLibrary::light(), ThemeLibrary::dark()] {
         let p = &def.palette;
         let style = theme::style_for(def);
         let v = &style.visuals;
         let six = CornerRadius::same(6);
 
-        // B10
         assert_eq!(v.dark_mode, def.dark);
         assert_eq!(v.panel_fill, p.surface);
         assert_eq!(v.window_fill, p.surface);
@@ -170,14 +169,12 @@ fn a3_style_mapping() {
         assert!(!v.window_highlight_topmost);
         assert_eq!(v.disabled_alpha, 0.5);
 
-        // B9
         assert_eq!(theme::widget_corner_radius(&def.metrics), six);
         assert_eq!(
             theme::text_edit_corner_radius(&def.metrics),
             CornerRadius::same(4)
         );
 
-        // B11
         let w = &v.widgets;
         let rows = [
             (
@@ -220,7 +217,6 @@ fn a3_style_mapping() {
             assert_eq!(visuals.expansion, 0.0);
         }
 
-        // B12
         let s = &style.spacing;
         assert_eq!(s.item_spacing, egui::vec2(8.0, 4.0));
         assert_eq!(s.button_padding, egui::vec2(12.0, 4.0));
@@ -245,7 +241,7 @@ fn a3_style_mapping() {
 /// Ported `ThemeTokensTest.borderDefaultsUseBorderInstances`
 /// (`src/test/java/fr/soe/a3s/ui/theme/ThemeTokensTest.java:12-25`).
 #[test]
-fn a4_border_defaults_use_border_instances() {
+fn border_defaults_use_border_instances() {
     let expected_margin = Margin {
         left: 16,
         right: 16,

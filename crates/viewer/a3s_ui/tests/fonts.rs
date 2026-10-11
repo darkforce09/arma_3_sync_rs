@@ -1,4 +1,4 @@
-//! Embedded Geist fonts (spec B30–B33).
+//! Embedded Geist fonts.
 
 use a3s_ui::fonts::{self, FontFace};
 use egui::FontFamily;
@@ -7,7 +7,7 @@ use egui::FontFamily;
 const MIN_FONT_SIZE_BYTES: usize = 10 * 1024;
 
 #[test]
-fn a10_font_assets_and_definitions() {
+fn font_assets_and_definitions() {
     for face in FontFace::ALL {
         let bytes = face.ttf_bytes();
         assert!(

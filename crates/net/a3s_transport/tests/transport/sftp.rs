@@ -6,38 +6,38 @@ use crate::common;
 use crate::support::sftp::{PASSWORD, fixture, fixture_with};
 
 #[tokio::test]
-async fn a3_upload_file_round_trip() {
-    common::a3_upload_file_round_trip(&fixture().await).await;
+async fn upload_file_round_trip() {
+    common::upload_file_round_trip(&fixture().await).await;
 }
 
 #[tokio::test]
-async fn a4_upload_bytes_identity() {
-    common::a4_upload_bytes_identity(&fixture().await).await;
+async fn upload_bytes_identity() {
+    common::upload_bytes_identity(&fixture().await).await;
 }
 
 #[tokio::test]
-async fn a5_exists() {
-    common::a5_exists(&fixture().await).await;
+async fn exists() {
+    common::exists(&fixture().await).await;
 }
 
 #[tokio::test]
-async fn a6_mkdirs_idempotent() {
-    common::a6_mkdirs_idempotent(&fixture().await).await;
+async fn mkdirs_idempotent() {
+    common::mkdirs_idempotent(&fixture().await).await;
 }
 
 #[tokio::test]
-async fn a7_delete() {
-    common::a7_delete(&fixture().await).await;
+async fn delete() {
+    common::delete(&fixture().await).await;
 }
 
 #[tokio::test]
-async fn a8_path_traversal() {
-    common::a8_path_traversal(&fixture().await).await;
+async fn path_traversal() {
+    common::path_traversal(&fixture().await).await;
 }
 
 #[tokio::test]
-async fn a17_cancellation() {
-    common::a17_cancellation(&fixture().await, false).await;
+async fn cancellation() {
+    common::cancellation(&fixture().await, false).await;
 }
 
 #[tokio::test]
@@ -46,7 +46,7 @@ async fn a_resume_sftp() {
 }
 
 #[tokio::test]
-async fn a12_base_directory() {
+async fn base_directory() {
     let ctx = TransferCtx::new();
 
     // Empty remote path: base is the home directory (`canonicalize(".")`).
@@ -85,7 +85,7 @@ async fn a12_base_directory() {
 }
 
 #[tokio::test]
-async fn a2_sftp_url_with_scheme_connects() {
+async fn sftp_url_with_scheme_connects() {
     let fx = fixture().await;
     let mut protocol = fx.protocol.clone();
     protocol.url = format!("sftp:///{}", protocol.url);
@@ -99,7 +99,7 @@ async fn a2_sftp_url_with_scheme_connects() {
 }
 
 #[tokio::test]
-async fn a13_authentication() {
+async fn authentication() {
     let fx = fixture_with("/", "", "", "").await;
     let options = TransportOptions::from_protocol(&fx.protocol);
     let result = Transport::connect(&fx.protocol, &options).await;

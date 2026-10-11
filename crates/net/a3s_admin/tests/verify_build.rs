@@ -1,4 +1,4 @@
-//! Adversarial verification of WP11 (repository build): limits at Java's reader boundaries,
+//! Adversarial verification of the repository build: limits at Java's reader boundaries,
 //! cancellation followed by a rebuild, file permissions of generated files, symbolic links,
 //! Unicode / case-colliding names and rebuild idempotence. The `#[ignore]`d tests need JDK 25
 //! (`source scripts/java_env.sh`) and check that Java reads what Rust wrote.
@@ -185,7 +185,7 @@ fn nested(depth: usize) -> String {
 /// `readObject0` call (new objects, strings, back-references and nulls alike), so a leaf costs 4
 /// (object, name, parent back-reference, sha1) where the Rust check counts 3 handles. A flat
 /// folder of 70 000 files is ~280 000 Java references: Java cannot read the sync file, so the
-/// build must fail with `LimitExceeded` and write nothing (Q6, A16).
+/// build must fail with `LimitExceeded` and write nothing.
 #[test]
 fn verify_70k_files_exceed_java_reference_limit() {
     let tmp = tempfile::tempdir().unwrap();

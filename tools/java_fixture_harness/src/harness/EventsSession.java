@@ -15,7 +15,7 @@ import fr.soe.a3s.dto.EventDTO;
 import fr.soe.a3s.service.RepositoryService;
 
 /**
- * B36 events session ({@code java_built/events_session/}): the GUI event calls of
+ * Events session ({@code java_built/events_session/}): the GUI event calls of
  * {@code RepositoryService} on a freshly loaded repository, with {@code writeEvents} and a copy
  * of {@code .a3s/events} after every call.
  */

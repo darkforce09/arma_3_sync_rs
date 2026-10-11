@@ -1,4 +1,4 @@
-//! Ports of `fr.soe.a3s.constant.*` (A1): Java names, descriptions, values, parsers.
+//! Ports of `fr.soe.a3s.constant.*`: Java names, descriptions, values, parsers.
 
 use a3s_types::constants::{
     CONNECTION_TIMEOUT_MS, CheckRepositoriesFrequency, ConsoleCommand, DEFAULT_PROFILE_NAME,
@@ -22,7 +22,7 @@ macro_rules! assert_java_names {
 }
 
 #[test]
-fn a1_java_names_and_order() {
+fn java_names_and_order() {
     assert_java_names!(
         CheckRepositoriesFrequency,
         ["DISABLED", "FREQ1", "FREQ2", "FREQ3"]
@@ -77,7 +77,7 @@ fn a1_java_names_and_order() {
 }
 
 #[test]
-fn a1_descriptions_values_and_parsers() {
+fn descriptions_values_and_parsers() {
     let freq: Vec<(&str, i32)> = CheckRepositoriesFrequency::ALL
         .iter()
         .map(|f| (f.description(), f.minutes()))
@@ -193,7 +193,7 @@ fn a1_descriptions_values_and_parsers() {
 }
 
 #[test]
-fn a1_game_dlcs() {
+fn game_dlcs() {
     let data: Vec<(&str, &str)> = GameDlc::ALL
         .iter()
         .map(|d| (d.description(), d.steam_app_id()))
@@ -228,7 +228,7 @@ fn a1_game_dlcs() {
 }
 
 #[test]
-fn a1_game_system_folders() {
+fn game_system_folders() {
     assert_eq!(GAME_SYSTEM_FOLDERS.len(), 21);
     assert_eq!(
         GAME_SYSTEM_FOLDERS,
@@ -259,7 +259,7 @@ fn a1_game_system_folders() {
 }
 
 #[test]
-fn a1_protocol_and_encryption_descriptions() {
+fn protocol_and_encryption_descriptions() {
     let cases = [
         ("FTP", ProtocolType::Ftp),
         ("FTPS", ProtocolType::Ftps),

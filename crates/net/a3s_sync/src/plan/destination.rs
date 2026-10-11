@@ -16,7 +16,7 @@ use crate::model::{PlanDirectory, PlanNode, PlanTree};
 /// The root's destination stays `None`.
 ///
 /// Fails with [`PlanError::UnsafeName`] (setting nothing) if a node name is not a plain path
-/// component (see [`validate_names`], D-15).
+/// component (see [`validate_names`]).
 // Mirrors service/RepositoryService.java:477-511
 pub fn assign_destinations(
     tree: &mut PlanTree,
@@ -108,7 +108,7 @@ mod tests {
     }
 
     #[test]
-    fn a2_destinations_default() {
+    fn destinations_default() {
         let base = tempfile::tempdir().expect("tempdir");
         let base = base.path();
         let mut t = tree(true);
@@ -130,7 +130,7 @@ mod tests {
     }
 
     #[test]
-    fn a2_destinations_relative_root_children_verbatim() {
+    fn destinations_relative_root_children_verbatim() {
         let mut t = tree(false);
         assign_destinations(&mut t, Path::new("rel"), true, &NoAddons).expect("safe names");
         assert_eq!(dest(&t, "mods"), Some(PathBuf::from("rel")));
@@ -140,7 +140,7 @@ mod tests {
     }
 
     #[test]
-    fn a2_destinations_auto_discover() {
+    fn destinations_auto_discover() {
         let base = tempfile::tempdir().expect("tempdir");
         let base = base.path();
         let addons: HashMap<String, PathBuf> =

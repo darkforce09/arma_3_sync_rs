@@ -229,7 +229,7 @@ mod tests {
     }
 
     #[test]
-    fn a1_filter_keeps_listed_addons() {
+    fn filter_keeps_listed_addons() {
         let original = addon_tree();
         let ev = event("e", &[("@a", true), ("@c", false), ("@e", true)], &[]);
         let filtered = filter(original.clone(), &ev);
@@ -278,13 +278,13 @@ mod tests {
     }
 
     #[test]
-    fn a1_filter_is_case_sensitive() {
+    fn filter_is_case_sensitive() {
         let filtered = filter(addon_tree(), &event("e", &[("@A", true)], &[]));
         assert!(filtered.root.children.is_empty());
     }
 
     #[test]
-    fn a1_filter_userconfig() {
+    fn filter_userconfig() {
         let t = tree(vec![
             dir(
                 "UserConfig",
@@ -323,7 +323,7 @@ mod tests {
     }
 
     #[test]
-    fn a1_filter_userconfig_and_addons_merge() {
+    fn filter_userconfig_and_addons_merge() {
         let t = tree(vec![
             dir(
                 "userconfig",
@@ -354,7 +354,7 @@ mod tests {
     }
 
     #[test]
-    fn a1_find_event_last_duplicate_wins() {
+    fn find_event_last_duplicate_wins() {
         let events = Events {
             list: vec![
                 event("dup", &[("@a", true)], &[]),
@@ -370,7 +370,7 @@ mod tests {
     }
 
     #[test]
-    fn a1_filter_children_order() {
+    fn filter_children_order() {
         let t = tree(vec![
             dir("@z", true, vec![]),
             dir("Zeta", false, vec![dir("@y", true, vec![])]),

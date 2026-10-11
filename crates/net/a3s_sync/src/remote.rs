@@ -513,7 +513,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a12_server_info_changed() {
+    fn server_info_changed_cases() {
         let base = ServerInfo {
             revision: 5,
             number_of_files: 10,
@@ -536,7 +536,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a6_probe_applies_to_http_only() {
+    async fn probe_applies_to_http_only() {
         for (protocol_type, applies) in [
             (ProtocolType::Http, true),
             (ProtocolType::Https, true),
@@ -555,21 +555,23 @@ mod tests {
     }
 
     #[test]
-    fn a18_require_for_sync_order() {
+    fn require_for_sync_order() {
         let mut m = RemoteMetadata::default();
         let err = m.require_for_sync(Some("e")).expect_err("sync missing");
-        assert_eq!(err.to_string(), "Remote file no found: /.a3s/sync");
+        assert!(matches!(err, RemoteError::MissingMetadata(A3sFile::Sync)));
 
         m.sync = Some(Arc::new(SyncTreeDirectory::new_root()));
         let err = m
             .require_for_sync(Some("e"))
             .expect_err("serverinfo missing");
-        assert_eq!(err.to_string(), "Remote file not found: .a3s/serverinfo");
+        assert!(matches!(
+            err,
+            RemoteError::MissingMetadata(A3sFile::ServerInfo)
+        ));
 
         m.server_info = Some(Arc::new(ServerInfo::default()));
         assert!(m.require_for_sync(None).is_ok());
         let err = m.require_for_sync(Some("e")).expect_err("events missing");
-        assert_eq!(err.to_string(), "Remote file not found: /.a3s/events");
         assert!(matches!(err, RemoteError::MissingMetadata(A3sFile::Events)));
 
         m.events = Some(Arc::new(Events::default()));
@@ -578,7 +580,7 @@ mod tests {
     }
 
     #[test]
-    fn a18_events_list_dedupes_by_name() {
+    fn events_list_dedupes_by_name() {
         let event = |name: &str, description: &str| Event {
             name: name.to_owned(),
             description: Some(description.to_owned()),

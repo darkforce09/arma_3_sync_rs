@@ -1,4 +1,4 @@
-//! `.a3s/changelogs`: the build history (B28–B33, B44–B46).
+//! `.a3s/changelogs`: the build history.
 
 use a3s_jserial::jdk::Builder;
 use a3s_jserial::{Graph, NodeId, Value};
@@ -254,7 +254,7 @@ fn old_entries(old: Option<&RawGraph>) -> a3s_jserial::Result<Vec<Option<OldChan
         .collect()
 }
 
-/// Computes the new changelog list (B29–B33).
+/// Computes the new changelog list.
 ///
 /// `old` is the previous `changelogs` file, `old_sync` the previous `sync`.
 // Mirrors dao/repository/RepositoryBuildProcessor.java:178-243
@@ -353,7 +353,7 @@ fn sorted_leaves(dir: &SyncTreeDirectory) -> Vec<&SyncTreeLeaf> {
     leaves
 }
 
-/// Addons present in both trees whose files changed (B31), in `HashMap` iteration order.
+/// Addons present in both trees whose files changed, in `HashMap` iteration order.
 // Mirrors dao/repository/RepositoryBuildProcessor.java:214-240
 fn updated_addons(dirs: &[AddonDir<'_>], old_sync: &SyncTreeDirectory) -> Vec<UpdatedAddon> {
     let mut old_map: JavaHashMap<(), &SyncTreeDirectory> = JavaHashMap::new();

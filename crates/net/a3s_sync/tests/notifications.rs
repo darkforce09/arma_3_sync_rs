@@ -5,7 +5,7 @@ use a3s_sync::status::NotificationTracker;
 const NAME: &str = "test-repository";
 
 #[test]
-fn a16_notifies_only_once_for_the_same_remote_revision() {
+fn notifies_only_once_for_the_same_remote_revision() {
     let mut tracker = NotificationTracker::new();
     assert!(tracker.should_notify(NAME, true, false, Some(12)));
     assert!(!tracker.should_notify(NAME, true, false, Some(12)));
@@ -13,19 +13,19 @@ fn a16_notifies_only_once_for_the_same_remote_revision() {
 }
 
 #[test]
-fn a16_automatic_updates_do_not_create_a_stale_pending_notification() {
+fn automatic_updates_do_not_create_a_stale_pending_notification() {
     let mut tracker = NotificationTracker::new();
     assert!(!tracker.should_notify(NAME, true, true, Some(12)));
 }
 
 #[test]
-fn a16_notifications_remain_available_when_remote_revision_cannot_be_read() {
+fn notifications_remain_available_when_remote_revision_cannot_be_read() {
     let mut tracker = NotificationTracker::new();
     assert!(tracker.should_notify(NAME, true, false, None));
 }
 
 #[test]
-fn a16_disabled_notifications_and_forget() {
+fn disabled_notifications_and_forget() {
     let mut tracker = NotificationTracker::new();
     assert!(!tracker.should_notify(NAME, false, false, Some(1)));
     assert!(tracker.should_notify(NAME, true, false, Some(1)));

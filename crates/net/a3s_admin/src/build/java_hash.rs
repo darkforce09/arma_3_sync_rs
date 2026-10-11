@@ -2,8 +2,8 @@
 //!
 //! The build writes maps whose layout (table length, `threshold`, entry order) depends on how
 //! Java filled them: sequential `put`s, `putAll` into an empty map, or deserialization. The
-//! iteration order also decides which addons a changelog lists first (B31) and how carried-over
-//! event entries are filtered (B35). This model reproduces all three.
+//! iteration order also decides which addons a changelog lists first and how carried-over
+//! event entries are filtered. This model reproduces all three.
 //!
 //! Iteration order is "entries stably sorted by bucket, ties in insertion order": inserting
 //! appends to a bucket's list and resizing splits each list without reordering it. Bins that Java

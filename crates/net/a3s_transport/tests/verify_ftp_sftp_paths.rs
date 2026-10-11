@@ -1,4 +1,4 @@
-//! Adversarial verification of the WP06 review-round-1 code paths: known-directory chains
+//! Adversarial verification of FTP and SFTP edge paths: known-directory chains
 //! that vanish during an FTP session, the `LIST -a` fallback on servers without `MLST`,
 //! FTP resume restarts when the remote size is unknown, and the SFTP configured base
 //! (`""` = home, `"/"` = root, `"/x/"` = absolute).
@@ -22,7 +22,7 @@ use support::strict_ftp::{self, Behaviour};
 use support::{random_bytes, snapshot};
 
 // ---------------------------------------------------------------------------------------
-// FTP: known-directory chains that vanish during a session (B14, forget_chain)
+// FTP: known-directory chains that vanish during a session (forget_chain)
 // ---------------------------------------------------------------------------------------
 
 /// Two known siblings below a vanished ancestor: both are recreated on their next upload.
@@ -148,7 +148,7 @@ async fn verify_ftp_known_dir_replaced_by_file() {
 }
 
 // ---------------------------------------------------------------------------------------
-// FTP without MLST: scripted server over a tempdir (LIST -a fallback, B11/B12/B17)
+// FTP without MLST: scripted server over a tempdir (LIST -a fallback)
 // ---------------------------------------------------------------------------------------
 
 /// How the stub answers `LIST -a`.
@@ -378,7 +378,7 @@ async fn no_mlst_session(
     Ok(())
 }
 
-/// No path is ever sent as a `LIST` argument (amended B12): only `LIST` or `LIST -a`.
+/// No path is ever sent as a `LIST` argument: only `LIST` or `LIST -a`.
 fn assert_no_list_path(commands: &[String]) {
     for c in commands {
         assert!(
@@ -388,7 +388,7 @@ fn assert_no_list_path(commands: &[String]) {
     }
 }
 
-/// B11 without MLST: outside a session `exists` looks the name up in the parent listing;
+/// `exists` without MLST: outside a session `exists` looks the name up in the parent listing;
 /// dot-files are found through `LIST -a`, names with spaces work, missing parents are false.
 #[tokio::test]
 async fn verify_ftp_no_mlst_exists_outside_session() {
@@ -415,7 +415,7 @@ async fn verify_ftp_no_mlst_exists_outside_session() {
     t.close().await;
 }
 
-/// B12 without MLST inside a session: one listing per directory; dot-files hidden from
+/// Listing without MLST inside a session: one listing per directory; dot-files hidden from
 /// `LIST` are confirmed through the fallback (`LIST -a`).
 #[tokio::test]
 async fn verify_ftp_no_mlst_session_dot_files() {
@@ -463,7 +463,7 @@ async fn verify_ftp_no_mlst_dash_a_refused_falls_back() {
     t.close().await;
 }
 
-/// B17 without MLST: recursive delete with `LIST -a` (which also returns `.` and `..`)
+/// Without MLST: recursive delete with `LIST -a` (which also returns `.` and `..`)
 /// removes dot entries and does not recurse into `.`/`..`; missing targets are `Ok`.
 #[tokio::test]
 async fn verify_ftp_no_mlst_recursive_delete() {
@@ -609,7 +609,7 @@ async fn verify_ftp_resume_progress_counts_remaining_only() {
 }
 
 // ---------------------------------------------------------------------------------------
-// SFTP configured base: "" = home, "/" = root, "/x/" = absolute (B20, B21, B24)
+// SFTP configured base: "" = home, "/" = root, "/x/" = absolute
 // ---------------------------------------------------------------------------------------
 
 const HOME: &str = "/home/a3s";

@@ -435,7 +435,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a9_phase_labels() {
+    fn phase_labels() {
         let table = [
             (Phase::CheckingRepository, "Checking repository..."),
             (Phase::CheckingFiles, "Checking files..."),
@@ -460,7 +460,7 @@ mod tests {
     }
 
     #[test]
-    fn a9_download_report_messages() {
+    fn download_report_messages() {
         let err = EventError::new(ErrorKind::Io, "boom");
         assert_eq!(
             Outcome::Success.download_report_message().as_deref(),
@@ -495,7 +495,7 @@ mod tests {
     }
 
     #[test]
-    fn a9_transfer_percent() {
+    fn transfer_percent() {
         let p = |transferred, total| TransferProgress {
             transferred,
             total,
@@ -508,7 +508,7 @@ mod tests {
     }
 
     #[test]
-    fn a9_percent_counter() {
+    fn percent_counter() {
         let mut c = PercentCounter::new(3);
         let out: Vec<_> = (0..3).filter_map(|_| c.increment()).collect();
         assert_eq!(out, [33, 66, 100]);
@@ -522,7 +522,7 @@ mod tests {
     }
 
     #[test]
-    fn a9_rate_limiter() {
+    fn rate_limiter() {
         let base = Instant::now();
         let mut r = RateLimiter::new(Duration::from_millis(500));
         assert!(r.ready(base));
@@ -536,7 +536,7 @@ mod tests {
     }
 
     #[test]
-    fn a9_channel_preserves_order_across_clones_and_threads() {
+    fn channel_preserves_order_across_clones_and_threads() {
         let (sender, rx) = EventSender::channel();
         let clone = sender.clone();
         std::thread::Builder::new()
@@ -560,7 +560,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a9_tokio_channel_and_noop() {
+    async fn tokio_channel_and_noop() {
         let (sender, mut rx) = EventSender::tokio_channel();
         assert!(!sender.is_noop());
         sender.emit(SyncEvent::Phase(Phase::Downloading));
@@ -581,7 +581,7 @@ mod tests {
     }
 
     #[test]
-    fn a9_from_fn_and_event_error() {
+    fn from_fn_and_event_error() {
         use std::sync::atomic::{AtomicUsize, Ordering};
 
         let seen = Arc::new(AtomicUsize::new(0));
@@ -603,7 +603,7 @@ mod tests {
     }
 
     #[test]
-    fn a9_static_bounds() {
+    fn static_bounds() {
         fn assert_bounds<T: Clone + Send + Sync + 'static>() {}
         assert_bounds::<SyncEvent>();
         assert_bounds::<EventSender>();

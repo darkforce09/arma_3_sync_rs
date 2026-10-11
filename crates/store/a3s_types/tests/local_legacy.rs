@@ -1,8 +1,8 @@
-//! Lenient decoding of the Java client's local files (A10–A13).
+//! Lenient decoding of the Java client's local files.
 //!
 //! No Java-written fixtures exist yet for these files, so the streams are built with
 //! `a3s_jserial::jdk::Builder` from the class descriptors of the Java sources (names, UIDs and
-//! fields in wire order, as listed in `docs/specs/WP03.md`), including historical variants.
+//! fields in wire order), including historical variants.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -815,10 +815,10 @@ fn legacy_repository() -> LegacyRepository {
 }
 
 // ---------------------------------------------------------------------------------------------
-// A10: current-version files
+// Current-version files
 
 #[test]
-fn a10_configuration_current() {
+fn configuration_current() {
     let expected = legacy_configuration();
     let mut unsorted = expected.clone();
     unsorted.configuration.favorite_servers.reverse();
@@ -830,7 +830,7 @@ fn a10_configuration_current() {
 }
 
 #[test]
-fn a10_preferences_current() {
+fn preferences_current() {
     let expected = preferences();
     let mut b = Builder::new();
     let root = enc_preferences(&mut b, &expected, &[]);
@@ -840,7 +840,7 @@ fn a10_preferences_current() {
 }
 
 #[test]
-fn a10_profile_current() {
+fn profile_current() {
     let expected = profile();
     let mut b = Builder::new();
     let root = enc_profile(&mut b, &expected, &[]);
@@ -850,7 +850,7 @@ fn a10_profile_current() {
 }
 
 #[test]
-fn a10_repository_current() {
+fn repository_current() {
     let expected = legacy_repository();
     let mut b = Builder::new();
     let root = enc_repository(&mut b, &expected, &[]);
@@ -862,10 +862,10 @@ fn a10_repository_current() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// A11: historical variants
+// Historical variants
 
 #[test]
-fn a11_repository_without_connection_fields() {
+fn repository_without_connection_fields() {
     let mut b = Builder::new();
     let root = enc_repository(
         &mut b,
@@ -886,7 +886,7 @@ fn a11_repository_without_connection_fields() {
 }
 
 #[test]
-fn a11_repository_without_no_auto_discover() {
+fn repository_without_no_auto_discover() {
     let mut expected = legacy_repository();
     expected.repository.no_auto_discover = true;
     let mut b = Builder::new();
@@ -897,7 +897,7 @@ fn a11_repository_without_no_auto_discover() {
 }
 
 #[test]
-fn a11_preferences_without_prefer_github_updates() {
+fn preferences_without_prefer_github_updates() {
     let mut b = Builder::new();
     let root = enc_preferences(&mut b, &preferences(), &["preferGitHubUpdates"]);
     let (decoded, warnings) = decode::<Preferences>(&finish(b, root));
@@ -907,7 +907,7 @@ fn a11_preferences_without_prefer_github_updates() {
 }
 
 #[test]
-fn a11_preferences_null_fields_use_getter_defaults() {
+fn preferences_null_fields_use_getter_defaults() {
     let mut b = Builder::new();
     let fields = [
         "checkRepositoriesFrequency",
@@ -943,7 +943,7 @@ fn a11_preferences_null_fields_use_getter_defaults() {
 }
 
 #[test]
-fn a11_configuration_with_aia_options() {
+fn configuration_with_aia_options() {
     let mut b = Builder::new();
     let aia = vec![
         s(&mut b, "allinArmaPath", Some("/aia")),
@@ -972,7 +972,7 @@ fn a11_configuration_with_aia_options() {
 }
 
 #[test]
-fn a11_old_favorite_server_and_launcher_options() {
+fn old_favorite_server_and_launcher_options() {
     let mut b = Builder::new();
     // FavoriteServer before `modsetName` and `repositoryName`.
     let old_server = vec![
@@ -1036,7 +1036,7 @@ fn a11_old_favorite_server_and_launcher_options() {
 }
 
 #[test]
-fn a11_old_protocol_and_tree_leaf() {
+fn old_protocol_and_tree_leaf() {
     let mut b = Builder::new();
     // AbstractProtocole before validateSSLCertificate, timeouts and encryptionMode.
     let base = b.class_desc(
@@ -1146,7 +1146,7 @@ fn untyped_protocol(b: &mut Builder, class: &str) -> Value {
 }
 
 #[test]
-fn a11_null_protocol_type_falls_back_to_class() {
+fn null_protocol_type_falls_back_to_class() {
     for (class, expected) in [
         (wire::SOCKS, ProtocolType::Socks4),
         (wire::FTP, ProtocolType::Ftp),
@@ -1186,8 +1186,8 @@ fn a11_null_protocol_type_falls_back_to_class() {
 }
 
 #[test]
-fn a11_null_protocol_type_strict_decoder_matches_java() {
-    // Orchestrator decision Q2: the strict `.a3s/autoconfig` decoder also maps a `Socks` with a
+fn null_protocol_type_strict_decoder_matches_java() {
+    // The strict `.a3s/autoconfig` decoder also maps a `Socks` with a
     // null type to SOCKS4 (domain/Socks.java:20-22).
     let mut b = Builder::new();
     let root = untyped_protocol(&mut b, wire::SOCKS);
@@ -1197,7 +1197,7 @@ fn a11_null_protocol_type_strict_decoder_matches_java() {
 }
 
 #[test]
-fn a11_legacy_domain_proxy() {
+fn legacy_domain_proxy() {
     let mut b = Builder::new();
     let protocol = Protocol::new(ProtocolType::Http, "proxy", "3128", "", "", false).encode(&mut b);
     let proxy = vec![z("proxyEnabled", true), obj("proxyProtocol", AP, protocol)];
@@ -1217,10 +1217,10 @@ fn a11_legacy_domain_proxy() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// A12: leniency and hard errors
+// Leniency and hard errors
 
 #[test]
-fn a12_unknown_enum_constant_falls_back_with_warning() {
+fn unknown_enum_constant_falls_back_with_warning() {
     let mut b = Builder::new();
     let fields = vec![en(
         &mut b,
@@ -1237,7 +1237,7 @@ fn a12_unknown_enum_constant_falls_back_with_warning() {
 }
 
 #[test]
-fn a12_wrong_primitive_type_is_treated_as_missing() {
+fn wrong_primitive_type_is_treated_as_missing() {
     let mut b = Builder::new();
     let fields = vec![
         long("height", 5),
@@ -1260,7 +1260,7 @@ fn a12_wrong_primitive_type_is_treated_as_missing() {
 }
 
 #[test]
-fn a12_wrong_kinds_and_null_elements() {
+fn wrong_kinds_and_null_elements() {
     let mut b = Builder::new();
     let a = b.string("@a");
     let c = b.string("@c");
@@ -1287,7 +1287,7 @@ fn a12_wrong_kinds_and_null_elements() {
 }
 
 #[test]
-fn a12_wrong_root_class() {
+fn wrong_root_class() {
     let mut b = Builder::new();
     let root = enc_preferences(&mut b, &preferences(), &[]);
     let bytes = finish(b, root);
@@ -1301,7 +1301,7 @@ fn a12_wrong_root_class() {
 }
 
 #[test]
-fn a12_repository_hard_errors() {
+fn repository_hard_errors() {
     // Null name.
     let mut b = Builder::new();
     let protocol = Protocol::new(ProtocolType::Http, "h", "80", "", "", false).encode(&mut b);
@@ -1343,7 +1343,7 @@ fn a12_repository_hard_errors() {
 }
 
 #[test]
-fn a12_file_cache_drops_null_entries() {
+fn file_cache_drops_null_entries() {
     let mut b = Builder::new();
     let good = vec![long("lastModified", 5), s(&mut b, "sha1", Some("abc"))];
     let good = object(
@@ -1389,11 +1389,11 @@ fn a12_file_cache_drops_null_entries() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// A13: deprecated configuration fields for migration
+// Deprecated configuration fields for migration
 
 #[test]
-fn a13_deprecated_configuration_fields() {
-    // Present (also covered by A10).
+fn deprecated_configuration_fields() {
+    // Present.
     let mut b = Builder::new();
     let root = enc_configuration(&mut b, &legacy_configuration(), Vec::new(), &[]);
     let (decoded, _) = decode::<LegacyConfiguration>(&finish(b, root));
@@ -1454,7 +1454,7 @@ fn profile_with_list(make_list: fn(&mut Builder, Value, Value) -> Value) -> Vec<
 }
 
 #[test]
-fn a12_shared_or_cyclic_tree_nodes_are_rejected() {
+fn shared_or_cyclic_tree_nodes_are_rejected() {
     let shared_leaf = profile_with_list(|b, _root, leaf| b.array_list(vec![leaf, leaf]));
     let cycle = profile_with_list(|b, root, _leaf| b.array_list(vec![root]));
     for bytes in [shared_leaf, cycle] {

@@ -67,7 +67,7 @@ mod tests {
     use super::RemoteFile;
 
     #[test]
-    fn a12_relative_file_path_table() {
+    fn relative_file_path_table() {
         let table = [
             (("sync", ".a3s", false), "/.a3s/sync", ".a3s/sync"),
             (("autoconfig", "", false), "/autoconfig", "autoconfig"),

@@ -7,10 +7,10 @@
 //! byte for byte, with these documented adjustments of the expected Java bytes:
 //!
 //! * `compressedSize` and `totalFilesSize` depend on the size of the zips each implementation
-//!   wrote (semantic compatibility only, D-2): the Java values are replaced with the sizes of the
+//!   wrote (semantic compatibility only): the Java values are replaced with the sizes of the
 //!   Rust zips before comparing;
 //! * `.zsync` `MTime:` lines are rendered in the local time zone (the harness pins UTC);
-//! * D-14: Java turns its own `mod_b.ebo.zip` into a sync leaf on the next build (steps 2 and 3 of
+//! * Java turns its own `mod_b.ebo.zip` into a sync leaf on the next build (steps 2 and 3 of
 //!   the zip variants: an extra leaf, one revision more, an extra changelog, an extra
 //!   `.ebo.zip.zsync`). Rust excludes it, so for those steps the expected sync is Java's without
 //!   that leaf, the revision and file count are one lower, and the changelogs are those of the
@@ -387,7 +387,7 @@ fn replay(variant: &Variant, mut check: impl FnMut(usize, &str, &Path)) -> tempf
     tmp
 }
 
-/// The revision Rust must reach: Java's, minus the D-14 bump of the zip variants.
+/// The revision Rust must reach: Java's, minus the bump its `.ebo.zip` leaf causes in the zip variants.
 fn gunzip_revision(variant: &Variant, step: &str, index: usize) -> i32 {
     let java: a3s_types::ServerInfo =
         a3s_types::decode_stream(&variant.java_raw(step, "serverinfo")).unwrap();
@@ -509,7 +509,7 @@ fn check_step(
         assert!(rust == expected, "{ctx}/{file}: stream differs from Java");
     }
 
-    // .zsync files: the same set as Java (minus D-14's .ebo.zip.zsync), byte-identical.
+    // .zsync files: the same set as Java (minus Java's .ebo.zip.zsync), byte-identical.
     let java_repo = variant.dir.join(step_name).join("repo");
     let java_files = files(&java_repo);
     let java_zsync: BTreeSet<&String> = java_files
@@ -561,19 +561,19 @@ fn check_step(
 }
 
 #[test]
-fn a18_golden_http_plain() {
+fn golden_http_plain() {
     drop(replay(&Variant::load("http_plain"), |_, _, _| {}));
 }
 
 #[test]
-fn a18_golden_ftp_plain() {
+fn golden_ftp_plain() {
     drop(replay(&Variant::load("ftp_plain"), |_, _, _| {}));
 }
 
 #[test]
-fn a18_golden_http_zip_with_d14() {
+fn golden_http_zip_with_d14() {
     drop(replay(&Variant::load("http_zip"), |index, _, repo| {
-        // D-14: the generated `.ebo.zip` never becomes a leaf, so it never gets a `.zsync`.
+        // The generated `.ebo.zip` never becomes a leaf, so it never gets a `.zsync`.
         assert!(repo.join("@mod_b/Addons/mod_b.ebo.zip").is_file());
         assert!(
             !repo.join("@mod_b/Addons/mod_b.ebo.zip.zsync").exists(),
@@ -583,7 +583,7 @@ fn a18_golden_http_zip_with_d14() {
 }
 
 #[test]
-fn a18_golden_ftp_zip_with_d14() {
+fn golden_ftp_zip_with_d14() {
     drop(replay(&Variant::load("ftp_zip"), |_, _, repo| {
         let sync: a3s_types::SyncTreeDirectory =
             a3s_repo_files::read_a3s(&repo.join(".a3s/sync")).unwrap();
@@ -593,11 +593,11 @@ fn a18_golden_ftp_zip_with_d14() {
     }));
 }
 
-/// A18: Java's own readers accept every Rust-built `.a3s` file and zip (and `.zsync` when the
+/// Java's own readers accept every Rust-built `.a3s` file and zip (and `.zsync` when the
 /// local time zone is UTC, as the harness pins it). Needs `source scripts/java_env.sh`.
 #[test]
 #[ignore = "needs JDK 25: source scripts/java_env.sh"]
-fn a18_java_reads_rust_builds() {
+fn java_reads_rust_builds() {
     let harness = a3s_dev_tools::Harness::locate().unwrap();
     let utc = a3s_zsync::format_mtime(0).ends_with("+0000");
     for name in ["http_plain", "http_zip", "ftp_plain", "ftp_zip"] {
@@ -657,11 +657,11 @@ fn java_references(n: usize) -> u64 {
         .references
 }
 
-/// A16/Q6: the Java filter emulation agrees with Java at the reference boundary: the largest
+/// The Java filter emulation agrees with Java at the reference boundary: the largest
 /// flat tree within 250 000 references is read, one more leaf is rejected.
 #[test]
 #[ignore = "needs JDK 25: source scripts/java_env.sh"]
-fn a16_java_filter_boundary_matches_java() {
+fn java_filter_boundary_matches_java() {
     let limit = a3s_jserial::JavaFilterLimits::JAVA_A3S.max_references;
     // References grow by a constant per leaf.
     let per_leaf = java_references(2000) - java_references(1000);

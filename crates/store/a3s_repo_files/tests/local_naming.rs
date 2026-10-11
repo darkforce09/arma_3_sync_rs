@@ -1,4 +1,4 @@
-//! File-name stems of the local store and Java's file names (A1).
+//! File-name stems of the local store and Java's file names.
 
 use a3s_repo_files::legacy::naming::{
     java_legacy_repository_file_name, java_preferred_repository_file_name, java_profile_file_name,
@@ -6,7 +6,7 @@ use a3s_repo_files::legacy::naming::{
 use a3s_repo_files::local::{file_stem, name_hash, sanitize};
 
 #[test]
-fn a1_name_hash_is_six_sha1_bytes() {
+fn name_hash_is_six_sha1_bytes() {
     assert_eq!(name_hash("WOG"), "fe52247a11ac");
     assert_eq!(name_hash("Default"), "808d7dca8a74");
     // The untrimmed name is hashed.
@@ -14,7 +14,7 @@ fn a1_name_hash_is_six_sha1_bytes() {
 }
 
 #[test]
-fn a1_file_stem_examples() {
+fn file_stem_examples() {
     assert_eq!(file_stem("WOG"), "WOG__fe52247a11ac");
     assert_eq!(file_stem("My Repo"), "My_Repo__339879ebfb9b");
     assert_eq!(file_stem("  a/b:c*?  "), "a_b_c____b3a64f4e4ad1");
@@ -24,7 +24,7 @@ fn a1_file_stem_examples() {
 }
 
 #[test]
-fn a1_whitespace_runs_collapse() {
+fn whitespace_runs_collapse() {
     assert_eq!(sanitize("a\t\n b"), "a_b");
     assert_eq!(sanitize("a\u{0B}\u{0C}\rb"), "a_b");
     assert_eq!(sanitize("\t a b \n"), "a_b");
@@ -32,7 +32,7 @@ fn a1_whitespace_runs_collapse() {
 }
 
 #[test]
-fn a1_rust_additions() {
+fn rust_additions() {
     // Control characters (not Java `\s`) become `_`.
     assert_eq!(sanitize("a\u{1}b"), "a_b");
     assert_eq!(sanitize("a\u{7F}b"), "a_b");
@@ -51,7 +51,7 @@ fn a1_rust_additions() {
 }
 
 #[test]
-fn a1_java_file_names() {
+fn java_file_names() {
     assert_eq!(
         java_legacy_repository_file_name(Some("My  Repo")),
         "MyRepo.a3s.repository"
@@ -85,7 +85,7 @@ fn a1_java_file_names() {
 }
 
 #[test]
-fn a1_java_names_match_the_fixture_files() {
+fn java_names_match_the_fixture_files() {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../../tests/fixtures/java_local/peruser/data/Arma3Sync/repositories");
     for name in ["Sample HTTP", "Sample FTP", "Sample SFTP"] {

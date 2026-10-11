@@ -1,4 +1,4 @@
-//! `.zsync` stage (B37–B40).
+//! `.zsync` stage.
 
 use std::fs;
 use std::io::{self, BufReader, Write as _};
@@ -29,7 +29,7 @@ pub(crate) fn zsync_path(file: &Path) -> PathBuf {
     PathBuf::from(name)
 }
 
-/// Leaves whose `.zsync` must be (re)generated: re-hashed, missing or empty (B38).
+/// Leaves whose `.zsync` must be (re)generated: re-hashed, missing or empty.
 // Mirrors dao/repository/RepositoryBuildProcessor.java:595-617
 pub(crate) fn plan(
     leaves: &[LeafRef],
@@ -64,7 +64,7 @@ pub(crate) fn plan(
     jobs
 }
 
-/// Generates one `.zsync`, written to a temporary file and renamed (Q10).
+/// Generates one `.zsync`, written to a temporary file and renamed.
 // Mirrors jazsyncmake/MetaFileMaker.java:64-121
 fn generate(job: &ZsyncJob) -> io::Result<()> {
     let meta = fs::metadata(&job.file)?;
@@ -137,7 +137,7 @@ pub(crate) fn run(
 }
 
 /// Non-HTTP repositories: Java deletes the `.zsync` files of leaves whose own extension is
-/// `.zsync`. The scan never produces such leaves, so nothing is ever deleted (B39).
+/// `.zsync`. The scan never produces such leaves, so nothing is ever deleted.
 // Mirrors dao/repository/RepositoryDeleteZSyncProcessor.java:54-86
 pub(crate) fn delete_stale(
     leaves: &[LeafRef],

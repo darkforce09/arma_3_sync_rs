@@ -54,7 +54,7 @@ pub const SIG_LAUNCHER_OPTIONS: &str = "Lfr/soe/a3s/domain/configration/Launcher
 /// `fr.soe.a3s.domain.AutoConfig` declares no `serialVersionUID`; this is the JVM-computed
 /// default (Serialization Specification 4.6).
 ///
-/// PROVISIONAL: computed from the Java source, not yet confirmed by the JDK harness (WP01). If it
+/// PROVISIONAL: computed from the Java source, not yet confirmed by the JDK harness. If it
 /// is wrong, Java rejects every export with `InvalidClassException`.
 pub const AUTO_CONFIG_EXPORT_UID: i64 = 6_424_431_620_520_340_750;
 

@@ -1,5 +1,5 @@
 //! `.a3s/events`: modsets carried over from the previous file, filtered by the new addon and DLC
-//! names (B34–B36, B47).
+//! names.
 
 use a3s_jserial::jdk::Builder;
 use a3s_jserial::{Graph, Value};
@@ -51,7 +51,7 @@ fn entries(map: &BoolMap) -> Vec<(String, OldStr, OldBool)> {
         .collect()
 }
 
-/// Computes the new events (B34–B36). `addon_names` are the new sync's addon names.
+/// Computes the new events. `addon_names` are the new sync's addon names.
 // Mirrors dao/repository/RepositoryBuildProcessor.java:245-274
 pub fn plan_events(
     old: Option<&RawGraph>,

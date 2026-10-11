@@ -1,4 +1,4 @@
-//! zsync partial download over HTTP (B17-B22).
+//! zsync partial download over HTTP.
 
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
@@ -38,7 +38,7 @@ async fn exceeds(progress: &AtomicU64, cap: u64) {
 pub(crate) enum ZsyncEnd {
     /// The task ended (done, failed, lost or cancelled).
     End(TaskEnd),
-    /// Partial transfer cannot be used; download the whole file (B22).
+    /// Partial transfer cannot be used; download the whole file.
     Fallback(String),
 }
 
@@ -117,10 +117,9 @@ impl<W: Write> Write for CancelWriter<W> {
     }
 }
 
-/// Patches the local file of `task` with zsync (B17-B21).
+/// Patches the local file of `task` with zsync.
 // Mirrors dao/connection/AbstractConnexionDAO.java:319-338, dao/connection/http/HttpDAO.java:492-524
 pub(crate) async fn run(worker: &mut Worker, index: usize, task: &DownloadTask) -> ZsyncEnd {
-    // B17
     if !matches!(worker.transport, Some(Transport::Http(_))) {
         return ZsyncEnd::Fallback("partial transfer requires HTTP".to_owned());
     }
@@ -150,7 +149,7 @@ pub(crate) async fn run(worker: &mut Worker, index: usize, task: &DownloadTask) 
                 {
                     return ZsyncEnd::End(TaskEnd::Cancelled);
                 }
-                // B22: the server ignored `Range`, refused it (416) or sent a short body.
+                // The server ignored `Range`, refused it (416) or sent a short body.
                 if matches!(
                     err,
                     a3s_transport::Error::Unsupported { .. }
@@ -197,7 +196,6 @@ impl From<ZsyncEnd> for Attempt {
 
 /// One attempt: control file, match, ranges, assembly, rename.
 async fn attempt(worker: &mut Worker, task: &DownloadTask, size: u64) -> Attempt {
-    // B18
     let control_remote = control_path(task);
     let control_ctx = TransferCtx {
         cancel: worker.shared.run.clone(),
@@ -249,7 +247,6 @@ async fn attempt(worker: &mut Worker, task: &DownloadTask, size: u64) -> Attempt
         .into();
     }
 
-    // B19
     let local = task.local_path();
     let matches = match match_local(worker, &control, &local).await {
         Ok(matches) => Arc::new(matches),
@@ -258,7 +255,6 @@ async fn attempt(worker: &mut Worker, task: &DownloadTask, size: u64) -> Attempt
     };
     let plan = Plan::new(&control, &matches, Plan::MAX_BLOCKS_PER_RANGE);
 
-    // B20, B21
     let part = part_path(&local);
     if let Err(err) = remove_if_exists(&part).await {
         return ZsyncEnd::End(TaskEnd::Failed(DownloadError::local_io(&part, err))).into();
@@ -365,7 +361,7 @@ enum MatchError {
     Unreadable(String),
 }
 
-/// Matches the local file against the control file on the blocking pool (B19).
+/// Matches the local file against the control file on the blocking pool.
 async fn match_local(
     worker: &Worker,
     control: &Arc<ControlFile>,
@@ -394,7 +390,7 @@ async fn match_local(
     }
 }
 
-/// Assembles the new file into `part` on the blocking pool (B21).
+/// Assembles the new file into `part` on the blocking pool.
 fn spawn_assemble(
     control: Arc<ControlFile>,
     matches: Arc<BlockMatches>,

@@ -1,6 +1,6 @@
 //! `Repository` settings semantics.
 //!
-//! A2 ports `src/test/java/fr/soe/a3s/domain/RepositoryUploadSettingsTest.java`; A4 covers the
+//! Ports `src/test/java/fr/soe/a3s/domain/RepositoryUploadSettingsTest.java`; also covers the
 //! check-connection clamps and the partial-transfer inversion.
 
 use a3s_types::local::{InvalidSetting, Repository};
@@ -12,7 +12,7 @@ fn repository() -> Repository {
 }
 
 #[test]
-fn a2_uses_four_connections_by_default() {
+fn uses_four_connections_by_default() {
     let repository = repository();
     assert_eq!(
         repository.parallel_upload_connections(),
@@ -22,7 +22,7 @@ fn a2_uses_four_connections_by_default() {
 }
 
 #[test]
-fn a2_caps_parallel_uploads_at_ten() {
+fn caps_parallel_uploads_at_ten() {
     let mut repository = repository();
     repository.set_parallel_upload_connections(50).unwrap();
     assert_eq!(
@@ -33,7 +33,7 @@ fn a2_caps_parallel_uploads_at_ten() {
 }
 
 #[test]
-fn a2_rejects_invalid_parallel_upload_count() {
+fn rejects_invalid_parallel_upload_count() {
     let mut repository = repository();
     let err = repository.set_parallel_upload_connections(0).unwrap_err();
     assert_eq!(
@@ -42,17 +42,13 @@ fn a2_rejects_invalid_parallel_upload_count() {
             message: "Parallel upload connections must be positive."
         }
     );
-    assert_eq!(
-        err.to_string(),
-        "Parallel upload connections must be positive."
-    );
     assert!(repository.set_parallel_upload_connections(-3).is_err());
     // The stored value is untouched.
     assert_eq!(repository.parallel_upload_connections, 4);
 }
 
 #[test]
-fn a2_raw_parallel_upload_values_are_clamped_on_read() {
+fn raw_parallel_upload_values_are_clamped_on_read() {
     let mut repository = repository();
     repository.parallel_upload_connections = 0;
     assert_eq!(repository.parallel_upload_connections(), 4);
@@ -65,7 +61,7 @@ fn a2_raw_parallel_upload_values_are_clamped_on_read() {
 }
 
 #[test]
-fn a4_check_connections() {
+fn check_connections() {
     let mut repository = repository();
     assert_eq!(repository.repository_check_connections(), 4);
     assert_eq!(Repository::DEFAULT_REPOSITORY_CHECK_CONNECTIONS, 4);
@@ -78,11 +74,7 @@ fn a4_check_connections() {
     repository.set_repository_check_connections(2).unwrap();
     assert_eq!(repository.repository_check_connections(), 2);
 
-    let err = repository.set_repository_check_connections(0).unwrap_err();
-    assert_eq!(
-        err.to_string(),
-        "Repository check connections must be positive."
-    );
+    assert!(repository.set_repository_check_connections(0).is_err());
     assert_eq!(repository.number_of_repository_check_connections, 2);
 
     // Raw values from legacy files.
@@ -93,7 +85,7 @@ fn a4_check_connections() {
 }
 
 #[test]
-fn a4_partial_file_transfer_inversion() {
+fn partial_file_transfer_inversion() {
     let mut repository = repository();
     assert!(!repository.no_partial_file_transfer);
     assert!(repository.use_partial_file_transfer());

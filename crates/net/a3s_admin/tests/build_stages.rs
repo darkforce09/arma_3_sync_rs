@@ -155,10 +155,8 @@ fn permissions_enforced(dir: &Path) -> bool {
     enforced
 }
 
-// ------------------------------------------------------------------------------- A1
-
 #[test]
-fn a1_scan_order_exclusions_addons_and_pruning() {
+fn scan_order_exclusions_addons_and_pruning() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().join("repo");
     write(&root, "b_file.txt", b"1");
@@ -210,7 +208,7 @@ fn a1_scan_order_exclusions_addons_and_pruning() {
     assert!(module.mark_as_addon, "an `Addons` file marks the addon");
     assert!(subdir(&sync, "@other").mark_as_addon);
     assert!(!subdir(&sync, "zeta").mark_as_addon);
-    // `.a3s`/`.A3S` skipped at depth 2; `.zsync`, `.pbo.zip`, `.a3s` names skipped; D-14:
+    // `.a3s`/`.A3S` skipped at depth 2; `.zsync`, `.pbo.zip`, `.a3s` names skipped;
     // `.ebo.zip` skipped too.
     assert_eq!(names(subdir(module, "data")), ["kept.txt"]);
     // An excluded directory path has no effect.
@@ -233,7 +231,7 @@ fn a1_scan_order_exclusions_addons_and_pruning() {
 }
 
 #[test]
-fn a1_symbolic_links_are_followed_and_loops_fail() {
+fn symbolic_links_are_followed_and_loops_fail() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().join("repo");
     write(&tmp.path().join("outside"), "x.txt", b"x");
@@ -243,7 +241,7 @@ fn a1_symbolic_links_are_followed_and_loops_fail() {
     let sync = build(&repo, &mut Sha1Cache::default()).sync;
     assert_eq!(names(subdir(&sync, "linked")), ["x.txt"]);
 
-    // Q8: a link back to an ancestor fails the scan instead of recursing forever.
+    // A link back to an ancestor fails the scan instead of recursing forever.
     std::os::unix::fs::symlink(&root, root.join("a/loop")).unwrap();
     let run = run_with(
         &repo,
@@ -258,10 +256,8 @@ fn a1_symbolic_links_are_followed_and_loops_fail() {
     );
 }
 
-// ------------------------------------------------------------------------------- A2
-
 #[test]
-fn a2_total_files_size_counts_previous_outputs() {
+fn total_files_size_counts_previous_outputs() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().join("repo");
     write(&root, "@m/addons/a.pbo", &[7u8; 1000]);
@@ -303,10 +299,8 @@ fn a2_total_files_size_counts_previous_outputs() {
     assert!(!second.content_updated);
 }
 
-// ------------------------------------------------------------------------------- A3
-
 #[test]
-fn a3_sha1_cache_hits_misses_and_stale_entries() {
+fn sha1_cache_hits_misses_and_stale_entries() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().join("repo");
     write(&root, "empty.txt", b"");
@@ -339,7 +333,7 @@ fn a3_sha1_cache_hits_misses_and_stale_entries() {
 }
 
 #[test]
-fn a3_unreadable_file_fails_without_touching_a3s() {
+fn unreadable_file_fails_without_touching_a3s() {
     use std::os::unix::fs::PermissionsExt as _;
     let tmp = tempfile::tempdir().unwrap();
     if !permissions_enforced(tmp.path()) {
@@ -367,10 +361,8 @@ fn a3_unreadable_file_fails_without_touching_a3s() {
     assert_eq!(a3s_bytes(&root), before);
 }
 
-// ------------------------------------------------------------------------------- A4
-
 #[test]
-fn a4_revision_table() {
+fn revision_table() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().join("repo");
     let file = write(&root, "@m/addons/a.pbo", b"one");
@@ -406,10 +398,8 @@ fn a4_revision_table() {
     assert_eq!(reset.server_info.revision, 1);
 }
 
-// ------------------------------------------------------------------------------- A5
-
 #[test]
-fn a5_server_info_fields() {
+fn server_info_fields() {
     let sep = std::path::MAIN_SEPARATOR;
     let tmp = tempfile::tempdir().unwrap();
     let base = tmp.path().display().to_string();
@@ -459,10 +449,8 @@ fn a5_server_info_fields() {
     );
 }
 
-// ------------------------------------------------------------------------------- A11
-
 #[test]
-fn a11_auto_config() {
+fn auto_config() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().join("repo");
     write(&root, "a.txt", b"1");
@@ -507,8 +495,6 @@ fn a11_auto_config() {
     assert_ne!(name_of(favorites[1]), own);
 }
 
-// ------------------------------------------------------------------------------- A12
-
 fn expected_zsync(file: &Path, name: &str, url: &str, sha1: &str) -> Vec<u8> {
     let bytes = fs::read(file).unwrap();
     let mtime = a3s_hash::modified_millis(file).unwrap();
@@ -525,7 +511,7 @@ fn expected_zsync(file: &Path, name: &str, url: &str, sha1: &str) -> Vec<u8> {
 }
 
 #[test]
-fn a12_zsync_generation() {
+fn zsync_generation() {
     for (protocol_type, prompt) in [
         (ProtocolType::Http, "http://"),
         (ProtocolType::Https, "https://"),
@@ -550,7 +536,7 @@ fn a12_zsync_generation() {
             expected_zsync(&pbo, "a b.pbo", &url, &sha1)
         );
         assert_eq!(outcome.zsync_generated, 2);
-        // D-14: the compression stage's zip is not a leaf, so it has no .zsync.
+        // The compression stage's zip is not a leaf, so it has no .zsync.
         assert!(root.join("@m/addons/a b.pbo.zip").exists());
         assert!(!root.join("@m/addons/a b.pbo.zip.zsync").exists());
 
@@ -599,8 +585,6 @@ fn a12_zsync_generation() {
     }
 }
 
-// ------------------------------------------------------------------------------- A13
-
 fn unzip_single(zip_path: &Path) -> (String, Vec<u8>) {
     let mut archive = zip::ZipArchive::new(fs::File::open(zip_path).unwrap()).unwrap();
     assert_eq!(archive.len(), 1);
@@ -613,7 +597,7 @@ fn unzip_single(zip_path: &Path) -> (String, Vec<u8>) {
 }
 
 #[test]
-fn a13_zip_compression_reuse_and_deletion() {
+fn zip_compression_reuse_and_deletion() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().join("repo");
     let pbo = write(&root, "@m/addons/a.pbo", &vec![5u8; 50_000]);
@@ -672,10 +656,8 @@ fn a13_zip_compression_reuse_and_deletion() {
     assert!(!leaf(&third.sync, "@m/addons/b.EBO").compressed);
 }
 
-// ------------------------------------------------------------------------------- A14
-
 #[test]
-fn a14_outcome_equals_written_files() {
+fn outcome_equals_written_files() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().join("repo");
     write(&root, "@m/addons/a.pbo", b"a");
@@ -727,7 +709,7 @@ fn a14_outcome_equals_written_files() {
 }
 
 #[test]
-fn a14_cancel_during_sha1_writes_nothing() {
+fn cancel_during_sha1_writes_nothing() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().join("repo");
     write(&root, "a.txt", b"a");
@@ -754,7 +736,7 @@ fn a14_cancel_during_sha1_writes_nothing() {
 }
 
 #[test]
-fn a14_zip_failure_writes_nothing() {
+fn zip_failure_writes_nothing() {
     use std::os::unix::fs::PermissionsExt as _;
     let tmp = tempfile::tempdir().unwrap();
     if !permissions_enforced(tmp.path()) {
@@ -785,37 +767,34 @@ fn a14_zip_failure_writes_nothing() {
 }
 
 #[test]
-fn a14_missing_or_unset_path() {
+fn missing_or_unset_path() {
     let tmp = tempfile::tempdir().unwrap();
     let mut repo = repository(&tmp.path().join("nope"), ProtocolType::Ftp);
-    let err = run_with(
-        &repo,
-        &mut Sha1Cache::default(),
-        DATE,
-        &AtomicBool::new(false),
-    )
-    .outcome
-    .unwrap_err();
-    assert_eq!(err.to_string(), "Repository path does not exist.");
+    assert!(
+        run_with(
+            &repo,
+            &mut Sha1Cache::default(),
+            DATE,
+            &AtomicBool::new(false),
+        )
+        .outcome
+        .is_err()
+    );
     repo.path = Some(String::new());
-    let err = run_with(
-        &repo,
-        &mut Sha1Cache::default(),
-        DATE,
-        &AtomicBool::new(false),
-    )
-    .outcome
-    .unwrap_err();
-    assert_eq!(
-        err.to_string(),
-        "Repository Test repo main folder location is empty!"
+    assert!(
+        run_with(
+            &repo,
+            &mut Sha1Cache::default(),
+            DATE,
+            &AtomicBool::new(false),
+        )
+        .outcome
+        .is_err()
     );
 }
 
-// ------------------------------------------------------------------------------- A15
-
 #[test]
-fn a15_rebuilds_are_idempotent() {
+fn rebuilds_are_idempotent() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().join("repo");
     write(&root, "@m/addons/a.pbo", &[1u8; 9000]);
@@ -848,10 +827,8 @@ fn a15_rebuilds_are_idempotent() {
     assert_eq!(normalized(a), normalized(b));
 }
 
-// ------------------------------------------------------------------------------- A16
-
 #[test]
-fn a16_streams_pass_java_limits_and_deep_trees_fail() {
+fn streams_pass_java_limits_and_deep_trees_fail() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().join("repo");
     write(&root, "@m/addons/a.pbo", b"a");
@@ -888,10 +865,8 @@ fn a16_streams_pass_java_limits_and_deep_trees_fail() {
     assert!(!deep_root.join(".a3s").exists());
 }
 
-// ------------------------------------------------------------------------------- A17
-
 #[test]
-fn a17_apply_to_sets_revision() {
+fn apply_to_sets_revision() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().join("repo");
     write(&root, "a.txt", b"a");

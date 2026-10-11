@@ -42,7 +42,7 @@ pub const ZIP_EXTENSION: &str = ".zip";
 /// Suffix of zsync control files on the server.
 pub const ZSYNC_EXTENSION: &str = ".zsync";
 
-/// Resume retries per task after an incomplete or interrupted transfer (DV4).
+/// Resume retries per task after an incomplete or interrupted transfer.
 pub const MAX_RESUME_RETRIES: u32 = 3;
 
 /// Minimum interval between two `Transfer` events.
@@ -233,7 +233,7 @@ mod tests {
     }
 
     #[test]
-    fn a15_apply_statuses() {
+    fn apply_statuses_cases() {
         let mut root = SyncTreeDirectory::new_root();
         root.children = vec![SyncTreeNode::Directory(SyncTreeDirectory {
             name: "@a".to_owned(),
@@ -282,7 +282,7 @@ mod tests {
     }
 
     #[test]
-    fn a8_outcome_mapping() {
+    fn outcome_mapping() {
         let unzip = EventError::new(ErrorKind::InvalidData, "unzip");
         assert_eq!(
             report(DownloadEnd::Completed, 0).outcome(vec![]),
@@ -330,7 +330,7 @@ mod tests {
     }
 
     #[test]
-    fn a16_request_from_options() {
+    fn request_from_options() {
         let options = SyncOptions {
             repository_name: "WOG".to_owned(),
             event_name: None,

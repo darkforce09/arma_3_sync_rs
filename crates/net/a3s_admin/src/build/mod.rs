@@ -7,10 +7,10 @@
 //! Java implementation, including `String` instance sharing and `HashMap` layouts.
 //!
 //! Approved deviations from Java: a cancelled build returns [`BuildError::Cancelled`] and writes
-//! nothing (Q4); `.zsync` files are generated in parallel (Q5) and written atomically (Q10);
-//! streams Java could not read back fail with [`BuildError::LimitExceeded`] (Q6); directory
-//! listings are sorted by name (Q7); symbolic link loops fail the scan (Q8); the compression
-//! stage's own `.ebo.zip` outputs are not sync leaves (D-14).
+//! nothing; `.zsync` files are generated in parallel and written atomically;
+//! streams Java could not read back fail with [`BuildError::LimitExceeded`]; directory
+//! listings are sorted by name; symbolic link loops fail the scan; the compression
+//! stage's own `.ebo.zip` outputs are not sync leaves.
 
 mod carry;
 mod changelogs;
@@ -106,7 +106,7 @@ pub struct BuildOutcome {
 
 impl BuildOutcome {
     /// `repository.revision = server_info.revision`. The caller then sets the autoconfig URL
-    /// (Q9) and persists the repository and the SHA-1 cache.
+    /// and persists the repository and the SHA-1 cache.
     // Mirrors service/RepositoryService.java:917-918
     pub fn apply_to(&self, repository: &mut Repository) {
         repository.revision = self.server_info.revision;
@@ -179,7 +179,7 @@ pub enum BuildError {
         source: std::io::Error,
     },
 
-    /// The stream would exceed what Java's reader accepts (Q6).
+    /// The stream would exceed what Java's reader accepts.
     #[error("The .a3s/{} file would be too large for Arma3Sync clients: {source}", file.file_name())]
     LimitExceeded {
         file: A3sFile,
@@ -203,7 +203,7 @@ pub enum BuildError {
         source: a3s_repo_files::Error,
     },
 
-    /// The build was cancelled; nothing was written to `.a3s/` (Q4).
+    /// The build was cancelled; nothing was written to `.a3s/`.
     #[error("Build cancelled.")]
     Cancelled,
 }
@@ -247,7 +247,7 @@ pub(crate) fn cpu_threads() -> usize {
     std::thread::available_parallelism().map_or(1, |n| n.get())
 }
 
-/// `max(1, min(8, availableProcessors))`, also used for `.zsync` generation (Q5).
+/// `max(1, min(8, availableProcessors))`, also used for `.zsync` generation.
 pub(crate) fn hash_threads() -> usize {
     cpu_threads().clamp(1, a3s_hash::MAX_THREADS)
 }
@@ -327,7 +327,7 @@ pub fn build_repository(
             path: path.to_path_buf(),
         });
     }
-    // `File.getAbsolutePath()`: absolute, symbolic links not resolved (Q12).
+    // `File.getAbsolutePath()`: absolute, symbolic links not resolved.
     let root = std::path::absolute(path).map_err(|source| BuildError::Scan {
         path: path.to_path_buf(),
         source,
@@ -335,14 +335,14 @@ pub fn build_repository(
     let a3s = root.join(A3S_FOLDER);
     let build_date = options.build_date.unwrap_or_else(now_millis);
 
-    // Previous metadata, read before anything else (B3).
+    // Previous metadata, read before anything else.
     let old_sync: Option<SyncTreeDirectory> = read_old(&a3s, A3sFile::Sync)?;
     let old_server_info: Option<ServerInfo> = read_old(&a3s, A3sFile::ServerInfo)?;
     let old_changelogs: Option<carry::RawGraph> = read_old(&a3s, A3sFile::Changelogs)?;
     let old_events: Option<carry::RawGraph> = read_old(&a3s, A3sFile::Events)?;
     check_cancel(cancel)?;
 
-    // Scan (B4–B15).
+    // Scan.
     let mut sync = scan::scan(&root, &repository.excluded_files_from_build, on_event)?;
     let leaves = scan::leaves(&sync, &root);
     let mut names = Vec::with_capacity(leaves.len());
@@ -351,7 +351,7 @@ pub fn build_repository(
     let total_files_size = scan::total_files_size(&root)?;
     check_cancel(cancel)?;
 
-    // SHA-1 (B16–B21).
+    // SHA-1.
     on_event(BuildEvent::Stage(STAGE_SHA1));
     let hashes = hash::hash_leaves(&leaves, cache, cancel, on_event)?;
     scan::for_each_leaf_mut(&mut sync, &mut |i, leaf| {
@@ -370,7 +370,7 @@ pub fn build_repository(
         .collect();
     check_cancel(cancel)?;
 
-    // Revision and server info (B22–B25).
+    // Revision and server info.
     let content_updated = metadata::content_updated(old_sync.as_ref(), &sync);
     let revision = metadata::revision(
         old_server_info.as_ref().map(|s| s.revision),
@@ -396,14 +396,14 @@ pub fn build_repository(
         compressed_pbo_files_only: false,
     };
 
-    // AutoConfig (B26).
+    // AutoConfig.
     let auto_config = metadata::AutoConfigEmit {
         repository_name: repository.name.clone(),
         protocol: repository.protocol.clone(),
         favorite_servers: repository.favorite_servers_set_to_autoconfig.clone(),
     };
 
-    // Changelogs and events (B28–B36).
+    // Changelogs and events.
     let changelogs = changelogs::plan_changelogs(
         old_changelogs.as_ref(),
         old_sync.as_ref(),
@@ -423,7 +423,7 @@ pub fn build_repository(
         })?;
     check_cancel(cancel)?;
 
-    // zsync (B37–B40).
+    // zsync.
     let zsync_generated = if repository.protocol.protocol_type.is_http() {
         on_event(BuildEvent::Stage(STAGE_ZSYNC));
         let jobs = zsync::plan(
@@ -441,7 +441,7 @@ pub fn build_repository(
     };
     check_cancel(cancel)?;
 
-    // Zip (B41–B43).
+    // Zip.
     let (zipped, zips_deleted) = if repository.compressed {
         on_event(BuildEvent::Stage(STAGE_ZIP));
         let actions = zip::plan(&leaves, &names, &rehashed, on_event);
@@ -474,7 +474,7 @@ pub fn build_repository(
     };
     check_cancel(cancel)?;
 
-    // Encode everything before writing anything (B51, Q6).
+    // Encode everything before writing anything.
     let sync_emit = write::SyncEmit::new(&sync, &cached_zero);
     let raw_sync = write::encode_checked(A3sFile::Sync, &sync_emit)?;
     let raw_server_info = write::encode_checked(A3sFile::ServerInfo, &server_info)?;
@@ -500,7 +500,7 @@ pub fn build_repository(
     };
     check_cancel(cancel)?;
 
-    // Write, in Java's order (B51).
+    // Write, in Java's order.
     write::create_a3s_folder(&a3s)?;
     write::write(&a3s, A3sFile::Sync, &sync_emit)?;
     write::write(&a3s, A3sFile::ServerInfo, &server_info)?;

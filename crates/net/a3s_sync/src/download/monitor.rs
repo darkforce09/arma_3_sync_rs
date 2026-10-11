@@ -1,4 +1,4 @@
-//! Progress monitor: transfer snapshots, speed, disk usage and connection waiting (B30-B35).
+//! Progress monitor: transfer snapshots, speed, disk usage and connection waiting.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -46,7 +46,7 @@ pub fn file_percent(bytes: u64, expected: u64) -> u8 {
 }
 
 /// Estimated remaining time: `(total - transferred) * elapsed / run_bytes`, `None` while
-/// nothing was received in this run (DV7).
+/// nothing was received in this run.
 // Mirrors service/synchronization/FilesSynchronizationProcessor.java:211-222
 pub fn remaining_time(
     total: u64,
@@ -73,7 +73,7 @@ pub struct WaitingCounter {
 impl WaitingCounter {
     /// Advances the counter by one tick and returns its value. It resets when no connection is
     /// active, when unzip is busy, when the disk is being written, or when network bytes
-    /// arrived since the previous tick (DV8); otherwise it adds one.
+    /// arrived since the previous tick; otherwise it adds one.
     // Mirrors service/synchronization/FilesSynchronizationDiskUsageListerner.java:80-102
     pub fn tick(
         &mut self,
@@ -206,7 +206,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a3_disk_usage_rate() {
+    fn disk_usage_rate_cases() {
         assert_eq!(disk_usage_rate(1000, 400, Duration::from_millis(500)), 1200);
         assert_eq!(disk_usage_rate(400, 1000, Duration::from_millis(500)), 0);
         assert_eq!(disk_usage_rate(400, 400, Duration::from_millis(500)), 0);
@@ -214,7 +214,7 @@ mod tests {
     }
 
     #[test]
-    fn a3_average_speed_sequence() {
+    fn average_speed_sequence() {
         let mut avg = 0;
         avg = average_speed(avg, 100);
         assert_eq!(avg, 100);
@@ -227,7 +227,7 @@ mod tests {
     }
 
     #[test]
-    fn a3_file_percent() {
+    fn file_percent_cases() {
         assert_eq!(file_percent(10, 0), 0);
         assert_eq!(file_percent(1, 3), 33);
         assert_eq!(file_percent(2, 3), 66);
@@ -237,7 +237,7 @@ mod tests {
     }
 
     #[test]
-    fn a3_remaining_time() {
+    fn remaining_time_cases() {
         assert_eq!(remaining_time(100, 0, 0, Duration::from_secs(5)), None);
         assert_eq!(
             remaining_time(1000, 250, 250, Duration::from_secs(10)),
@@ -255,7 +255,7 @@ mod tests {
     }
 
     #[test]
-    fn a3_waiting_counter_branches() {
+    fn waiting_counter_branches() {
         let mut c = WaitingCounter::default();
         // Idle ticks count up.
         assert_eq!(c.tick(true, true, 0, false), 1);
@@ -271,7 +271,7 @@ mod tests {
         // Disk being written.
         assert_eq!(c.tick(true, true, 10, false), 0);
         assert_eq!(c.tick(true, true, 0, false), 1);
-        // Network bytes arrived (DV8).
+        // Network bytes arrived.
         assert_eq!(c.tick(true, true, 0, true), 0);
     }
 }

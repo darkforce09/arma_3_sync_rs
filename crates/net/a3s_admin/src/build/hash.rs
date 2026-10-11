@@ -1,4 +1,4 @@
-//! SHA-1 stage with the modification-time cache (B16–B21).
+//! SHA-1 stage with the modification-time cache.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};

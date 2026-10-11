@@ -18,7 +18,7 @@ cargo run -p a3s_dev_tools -- java-verify <files or dirs>...
 
 - JDK 25 from `scripts/java_env.sh` (override with `A3S_JAVA_HOME`). No Gradle, no downloads.
 - The Java sources: `$A3S_JAVA_SRC`, else `<repo>/java_version/Arma3Sync/src/main/java`, else the
-  same path next to the main checkout (`git rev-parse --git-common-dir`), so agent worktrees work.
+  same path next to the main checkout (`git rev-parse --git-common-dir`), so linked worktrees work.
 - `bash`, `perl`, `flock`, `sha256sum`.
 
 ## Scripts

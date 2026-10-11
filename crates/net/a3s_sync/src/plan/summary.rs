@@ -7,7 +7,7 @@ use crate::model::{
 
 /// What a selection of the plan amounts to.
 ///
-/// `download_tasks` is the work list of the download (WP09 mutates the statuses);
+/// `download_tasks` is the work list of the download (the download executor updates the statuses);
 /// `delete_tasks`, [`downloaded_compressed`], [`ReportTotals`] and `userconfig_dir` feed the
 /// post-download steps.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -72,7 +72,7 @@ impl PlanSummary {
 
     fn add_node(&mut self, relative_path: &str, node: &PlanNode) {
         self.count(node.updated(), node.deleted(), node.selected());
-        // Planning rejects such trees (D-15); never build a task from one anyway.
+        // Planning rejects such trees; never build a task from one anyway.
         let safe = is_safe_name(node.name()) && relative_path.split('/').all(is_safe_name);
         if !safe && node.selected() && (node.updated() || node.deleted()) {
             tracing::warn!("Unsafe file name {relative_path:?}; not synchronized");
@@ -287,7 +287,7 @@ mod tests {
     }
 
     #[test]
-    fn a7_summary_counts_and_tasks() {
+    fn summary_counts_and_tasks() {
         let mut upd_dir = pdir("@a", vec![]);
         upd_dir.updated = true;
         upd_dir.deleted = true; // updated wins in the counts
@@ -353,7 +353,7 @@ mod tests {
     }
 
     #[test]
-    fn a7_userconfig_dir() {
+    fn userconfig_dir_cases() {
         let find = |tasks: &[DownloadTask]| userconfig_dir(tasks);
         assert_eq!(
             find(&[
@@ -372,7 +372,7 @@ mod tests {
     }
 
     #[test]
-    fn a7_resume_helpers() {
+    fn resume_helpers() {
         let tasks = vec![
             with_status(dir_task("@a"), DownloadStatus::Done),
             with_status(file_task("@a/x", 100, true, 0.0), DownloadStatus::Done),
@@ -394,7 +394,7 @@ mod tests {
     }
 
     #[test]
-    fn a7_report_totals() {
+    fn report_totals() {
         let tasks = vec![
             dir_task("@a"),
             file_task("@a/full", 1000, true, 0.0), // compressed, 250

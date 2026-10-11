@@ -1,4 +1,4 @@
-//! Adversarial verification of WP20: Java rounding quirks, extreme progress ranges, tri-state
+//! Adversarial verification of the widgets: Java rounding quirks, extreme progress ranges, tri-state
 //! edge cases, check-tree hotspot geometry and keys, check-list toggling, dialog keyboard
 //! routing and the font fallback before [`a3s_ui::install`].
 
@@ -245,7 +245,7 @@ fn secondary_click_on_hotspot_does_not_toggle() {
             .any(|e| matches!(e, CheckTreeEvent::Toggled(_))),
         "{events:?}"
     );
-    // ContextMenu carries the pointer position since fix round 1 (orchestrator item 3).
+    // ContextMenu carries the pointer position.
     assert!(
         events
             .iter()
@@ -255,7 +255,7 @@ fn secondary_click_on_hotspot_does_not_toggle() {
 }
 
 /// Java `JTree` moves the selection with the arrow keys, and Space then toggles the newly
-/// selected row (`ui/main/AddonsPanel.java:526`). Not required by spec B28.
+/// selected row (`ui/main/AddonsPanel.java:526`).
 #[test]
 fn arrow_down_moves_selection_like_jtree() {
     let mut harness = tree_harness(SampleTree::default());

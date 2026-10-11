@@ -1,4 +1,4 @@
-//! Acceptance tests that need neither a JDK nor the Java sources (A4, A5).
+//! Acceptance tests that need neither a JDK nor the Java sources.
 
 use std::process::Command;
 
@@ -7,7 +7,7 @@ use a3s_dev_tools::{Harness, HarnessError};
 const BIN: &str = env!("CARGO_BIN_EXE_a3s_dev_tools");
 
 #[test]
-fn a4_missing_run_sh_is_not_found() {
+fn missing_run_sh_is_not_found() {
     let tmp = tempfile::tempdir().unwrap();
     match Harness::with_repo_root(tmp.path()) {
         Err(HarnessError::NotFound(root)) => assert_eq!(root, tmp.path()),
@@ -17,7 +17,7 @@ fn a4_missing_run_sh_is_not_found() {
 
 #[cfg(unix)]
 #[test]
-fn a4_missing_jdk_is_no_jdk_naming_a3s_java_home() {
+fn missing_jdk_is_no_jdk_naming_a3s_java_home() {
     let harness = Harness::locate()
         .unwrap()
         .env("A3S_JAVA_HOME", "/nonexistent/a3s-jdk");
@@ -32,14 +32,14 @@ fn a4_missing_jdk_is_no_jdk_naming_a3s_java_home() {
 }
 
 #[test]
-fn a4_locate_finds_this_repository() {
+fn locate_finds_this_repository() {
     let harness = Harness::locate().unwrap();
     assert!(harness.harness_dir().join("run.sh").is_file());
     assert!(harness.harness_dir().join("build.sh").is_file());
 }
 
 #[test]
-fn a5_cli_rejects_write_fixtures_with_only() {
+fn cli_rejects_write_fixtures_with_only() {
     let output = Command::new(BIN)
         .args(["regen-fixtures", "--write-fixtures", "--only", "local"])
         .output()
@@ -58,7 +58,7 @@ fn a5_cli_rejects_write_fixtures_with_only() {
 }
 
 #[test]
-fn a5_cli_missing_prerequisites_exit_2() {
+fn cli_missing_prerequisites_exit_2() {
     let tmp = tempfile::tempdir().unwrap();
     let output = Command::new(BIN)
         .env("A3S_REPO_ROOT", tmp.path())

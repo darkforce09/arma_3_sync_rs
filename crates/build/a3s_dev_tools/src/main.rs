@@ -36,7 +36,7 @@ enum Command {
         #[arg(long, value_delimiter = ',', value_parser = parse_part, conflicts_with_all = ["write_fixtures", "check"])]
         only: Vec<Part>,
 
-        /// Generate everything and install it into tests/fixtures (orchestrator only).
+        /// Generate everything and install it into tests/fixtures.
         #[arg(long, conflicts_with = "check")]
         write_fixtures: bool,
 

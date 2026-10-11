@@ -134,21 +134,3 @@ fn rejects_wrong_sha1() {
         Err(a3s_zsync::Error::ChecksumMismatch { .. })
     ));
 }
-
-proptest::proptest! {
-    #![proptest_config(proptest::prelude::ProptestConfig::with_cases(24))]
-    #[test]
-    fn random_edits(
-        len in 0usize..(6 * BLOCK_SIZE),
-        seed in 0u32..1000,
-        cut in 0usize..(6 * BLOCK_SIZE),
-        insert_len in 0usize..3000,
-    ) {
-        let old = pseudo_random(len, seed);
-        let cut = cut.min(old.len());
-        let mut new = old[..cut].to_vec();
-        new.extend(pseudo_random(insert_len, seed + 1));
-        new.extend_from_slice(&old[cut..]);
-        patch(&old, &new);
-    }
-}

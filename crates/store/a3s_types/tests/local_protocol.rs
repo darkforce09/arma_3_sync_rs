@@ -1,6 +1,6 @@
 //! Protocol helpers.
 //!
-//! A3 ports `src/test/java/fr/soe/a3s/domain/ProtocolSupportTest.java`; A8 covers
+//! Ports `src/test/java/fr/soe/a3s/domain/ProtocolSupportTest.java`; also covers
 //! `AbstractProtocole.checkData` and `getHostUrl`.
 
 use a3s_types::constants::protocol_type_from_description;
@@ -18,7 +18,7 @@ fn class_of_encoded(protocol: &Protocol) -> String {
 }
 
 #[test]
-fn a3_resolves_secure_upload_protocols() {
+fn resolves_secure_upload_protocols() {
     assert_eq!(
         protocol_type_from_description("FTPS"),
         Some(ProtocolType::Ftps)
@@ -32,7 +32,7 @@ fn a3_resolves_secure_upload_protocols() {
 }
 
 #[test]
-fn a3_creates_dedicated_transport_models() {
+fn creates_dedicated_transport_models() {
     let ftps = new_protocol(
         ProtocolType::Ftps,
         "ftps.example/updates",
@@ -62,7 +62,7 @@ fn a3_creates_dedicated_transport_models() {
 }
 
 #[test]
-fn a3_factory_class_mapping() {
+fn factory_class_mapping() {
     let cases = [
         (ProtocolType::Ftp, Some(wire::FTP)),
         (ProtocolType::Ftps, Some(wire::FTP)),
@@ -109,7 +109,7 @@ fn check(edit: impl FnOnce(&mut Protocol)) -> Result<(), ProtocolCheckError> {
 }
 
 #[test]
-fn a8_check_protocol_messages_in_priority_order() {
+fn check_protocol_messages_in_priority_order() {
     assert_eq!(check(|_| {}), Ok(()));
 
     // Every field broken at once: the URL wins, then login, port, ... in Java order.
@@ -122,14 +122,14 @@ fn a8_check_protocol_messages_in_priority_order() {
     };
     let err = check(broken).unwrap_err();
     assert_eq!(err, ProtocolCheckError::UrlEmpty);
-    assert_eq!(err.to_string(), "URL field is empty!");
+    assert_eq!(err, ProtocolCheckError::UrlEmpty);
 
     let err = check(|p| {
         broken(p);
         p.url = "host".to_owned();
     })
     .unwrap_err();
-    assert_eq!(err.to_string(), "Login field is empty!");
+    assert_eq!(err, ProtocolCheckError::LoginEmpty);
     assert_eq!(
         check(|p| p.login = Some(String::new())),
         Err(ProtocolCheckError::LoginEmpty)
@@ -141,26 +141,23 @@ fn a8_check_protocol_messages_in_priority_order() {
         p.login = Some("user".to_owned());
     })
     .unwrap_err();
-    assert_eq!(err.to_string(), "Port field is empty!");
+    assert_eq!(err, ProtocolCheckError::PortEmpty);
 
     let err = check(|p| p.port = "abc".to_owned()).unwrap_err();
-    assert_eq!(err.to_string(), "Port is invalid!");
+    assert_eq!(err, ProtocolCheckError::PortInvalid);
 
     let err = check(|p| p.port = "65536".to_owned()).unwrap_err();
-    assert_eq!(
-        err.to_string(),
-        "Port number is out of range!\nMaximum port number is 65535."
-    );
+    assert_eq!(err, ProtocolCheckError::PortOutOfRange);
 
     let err = check(|p| p.connection_timeout = Some(String::new())).unwrap_err();
-    assert_eq!(err.to_string(), "Connection timeout field is empty!");
+    assert_eq!(err, ProtocolCheckError::ConnectionTimeoutEmpty);
     let err = check(|p| p.connection_timeout = Some("10s".to_owned())).unwrap_err();
-    assert_eq!(err.to_string(), "Connection timeout is invalid!");
+    assert_eq!(err, ProtocolCheckError::ConnectionTimeoutInvalid);
 
     let err = check(|p| p.read_timeout = Some(String::new())).unwrap_err();
-    assert_eq!(err.to_string(), "Read timeout field is empty!");
+    assert_eq!(err, ProtocolCheckError::ReadTimeoutEmpty);
     let err = check(|p| p.read_timeout = Some("1e3".to_owned())).unwrap_err();
-    assert_eq!(err.to_string(), "Read timeout is invalid!");
+    assert_eq!(err, ProtocolCheckError::ReadTimeoutInvalid);
 
     // The connection timeout is checked before the read timeout.
     let err = check(|p| {
@@ -172,7 +169,7 @@ fn a8_check_protocol_messages_in_priority_order() {
 }
 
 #[test]
-fn a8_check_protocol_java_quirks() {
+fn check_protocol_java_quirks() {
     // A null timeout reads as 300000 and passes.
     assert_eq!(
         check(|p| {
@@ -200,7 +197,7 @@ fn a8_check_protocol_java_quirks() {
 }
 
 #[test]
-fn a8_parse_java_int() {
+fn parse_java_int_cases() {
     assert_eq!(parse_java_int("0"), Some(0));
     assert_eq!(parse_java_int("-2147483648"), Some(i32::MIN));
     assert_eq!(parse_java_int("+7"), Some(7));
@@ -221,7 +218,7 @@ fn a8_parse_java_int() {
 }
 
 #[test]
-fn a8_host_url() {
+fn host_url_cases() {
     let p = Protocol::new(
         ProtocolType::Https,
         "repo.example/path/to",

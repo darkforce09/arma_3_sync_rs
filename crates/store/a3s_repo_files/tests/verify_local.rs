@@ -1,4 +1,4 @@
-//! Verifier tests for WP04 `local`: naming edge cases (RepositoryDAO.java:313-363), TOML round
+//! Verifier tests for `local`: naming edge cases (RepositoryDAO.java:313-363), TOML round
 //! trips of hostile values, file modes and atomic-write failures, duplicate resolution.
 
 use std::collections::BTreeMap;

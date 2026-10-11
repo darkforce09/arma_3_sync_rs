@@ -1,4 +1,4 @@
-//! Live, read-only download test against the public WOG repository (WP09 A17).
+//! Live, read-only download test against the public WOG repository.
 //!
 //! Downloads `.a3s/sync` plus at most 3 files of at most 1 MB each (3 MB in total).
 //! Run with `cargo test -p a3s_sync -- --ignored --test-threads=1`.
@@ -26,7 +26,7 @@ fn wog() -> Protocol {
 
 #[tokio::test]
 #[ignore = "network"]
-async fn a17_live_wog_download() {
+async fn live_wog_download() {
     let protocol = wog();
     let options = TransportOptions::from_protocol(&protocol);
     let mut transport = Transport::connect(&protocol, &options)

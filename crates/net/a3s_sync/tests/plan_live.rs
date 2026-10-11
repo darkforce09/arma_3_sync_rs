@@ -22,7 +22,7 @@ fn wog() -> Protocol {
 
 #[tokio::test]
 #[ignore = "network"]
-async fn a10_live_wog_plan_and_completion() {
+async fn live_wog_plan_and_completion() {
     let protocol = wog();
     let options = TransportOptions::from_protocol(&protocol);
     let ctx = TransferCtx::new();

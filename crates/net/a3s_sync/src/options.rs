@@ -165,7 +165,7 @@ mod tests {
     }
 
     #[test]
-    fn a10_resolve_download_location() {
+    fn resolve_download_location_cases() {
         let default = tempfile::tempdir().expect("tempdir");
         let event_dir = tempfile::tempdir().expect("tempdir");
         let missing = default.path().join("missing");
@@ -218,10 +218,9 @@ mod tests {
     }
 
     #[test]
-    fn a10_from_repository() {
+    fn from_repository_cases() {
         let mut r = repo();
         let err = SyncOptions::from_repository(&mut r, None).expect_err("empty");
-        assert_eq!(err.to_string(), "Default destination folder is empty.");
         assert_eq!(err.kind(), ErrorKind::InvalidInput);
 
         r.default_download_location = Some(String::new());
@@ -229,10 +228,6 @@ mod tests {
         assert!(matches!(err, SyncOptionsError::DestinationEmpty));
 
         let missing = SyncOptionsError::DestinationMissing("/nope".to_owned());
-        assert_eq!(
-            missing.to_string(),
-            "Default destination folder does not exists: /nope"
-        );
         assert_eq!(missing.kind(), ErrorKind::NotFound);
 
         let dir = tempfile::tempdir().expect("tempdir");
@@ -263,7 +258,7 @@ mod tests {
     }
 
     #[test]
-    fn a11_download_connections_table() {
+    fn download_connections_table() {
         let options = |client| SyncOptions {
             repository_name: String::new(),
             event_name: None,

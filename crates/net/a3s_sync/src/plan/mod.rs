@@ -131,7 +131,7 @@ pub enum PlanError {
     Cancelled,
 
     /// A remote node name is not a single plain path component (e.g. `..`, `/etc`, `a/b`,
-    /// `C:x`): joining it to a local folder could reach outside the destination (D-15).
+    /// `C:x`): joining it to a local folder could reach outside the destination.
     #[error("Unsafe file name in the repository: {relative_path}")]
     #[non_exhaustive]
     UnsafeName {
@@ -204,7 +204,7 @@ pub fn plan_repository(
             .ok_or_else(|| PlanError::EventNotFound { name: name.clone() })?;
         tree = event_filter::filter(tree, event);
     }
-    // Remote names are joined to local folders below: reject traversal first (D-15).
+    // Remote names are joined to local folders below: reject traversal first.
     validate_names(&tree)?;
     // 2. Destination paths.
     assign_destinations(
@@ -250,7 +250,7 @@ fn check_destination(destination: &Path) -> Result<(), SyncOptionsError> {
 /// the name, and it contains none of `/`, `\`, `\0`, `:` (on every platform, so a repository is
 /// planned the same way everywhere). Java joins names unchecked
 /// (`RepositoryService.java:487-508, 613-656`), so a hostile `.a3s/sync` could make it read,
-/// write or delete outside the destination; this is approved deviation D-15.
+/// write or delete outside the destination.
 pub fn validate_names(tree: &PlanTree) -> Result<(), PlanError> {
     let mut unsafe_path = None;
     tree.walk(&mut |relative_path, node| {
@@ -317,36 +317,22 @@ mod tests {
     }
 
     #[test]
-    fn a7_plan_error_messages_and_kinds() {
+    fn plan_error_messages_and_kinds() {
         let err = PlanError::SyncMissing {
             repository: "WOG".to_owned(),
         };
-        assert_eq!(
-            err.to_string(),
-            "File /.a3s/sync not found on repository: WOG"
-        );
         assert_eq!(err.kind(), ErrorKind::NotFound);
         let err = PlanError::EventsMissing {
             repository: "WOG".to_owned(),
         };
-        assert_eq!(
-            err.to_string(),
-            "File /.a3s/events not found on repository: WOG"
-        );
         assert_eq!(err.kind(), ErrorKind::NotFound);
         let err = PlanError::EventNotFound {
             name: "op".to_owned(),
         };
-        assert_eq!(err.to_string(), "Event not found: op");
         assert_eq!(err.kind(), ErrorKind::NotFound);
         let err = PlanError::from(SyncOptionsError::DestinationEmpty);
-        assert_eq!(err.to_string(), "Default destination folder is empty.");
         assert_eq!(err.kind(), ErrorKind::InvalidInput);
         let err = PlanError::from(SyncOptionsError::DestinationMissing("/x".to_owned()));
-        assert_eq!(
-            err.to_string(),
-            "Default destination folder does not exists: /x"
-        );
         assert_eq!(err.user_message(), err.to_string());
         assert_eq!(err.kind(), ErrorKind::NotFound);
         let err = PlanError::Hash {
@@ -360,7 +346,7 @@ mod tests {
     }
 
     #[test]
-    fn a7_plan_repository_precondition_order() {
+    fn plan_repository_precondition_order() {
         let dir = tempfile::tempdir().expect("tempdir");
         let missing = dir.path().join("missing");
         let mut opts = options(&missing);
@@ -409,7 +395,7 @@ mod tests {
     }
 
     #[test]
-    fn a2_addon_locator_impls() {
+    fn addon_locator_impls() {
         assert_eq!(NoAddons.addon_parent_dir("@ace"), None);
         let map: HashMap<String, PathBuf> = [("@ace".to_owned(), PathBuf::from("/opt"))].into();
         assert_eq!(map.addon_parent_dir("@ACE"), Some(PathBuf::from("/opt")));

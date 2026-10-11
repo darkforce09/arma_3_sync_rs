@@ -30,27 +30,27 @@ macro_rules! each_ftp {
 }
 
 each_ftp! {
-    a3_upload_file_round_trip => common::a3_upload_file_round_trip;
-    a4_upload_bytes_identity => common::a4_upload_bytes_identity;
-    a5_exists => common::a5_exists;
-    a6_mkdirs_idempotent => common::a6_mkdirs_idempotent;
-    a7_delete => common::a7_delete;
-    a8_path_traversal => common::a8_path_traversal;
+    upload_file_round_trip => common::upload_file_round_trip;
+    upload_bytes_identity => common::upload_bytes_identity;
+    exists => common::exists;
+    mkdirs_idempotent => common::mkdirs_idempotent;
+    delete => common::delete;
+    path_traversal => common::path_traversal;
     a_resume_ftp => common::resume_download;
 }
 
 #[tokio::test]
-async fn a17_cancellation_ftp() {
-    common::a17_cancellation(&fixture(false).await, true).await;
+async fn cancellation_ftp() {
+    common::cancellation(&fixture(false).await, true).await;
 }
 
 #[tokio::test]
-async fn a17_cancellation_ftps() {
-    common::a17_cancellation(&fixture(true).await, true).await;
+async fn cancellation_ftps() {
+    common::cancellation(&fixture(true).await, true).await;
 }
 
 #[tokio::test]
-async fn a9_session_cache() {
+async fn session_cache() {
     let fx = fixture(false).await;
     for i in 0..50 {
         fx.put(&format!("d/f{i}.pbo"), b"x");
@@ -89,7 +89,7 @@ async fn a9_session_cache() {
 }
 
 #[tokio::test]
-async fn a11_base_directory() {
+async fn base_directory() {
     // Configured remote path that exists: files land below it.
     let fx = fixture_with_path(false, "/repo").await;
     std::fs::create_dir_all(&fx.base).unwrap();
@@ -123,7 +123,7 @@ async fn a11_base_directory() {
 }
 
 #[tokio::test]
-async fn a18_parallel_uploads_into_same_tree() {
+async fn parallel_uploads_into_same_tree() {
     let fx = fixture(false).await;
     let mut tasks = Vec::new();
     for worker in 0..2 {
@@ -156,7 +156,7 @@ async fn a18_parallel_uploads_into_same_tree() {
 }
 
 #[tokio::test]
-async fn a16_ftp_supports_upload() {
+async fn ftp_supports_upload() {
     let fx = fixture(false).await;
     let t = fx.connect().await;
     assert!(t.supports_upload());

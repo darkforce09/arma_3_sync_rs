@@ -1,4 +1,4 @@
-//! Fix round 1: dialog keyboard routing, button enable flags and check-tree keyboard focus.
+//! Dialog keyboard routing, button enable flags and check-tree keyboard focus.
 
 use a3s_ui::dialog::{Dialog, DialogAction, DialogButton, ProgressDialog, ProgressDialogAction};
 use a3s_ui::gallery::SampleTree;

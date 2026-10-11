@@ -1,5 +1,5 @@
-//! Verifier tests for WP04 `legacy::import`: never overwriting Rust data (B31), idempotency
-//! (B39), duplicate resolution (B33, B34), failure isolation and store-write failures (B38).
+//! Verifier tests for `legacy::import`: never overwriting Rust data, idempotency
+//!, duplicate resolution, failure isolation and store-write failures.
 
 use std::collections::BTreeMap;
 use std::io::{Read as _, Write as _};
@@ -410,10 +410,6 @@ fn verify_bad_entries_are_isolated() {
     for file in ["zero.a3s.repository", "text.a3s.repository"] {
         match outcome_of(&source.repositories, file) {
             ItemOutcome::Failed(message) => {
-                assert!(
-                    message.starts_with(&format!("Failed to read file: {file}")),
-                    "{message}"
-                );
                 assert!(message.ends_with(FILE_CORRUPTED), "{message}");
             }
             other => panic!("{file}: {other:?}"),

@@ -1,4 +1,4 @@
-//! One-time import of the Java client's data (A11-A14), on copies of the real Java-written
+//! One-time import of the Java client's data, on copies of the real Java-written
 //! files of `tests/fixtures/java_local`.
 
 use std::collections::BTreeMap;
@@ -192,10 +192,9 @@ fn migrated(base: &LauncherOptions, old: &LauncherOptions) -> LauncherOptions {
 }
 
 // ---------------------------------------------------------------------------------------------
-// A11
 
 #[test]
-fn a11_full_import_of_the_java_per_user_layout() {
+fn full_import_of_the_java_per_user_layout() {
     let tmp = tempfile::tempdir().unwrap();
     let java = java_per_user(tmp.path(), "Default");
     let before = snapshot(&java);
@@ -321,7 +320,7 @@ fn a11_full_import_of_the_java_per_user_layout() {
 }
 
 #[test]
-fn a11_search_directories_are_appended_without_deduplication() {
+fn search_directories_are_appended_without_deduplication() {
     let tmp = tempfile::tempdir().unwrap();
     let java = java_per_user(tmp.path(), "Event Night");
     let store = store(&tmp.path().join("rust"));
@@ -344,7 +343,6 @@ fn a11_search_directories_are_appended_without_deduplication() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// A12
 
 fn without_marker(store: &LocalStore, root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
     let mut files = snapshot(root);
@@ -366,7 +364,7 @@ fn all_skipped(report: &ImportReport) {
 }
 
 #[test]
-fn a12_import_is_idempotent_and_marked() {
+fn import_is_idempotent_and_marked() {
     let tmp = tempfile::tempdir().unwrap();
     let java = java_per_user(tmp.path(), "Default");
     let sources = per_user_sources(&java, &[]);
@@ -408,7 +406,7 @@ fn a12_import_is_idempotent_and_marked() {
 }
 
 #[test]
-fn a12_existing_rust_data_is_never_overwritten() {
+fn existing_rust_data_is_never_overwritten() {
     let tmp = tempfile::tempdir().unwrap();
     let java = java_per_user(tmp.path(), "Default");
     let store = store(&tmp.path().join("rust"));
@@ -464,7 +462,7 @@ fn a12_existing_rust_data_is_never_overwritten() {
 }
 
 #[test]
-fn a12_two_sources_first_wins() {
+fn two_sources_first_wins() {
     let tmp = tempfile::tempdir().unwrap();
     let java = java_per_user(tmp.path(), "Default");
     let install = tmp.path().join("install");
@@ -510,7 +508,6 @@ fn a12_two_sources_first_wins() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// A13
 
 /// A per-user layout without a Java `Default` profile, with broken files.
 fn broken_layout(root: &Path, active: &str) -> PathBuf {
@@ -566,7 +563,7 @@ fn broken_layout(root: &Path, active: &str) -> PathBuf {
 }
 
 #[test]
-fn a13_failures_are_isolated() {
+fn failures_are_isolated() {
     let tmp = tempfile::tempdir().unwrap();
     let java = broken_layout(tmp.path(), "Default");
     let store = store(&tmp.path().join("rust"));
@@ -629,7 +626,7 @@ fn a13_failures_are_isolated() {
 }
 
 #[test]
-fn a13_unknown_active_profile_falls_back_to_default() {
+fn unknown_active_profile_falls_back_to_default() {
     let tmp = tempfile::tempdir().unwrap();
     let java = broken_layout(tmp.path(), "Ghost");
     let store = store(&tmp.path().join("rust"));
@@ -667,7 +664,7 @@ fn a13_unknown_active_profile_falls_back_to_default() {
 }
 
 #[test]
-fn a13_existing_rust_default_is_not_overwritten_by_the_migration() {
+fn existing_rust_default_is_not_overwritten_by_the_migration() {
     let tmp = tempfile::tempdir().unwrap();
     let java = broken_layout(tmp.path(), "Ghost");
     let store = store(&tmp.path().join("rust"));
@@ -687,10 +684,9 @@ fn a13_existing_rust_default_is_not_overwritten_by_the_migration() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// A14
 
 #[test]
-fn a14_historical_variants_through_the_importer() {
+fn historical_variants_through_the_importer() {
     let tmp = tempfile::tempdir().unwrap();
     let java = tmp.path().join("java");
     let configuration = java.join("config/Arma3Sync/configuration");
@@ -768,10 +764,9 @@ fn a14_historical_variants_through_the_importer() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Fix round 1
 
 #[test]
-fn a12_unreadable_marker_is_not_absent() {
+fn unreadable_marker_is_not_absent() {
     let tmp = tempfile::tempdir().unwrap();
     let java = java_per_user(tmp.path(), "Default");
     let sources = per_user_sources(&java, &[]);
@@ -817,7 +812,7 @@ fn a12_unreadable_marker_is_not_absent() {
 }
 
 #[test]
-fn a11_unreadable_rust_workshop_file_is_reported_not_replaced() {
+fn unreadable_rust_workshop_file_is_reported_not_replaced() {
     let tmp = tempfile::tempdir().unwrap();
     let java = java_per_user(tmp.path(), "Default");
     let store = store(&tmp.path().join("rust"));
@@ -844,7 +839,7 @@ fn a11_unreadable_rust_workshop_file_is_reported_not_replaced() {
 
 #[cfg(unix)]
 #[test]
-fn a11_caches_are_written_before_the_repository() {
+fn caches_are_written_before_the_repository() {
     use std::os::unix::fs::PermissionsExt as _;
 
     let tmp = tempfile::tempdir().unwrap();

@@ -1,4 +1,4 @@
-//! Scanning the repository folder into a sync tree (B4–B15).
+//! Scanning the repository folder into a sync tree.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -28,7 +28,7 @@ fn is_a3s_folder(name: &str) -> bool {
 
 /// Whether the builder leaves a file out of the sync tree.
 ///
-/// Java skips names containing `.zsync`, `.pbo.zip` or `.a3s`. D-14 (approved, wire-visible):
+/// Java skips names containing `.zsync`, `.pbo.zip` or `.a3s`. Intentional difference from Java:
 /// the compression stage's own outputs, `<name>.zip` for any compressible `<name>` (so also
 /// `.ebo.zip`), are skipped too; Java turns its `.ebo.zip` files into leaves on the next build.
 // Mirrors dao/repository/RepositoryBuildProcessor.java:486-489
@@ -39,7 +39,7 @@ pub fn is_excluded_name(name: &str) -> bool {
             .is_some_and(is_compressible)
 }
 
-/// Lists a directory sorted by name bytes (Q7: deterministic order for names that differ only
+/// Lists a directory sorted by name bytes (deterministic order for names that differ only
 /// in case). `None` when the directory cannot be listed (Java's `listFiles()` returns null).
 fn list_sorted(dir: &Path) -> Option<Vec<(String, PathBuf)>> {
     let entries = match fs::read_dir(dir) {
@@ -69,7 +69,7 @@ fn list_sorted(dir: &Path) -> Option<Vec<(String, PathBuf)>> {
 struct Scanner<'a> {
     excluded_files: &'a BTreeSet<String>,
 
-    /// Canonical paths of the directories being scanned, to detect symlink loops (Q8).
+    /// Canonical paths of the directories being scanned, to detect symlink loops.
     stack: Vec<PathBuf>,
 }
 
@@ -157,7 +157,7 @@ pub(crate) fn scan(
     Ok(sync)
 }
 
-/// Removes leaves whose file vanished and directories left empty, depth first (B10).
+/// Removes leaves whose file vanished and directories left empty, depth first.
 // Mirrors dao/repository/RepositoryBuildProcessor.java:423-445
 fn prune(
     dir: &mut SyncTreeDirectory,
@@ -207,7 +207,7 @@ pub(crate) fn relative(root: &Path, relpath: &str) -> PathBuf {
     path
 }
 
-/// The leaves of `sync` in deep-search order, with their paths (B12).
+/// The leaves of `sync` in deep-search order, with their paths.
 pub(crate) fn leaves(sync: &SyncTreeDirectory, root: &Path) -> Vec<LeafRef> {
     let mut out = Vec::new();
     sync.walk(&mut |relpath, node| {
@@ -244,7 +244,7 @@ pub(crate) fn for_each_leaf_mut(
     rec(sync, &mut 0, f);
 }
 
-/// Sum of the sizes of all regular files below `root`, except below a top-level `.a3s` (B14).
+/// Sum of the sizes of all regular files below `root`, except below a top-level `.a3s`.
 ///
 /// Like `Files.walk`, symbolic links to directories are not followed, but links to files count
 /// with their target's size. Computed before the zsync and zip stages, so the outputs of the

@@ -12,10 +12,10 @@ use std::path::PathBuf;
 
 use a3s_transport::{RemoteKind, TransferCtx, Transport};
 
-/// A18: `Transport` and the futures of every write method are `Send` (spawned by the upload
+/// `Transport` and the futures of every write method are `Send` (spawned by the upload
 /// pipeline). Compile-time only.
 #[test]
-fn a18_transport_and_futures_are_send() {
+fn transport_and_futures_are_send() {
     fn assert_send<T: Send>(_: &T) {}
 
     #[expect(dead_code, reason = "only has to compile")]

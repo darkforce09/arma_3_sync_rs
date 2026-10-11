@@ -1,4 +1,4 @@
-//! WP08 verification: adversarial planning tests (WOG fixture, partial local trees, hostile
+//! Adversarial planning tests (WOG fixture, partial local trees, hostile
 //! sync trees, extra-file deletion, hidden paths, SHA-1 cache, cancellation, huge sizes).
 
 use std::collections::BTreeSet;
@@ -75,7 +75,7 @@ fn plan(metadata: &RemoteMetadata, options: &SyncOptions) -> Result<PlanTree, Pl
     plan_with(metadata, options, &mut a3s_hash::Sha1Cache::default())
 }
 
-/// The plan, or `None` when it is rejected for an unsafe name (D-15, fix round 1: hostile names
+/// The plan, or `None` when it is rejected for an unsafe name (hostile names
 /// may be rejected instead of planned).
 fn plan_or_unsafe(metadata: &RemoteMetadata, options: &SyncOptions) -> Option<PlanTree> {
     match plan(metadata, options) {
@@ -465,7 +465,7 @@ fn verify_hostile_empty_dir_name_without_exact_match() {
 }
 
 /// Windows separators in names are plain characters on Unix: no traversal (or the plan is
-/// rejected, D-15).
+/// rejected).
 #[cfg(unix)]
 #[test]
 fn verify_backslash_names_are_literal_on_unix() {
@@ -489,7 +489,7 @@ fn verify_backslash_names_are_literal_on_unix() {
 /// A symlink inside a remote folder pointing outside the destination: its content is offered
 /// for deletion (Java follows it too), so a delete task resolves outside the root.
 ///
-/// Fix round 1 (D-15): the link itself may be offered for deletion as a file (removing the
+/// The link itself may be offered for deletion as a file (removing the
 /// link, not its target), so the check is lexical: no task below the link, no directory task
 /// for the link, every task inside the destination.
 #[cfg(unix)]

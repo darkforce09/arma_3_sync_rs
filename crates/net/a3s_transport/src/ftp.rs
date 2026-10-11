@@ -728,7 +728,7 @@ impl FtpTransport {
         }
         let (parent, name) = path::split_parent(relative);
         // `mkdirs` enters a known parent with CWD before the transfer and recreates it if it
-        // vanished meanwhile (B14).
+        // vanished meanwhile.
         self.mkdirs(parent, ctx).await?;
         let written = self.store(&mut source, relative, ctx).await?;
         self.session.add_entry(parent, name);
@@ -860,7 +860,7 @@ mod tests {
     }
 
     #[test]
-    fn a10_mlst_reply_decision() {
+    fn mlst_reply_decision() {
         assert_eq!(mlst_outcome(250), MlstOutcome::Found);
         assert_eq!(mlst_outcome(550), MlstOutcome::Missing);
         for code in [500, 501, 502, 504] {

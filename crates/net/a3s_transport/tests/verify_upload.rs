@@ -1,4 +1,4 @@
-//! Adversarial verification of the WP06 upload side (exists / upload / mkdirs / delete and
+//! Adversarial verification of the upload side (exists / upload / mkdirs / delete and
 //! upload sessions) against the in-process test servers of `tests/transport/support`.
 
 #[allow(dead_code, unused_imports)]
@@ -98,7 +98,7 @@ async fn overwrite_truncates(fx: &Fixture) {
     t.close().await;
 }
 
-/// Windows separators are normalised to `/` (B2).
+/// Windows separators are normalised to `/`.
 async fn backslash_separators(fx: &Fixture) {
     let mut t = fx.connect().await;
     let ctx = TransferCtx::new();
@@ -118,7 +118,7 @@ async fn backslash_separators(fx: &Fixture) {
     t.close().await;
 }
 
-/// More unsafe shapes than A8; none may reach the server.
+/// More unsafe path shapes; none may reach the server.
 async fn extra_traversal_rejected(fx: &Fixture) {
     let mut t = fx.connect().await;
     let ctx = TransferCtx::new();
@@ -298,7 +298,7 @@ async fn delete_tree_with_spaces(fx: &Fixture) {
 // ---------------------------------------------------------------------------------------
 
 /// After a cancelled upload, the same FTP transport can still upload and download data
-/// (not only answer `MLST`): B16.
+/// (not only answer `MLST`).
 async fn ftp_cancel_then_transfer(ftps: bool) {
     let fx = support::ftp::fixture(ftps).await;
     let local_dir = tempfile::tempdir().unwrap();
@@ -393,7 +393,7 @@ async fn verify_ftp_listing_updated_by_mkdir_and_upload() {
     t.close().await;
 }
 
-/// Dot files hidden from `LIST` are confirmed with `MLST` (B12).
+/// Dot files hidden from `LIST` are confirmed with `MLST`.
 #[tokio::test]
 async fn verify_ftp_session_dot_file_confirmed() {
     let fx = support::ftp::fixture(false).await;
@@ -408,7 +408,7 @@ async fn verify_ftp_session_dot_file_confirmed() {
     t.close().await;
 }
 
-/// A known directory removed behind the session's back is recreated once (B14).
+/// A known directory removed behind the session's back is recreated once.
 #[tokio::test]
 async fn verify_ftp_known_dir_vanished_is_recreated() {
     let fx = support::ftp::fixture(false).await;
@@ -423,7 +423,7 @@ async fn verify_ftp_known_dir_vanished_is_recreated() {
     t.close().await;
 }
 
-/// Recursive delete removes dot files and dot directories too (B8: "whole tree gone").
+/// Recursive delete removes dot files and dot directories too (the whole tree is gone).
 #[tokio::test]
 async fn verify_ftp_delete_dir_with_dot_entries() {
     let fx = support::ftp::fixture(false).await;
@@ -457,7 +457,7 @@ async fn verify_ftp_case_sensitivity_consistent() {
 // SFTP specifics
 // ---------------------------------------------------------------------------------------
 
-/// B21: a configured path of `/` (URL `host/`) is the SFTP root, not the home directory
+/// A configured path of `/` (URL `host/`) is the SFTP root, not the home directory
 /// (`SftpDAO.resolveConfiguredDirectory`, `"/".equals(configured)` → `"/"`).
 #[tokio::test]
 async fn verify_sftp_root_url_path_is_root_not_home() {
@@ -573,7 +573,7 @@ async fn stub(statuses: &'static [(&'static str, &'static str, u16)]) -> (Protoc
     (protocol, task)
 }
 
-/// B31 mapping of WebDAV `exists`, B32 MKCOL 405 race and MKCOL errors.
+/// Mapping of WebDAV `exists`, the MKCOL 405 race and MKCOL errors.
 #[tokio::test]
 async fn verify_webdav_status_mapping() {
     static STATUSES: &[(&str, &str, u16)] = &[
@@ -617,7 +617,7 @@ async fn verify_webdav_status_mapping() {
 // HTTP specifics
 // ---------------------------------------------------------------------------------------
 
-/// B40: only 200 is `true`; other 2xx `false`; 403 is a plain HTTP status error.
+/// Only 200 is `true`; other 2xx `false`; 403 is a plain HTTP status error.
 #[tokio::test]
 async fn verify_http_exists_mapping() {
     static STATUSES: &[(&str, &str, u16)] = &[
@@ -688,7 +688,7 @@ async fn verify_ftp_session_unicode_without_space() {
     t.close().await;
 }
 
-/// Only the leaf of a known directory vanished; its parent is still there (B14).
+/// Only the leaf of a known directory vanished; its parent is still there.
 #[tokio::test]
 async fn verify_ftp_known_leaf_dir_vanished_is_recreated() {
     let fx = support::ftp::fixture(false).await;

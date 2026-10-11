@@ -1,4 +1,4 @@
-//! `java.util.Properties` parsing and the Java Workshop metadata file (A10).
+//! `java.util.Properties` parsing and the Java Workshop metadata file.
 
 use a3s_repo_files::legacy::properties::{PropertiesError, parse};
 use a3s_repo_files::legacy::read_workshop_file;
@@ -13,7 +13,7 @@ fn p(key: &str, value: &str) -> (String, String) {
 }
 
 #[test]
-fn a10_parses_like_java_properties_load() {
+fn parses_like_java_properties_load() {
     let input: &[u8] = b"#Arma3Sync known Workshop metadata\n\
 #Sat Oct 11 12:00:00 CEST 2026\n\
 mod.QGFjZQ.key=@ace\n\
@@ -52,14 +52,14 @@ x=trailing\\";
 }
 
 #[test]
-fn a10_continuation_lines_are_not_comments() {
+fn continuation_lines_are_not_comments() {
     assert_eq!(pairs(b"a=1\\\n#2\n"), vec![p("a", "1#2")]);
     // Escapes other than t, n, r, f, u yield the character itself.
     assert_eq!(pairs(b"a=\\q\\#\\n"), vec![p("a", "q#\n")]);
 }
 
 #[test]
-fn a10_malformed_unicode_escape_is_an_error() {
+fn malformed_unicode_escape_is_an_error() {
     assert_eq!(
         parse(b"a=\\u12"),
         Err(PropertiesError::MalformedUnicodeEscape)
@@ -79,7 +79,7 @@ fn entry(key: &str, id: &str, name: &str) -> WorkshopEntry {
 }
 
 #[test]
-fn a10_read_workshop_file() {
+fn read_workshop_file_cases() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("known-workshop-mods.properties");
     std::fs::write(
@@ -114,7 +114,7 @@ fn a10_read_workshop_file() {
 }
 
 #[test]
-fn a10_unreadable_workshop_file_is_empty_with_one_warning() {
+fn unreadable_workshop_file_is_empty_with_one_warning() {
     let dir = tempfile::tempdir().unwrap();
     let missing = read_workshop_file(&dir.path().join("missing.properties"));
     assert!(missing.value.is_empty());

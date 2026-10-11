@@ -1,4 +1,4 @@
-//! `export.a3s.autoconfig` encoding (A14): what Java's `CommonService.exportAutoConfig` writes.
+//! `export.a3s.autoconfig` encoding: what Java's `CommonService.exportAutoConfig` writes.
 
 use a3s_jserial::{Graph, Limits, Node, NodeId, Value};
 use a3s_types::constants::ModsetType;
@@ -134,7 +134,7 @@ fn check_parents(graph: &Graph, id: NodeId, leaves: &mut usize) {
 }
 
 #[test]
-fn a14_export_stream_is_java_readable() {
+fn export_stream_is_java_readable() {
     let export = sample();
     let bytes = encode_stream(&export).unwrap();
     let graph = a3s_jserial::read_with_limits(&bytes, Limits::JAVA_A3S).unwrap();
@@ -177,7 +177,7 @@ fn a14_export_stream_is_java_readable() {
 }
 
 #[test]
-fn a14_repositories_are_written_fresh() {
+fn repositories_are_written_fresh() {
     let bytes = encode_stream(&sample()).unwrap();
     let graph = a3s_jserial::read_with_limits(&bytes, Limits::JAVA_A3S).unwrap();
     let root = graph.root_value().unwrap().as_ref().unwrap();
@@ -253,7 +253,7 @@ fn a14_repositories_are_written_fresh() {
 }
 
 #[test]
-fn a14_lenient_decode_of_export() {
+fn lenient_decode_of_export() {
     let export = sample();
     let bytes = encode_stream(&export).unwrap();
     let legacy = decode_legacy_stream::<AutoConfigExport>(&bytes).unwrap();

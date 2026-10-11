@@ -24,7 +24,7 @@ import fr.soe.a3s.domain.repository.Repository;
 import fr.soe.a3s.service.RepositoryService;
 
 /**
- * The B22 local data set, built with domain setters and the GUI services. Values are non-default
+ * The local data set, built with domain setters and the GUI services. Values are non-default
  * wherever a field has a default, and every absolute path is a fixed fake string.
  */
 public final class LocalData {

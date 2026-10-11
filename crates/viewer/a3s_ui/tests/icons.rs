@@ -1,4 +1,4 @@
-//! Icon table, tinting, scaling and the app icon (spec B17–B23).
+//! Icon table, tinting, scaling and the app icon.
 
 use a3s_ui::icon::{self, IconState, IconTone, UiIcon};
 use a3s_ui::theme::ThemeLibrary;
@@ -56,7 +56,7 @@ const TABLE: [(UiIcon, &str, bool, IconTone); 42] = [
 ];
 
 #[test]
-fn a5_icon_table_matches_java() {
+fn icon_table_matches_java() {
     assert_eq!(UiIcon::ALL.len(), 42);
     for (i, (icon, stem, aware, tone)) in TABLE.into_iter().enumerate() {
         assert_eq!(UiIcon::ALL[i], icon, "order at {i}");
@@ -83,7 +83,7 @@ fn a5_icon_table_matches_java() {
 }
 
 #[test]
-fn a6_tint_for_follows_tone_and_state() {
+fn tint_for_follows_tone_and_state() {
     let light = &ThemeLibrary::light().palette;
     let dark = &ThemeLibrary::dark().palette;
     assert_eq!(
@@ -136,7 +136,7 @@ fn a6_tint_for_follows_tone_and_state() {
 }
 
 #[test]
-fn a7_scaled_size() {
+fn scaled_size() {
     for (size, expected) in [
         (12, 18),
         (16, 24),
@@ -153,7 +153,7 @@ fn a7_scaled_size() {
 }
 
 #[test]
-fn a9_app_icon_data() {
+fn app_icon_data() {
     let small = icon::app_icon_data(UiIcon::WINDOW_ICON_SIZE);
     assert_eq!((small.width, small.height), (24, 24));
     assert_eq!(small.rgba.len(), 24 * 24 * 4);
@@ -166,7 +166,7 @@ fn a9_app_icon_data() {
 }
 
 #[test]
-fn a8_icon_image_is_sized_in_points() {
+fn icon_image_is_sized_in_points() {
     let ctx = egui::Context::default();
     a3s_ui::install(&ctx);
     let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {

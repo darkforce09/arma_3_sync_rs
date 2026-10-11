@@ -31,7 +31,7 @@ pub enum Progress {
         /// Upper bound.
         max: i64,
     },
-    /// Unknown amount of work: a bouncing box with optional caller text (Q1).
+    /// Unknown amount of work: a bouncing box with optional caller text.
     Indeterminate {
         /// Text painted over the bar, or none.
         text: Option<String>,
@@ -101,7 +101,7 @@ fn java_round_float(x: f32) -> i64 {
 
 /// A progress bar styled like `UiStyle.styleProgressBar` (`ui/UiStyle.java:72-89`).
 ///
-/// 1 px `borderMuted` outline, padding 4 / 8 / 4 / 8, `surfaceMuted` track (Q1), tone-coloured
+/// 1 px `borderMuted` outline, padding 4 / 8 / 4 / 8, `surfaceMuted` track, tone-coloured
 /// fill and white text with a dark halo (`ui/components/ContrastProgressBarUI.java`).
 #[derive(Clone, Debug)]
 #[must_use = "add it to a Ui with `ui.add(bar)`"]

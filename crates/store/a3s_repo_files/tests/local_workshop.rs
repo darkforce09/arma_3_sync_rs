@@ -1,4 +1,4 @@
-//! Workshop metadata cache (A6).
+//! Workshop metadata cache.
 
 use a3s_repo_files::local::{Error, LocalDirs, LocalStore, WorkshopEntry};
 
@@ -19,7 +19,7 @@ fn rejection(result: Result<(), Error>) -> &'static str {
 }
 
 #[test]
-fn a6_save_validates_like_java() {
+fn save_validates_like_java() {
     let dir = tempfile::tempdir().unwrap();
     let store = store(dir.path());
     let workshop = store.workshop();
@@ -55,7 +55,7 @@ fn a6_save_validates_like_java() {
 }
 
 #[test]
-fn a6_save_then_find() {
+fn save_then_find() {
     let dir = tempfile::tempdir().unwrap();
     let store = store(dir.path());
     let workshop = store.workshop();
@@ -85,7 +85,7 @@ fn a6_save_then_find() {
 }
 
 #[test]
-fn a6_blank_stored_values_and_corrupt_files_read_as_absent() {
+fn blank_stored_values_and_corrupt_files_read_as_absent() {
     let dir = tempfile::tempdir().unwrap();
     let store = store(dir.path());
     std::fs::create_dir_all(dir.path().join("config")).unwrap();
@@ -108,7 +108,7 @@ fn a6_blank_stored_values_and_corrupt_files_read_as_absent() {
 }
 
 #[test]
-fn a6_insert_missing_never_overwrites() {
+fn insert_missing_never_overwrites() {
     let dir = tempfile::tempdir().unwrap();
     let store = store(dir.path());
     let workshop = store.workshop();
@@ -127,7 +127,7 @@ fn a6_insert_missing_never_overwrites() {
 }
 
 #[test]
-fn a6_insert_missing_leaves_unreadable_files_alone() {
+fn insert_missing_leaves_unreadable_files_alone() {
     let dir = tempfile::tempdir().unwrap();
     let store = store(dir.path());
     std::fs::create_dir_all(dir.path().join("config")).unwrap();

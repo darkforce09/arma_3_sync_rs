@@ -1,4 +1,4 @@
-//! JDK-backed acceptance tests (A6-A17). They need JDK 25 (`scripts/java_env.sh`) and the Java
+//! JDK-backed acceptance tests. They need JDK 25 (`scripts/java_env.sh`) and the Java
 //! sources, and are ignored by default:
 //!
 //! ```sh
@@ -6,7 +6,7 @@
 //! ```
 //!
 //! Every test holds [`LOCK`], so they also run one at a time without `--test-threads=1`
-//! (A6 rebuilds the shared `build/` directory from scratch).
+//! (one test rebuilds the shared `build/` directory from scratch).
 
 mod common;
 
@@ -73,7 +73,7 @@ fn files(root: &Path) -> Vec<String> {
 
 #[test]
 #[ignore = "needs JDK 25: source scripts/java_env.sh"]
-fn a6_build_is_incremental_patched_and_minimal() {
+fn build_is_incremental_patched_and_minimal() {
     let _guard = LOCK.lock();
     let h = harness();
     h.clean_build().unwrap();
@@ -138,7 +138,7 @@ fn a6_build_is_incremental_patched_and_minimal() {
 
 #[test]
 #[ignore = "needs JDK 25: source scripts/java_env.sh"]
-fn a7_descriptors_match_measured_and_declared_uids() {
+fn descriptors_match_measured_and_declared_uids() {
     let _guard = LOCK.lock();
     let (_tmp, out) = generate(&[Part::Descriptors]);
     let text = fs::read_to_string(out.join("java_descriptors.txt")).unwrap();
@@ -150,7 +150,7 @@ fn a7_descriptors_match_measured_and_declared_uids() {
         let rest = &text[start + 1..];
         rest[..rest.find("\n\n").unwrap_or(rest.len())].to_owned()
     };
-    // R1 / F-1: computed UIDs.
+    // Computed UIDs.
     assert!(
         block("fr.soe.a3s.domain.AutoConfig").contains("\n  uid 6424431620520340750 computed\n")
     );
@@ -208,7 +208,7 @@ fn a7_descriptors_match_measured_and_declared_uids() {
 
 #[test]
 #[ignore = "needs JDK 25: source scripts/java_env.sh"]
-fn a8_generation_is_deterministic() {
+fn generation_is_deterministic() {
     let _guard = LOCK.lock();
     let (_tmp1, first) = generate(&Part::ALL);
     let tmp2 = tempfile::tempdir().unwrap();
@@ -243,7 +243,7 @@ fn a8_generation_is_deterministic() {
 
 #[test]
 #[ignore = "needs JDK 25: source scripts/java_env.sh"]
-fn a9_local_fixtures() {
+fn local_fixtures() {
     let _guard = LOCK.lock();
     let (_tmp, out) = generate(&[Part::Local]);
     let local = out.join("java_local");
@@ -319,7 +319,7 @@ fn a9_local_fixtures() {
         .collect();
     assert_eq!(variants.len(), 5);
 
-    // B25: the export nulls launcherOptions and clones the repository.
+    // The export nulls launcherOptions and clones the repository.
     let export = Dump::load(&local.join("dumps/export/export.a3s.autoconfig.json"));
     let profiles = export.elements(export.field(&export.root, "profiles"));
     assert_eq!(profiles.len(), 2);
@@ -348,7 +348,7 @@ fn a9_local_fixtures() {
     ));
     assert!(!contains(&pre_connections, b"parallelUploadConnections"));
 
-    // B26: fields missing from variant streams show their JVM zero value.
+    // Fields missing from variant streams show their JVM zero value.
     let prefs = Dump::load(&local.join("dumps/variants/prefs_pre_github.a3s.prefs.json"));
     assert_eq!(prefs.field(&prefs.root, "preferGitHubUpdates"), &Json::Null);
     for name in [
@@ -417,7 +417,7 @@ fn dos_time_is_normalized(zip: &Path) -> bool {
 
 #[test]
 #[ignore = "needs JDK 25: source scripts/java_env.sh"]
-fn a10_built_fixtures() {
+fn built_fixtures() {
     let _guard = LOCK.lock();
     let (_tmp, out) = generate(&[Part::Built]);
     let h = harness();
@@ -593,7 +593,7 @@ fn event_names(dump: &Dump) -> Vec<String> {
 
 #[test]
 #[ignore = "needs JDK 25: source scripts/java_env.sh"]
-fn a11_events_session() {
+fn events_session() {
     let _guard = LOCK.lock();
     let (_tmp, out) = generate(&[Part::Built]);
     let session = out.join("java_built/events_session");
@@ -635,7 +635,7 @@ fn a11_events_session() {
 
 #[test]
 #[ignore = "needs JDK 25: source scripts/java_env.sh"]
-fn a12_collection_capacities() {
+fn collection_capacities() {
     let _guard = LOCK.lock();
     let (_tmp, out) = generate(&[Part::Roundtrip]);
     let text = fs::read_to_string(out.join("java_roundtrip/capacities.txt")).unwrap();
@@ -737,7 +737,7 @@ a:hover { color: #F1AF41; text-decoration: none; }
 
 #[test]
 #[ignore = "needs JDK 25: source scripts/java_env.sh"]
-fn a13_presets() {
+fn presets() {
     let _guard = LOCK.lock();
     let (_tmp, out) = generate(&[Part::Presets]);
     let presets = out.join("java_presets");
@@ -774,7 +774,7 @@ fn a13_presets() {
 
 #[test]
 #[ignore = "needs JDK 25: source scripts/java_env.sh"]
-fn a14_verify_reports_java_failures() {
+fn verify_reports_java_failures() {
     let _guard = LOCK.lock();
     let (tmp, out) = generate(&[Part::Built]);
     let h = harness();
@@ -894,7 +894,7 @@ fn stored_zip(name: &str, data: &[u8]) -> Vec<u8> {
 
 #[test]
 #[ignore = "needs JDK 25: source scripts/java_env.sh"]
-fn a15_selftest() {
+fn selftest() {
     let _guard = LOCK.lock();
     let report = harness().selftest().unwrap();
     assert!(report.is_success(), "{report:?}");
@@ -903,7 +903,7 @@ fn a15_selftest() {
 
 #[test]
 #[ignore = "needs JDK 25: source scripts/java_env.sh"]
-fn a16_roundtrip_and_dump() {
+fn roundtrip_and_dump() {
     let _guard = LOCK.lock();
     let (tmp, out) = generate(&[Part::Roundtrip]);
     let h = harness();
@@ -933,7 +933,7 @@ fn a16_roundtrip_and_dump() {
 #[cfg(unix)]
 #[test]
 #[ignore = "needs JDK 25: source scripts/java_env.sh"]
-fn a17_cli_regen_and_check() {
+fn cli_regen_and_check() {
     let _guard = LOCK.lock();
     let tmp = tempfile::tempdir().unwrap();
     let out = tmp.path().join("generated");
@@ -1039,7 +1039,7 @@ fn restore_mtimes(variant_dir: &Path) {
 /// `generated_files.json` makes every snapshot, `.zsync` files included, verify again.
 #[test]
 #[ignore = "needs JDK 25: source scripts/java_env.sh"]
-fn a10_snapshots_verify_after_checkout_with_restored_mtimes() {
+fn snapshots_verify_after_checkout_with_restored_mtimes() {
     let _guard = LOCK.lock();
     let (tmp, out) = generate(&[Part::Built]);
     let h = harness();
@@ -1148,7 +1148,7 @@ fn generate_refuses_nested_work_and_out() {
     assert_eq!(run(&link.join("work")).status.code(), Some(2));
 }
 
-/// B1/B7: a source root that is not a git checkout (e.g. an extracted tarball) builds with Java
+/// A source root that is not a git checkout (e.g. an extracted tarball) builds with Java
 /// commit `unknown`, and a change to any of its `.java` files invalidates the stamp.
 #[test]
 #[ignore = "needs JDK 25: source scripts/java_env.sh"]
@@ -1156,7 +1156,7 @@ fn build_from_a_non_git_copy_of_the_java_sources() {
     let _guard = LOCK.lock();
     let real = harness();
     real.build().unwrap();
-    // The same resolution order as build.sh (B1).
+    // The same resolution order as build.sh.
     let java_src = std::env::var_os("A3S_JAVA_SRC")
         .map(PathBuf::from)
         .unwrap_or_else(|| {

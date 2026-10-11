@@ -10,8 +10,8 @@ use a3s_types::ServerInfo;
 
 use crate::support::{Fixture, random_bytes, snapshot};
 
-/// A3: upload a 3 MiB file below two missing directories, read it back three ways.
-pub async fn a3_upload_file_round_trip(fx: &Fixture) {
+/// Upload a 3 MiB file below two missing directories, read it back three ways.
+pub async fn upload_file_round_trip(fx: &Fixture) {
     const LEN: usize = 3 << 20;
     let data = random_bytes(LEN, 3);
     let local_dir = tempfile::tempdir().unwrap();
@@ -38,8 +38,8 @@ pub async fn a3_upload_file_round_trip(fx: &Fixture) {
     t.close().await;
 }
 
-/// A4: `.a3s/serverinfo` bytes reach the server untouched; overwriting replaces them.
-pub async fn a4_upload_bytes_identity(fx: &Fixture) {
+/// `.a3s/serverinfo` bytes reach the server untouched; overwriting replaces them.
+pub async fn upload_bytes_identity(fx: &Fixture) {
     let mut t = fx.connect().await;
     let ctx = TransferCtx::new();
     for revision in [7, 8] {
@@ -64,9 +64,9 @@ pub async fn a4_upload_bytes_identity(fx: &Fixture) {
     t.close().await;
 }
 
-/// A5: `exists` for present, missing, missing-parent and dot files, outside and inside a
+/// `exists` for present, missing, missing-parent and dot files, outside and inside a
 /// session.
-pub async fn a5_exists(fx: &Fixture) {
+pub async fn exists(fx: &Fixture) {
     async fn check(t: &mut Transport, ctx: &TransferCtx) {
         assert!(t.exists("dir/up.bin", ctx).await.unwrap());
         assert!(!t.exists("dir/missing.bin", ctx).await.unwrap());
@@ -86,8 +86,8 @@ pub async fn a5_exists(fx: &Fixture) {
     t.close().await;
 }
 
-/// A6: `mkdirs` is idempotent, `mkdirs("")` is a no-op.
-pub async fn a6_mkdirs_idempotent(fx: &Fixture) {
+/// `mkdirs` is idempotent, `mkdirs("")` is a no-op.
+pub async fn mkdirs_idempotent(fx: &Fixture) {
     let mut t = fx.connect().await;
     let ctx = TransferCtx::new();
     t.mkdirs("x/y/z", &ctx).await.unwrap();
@@ -99,8 +99,8 @@ pub async fn a6_mkdirs_idempotent(fx: &Fixture) {
     t.close().await;
 }
 
-/// A7: delete files and directory trees; missing targets are fine.
-pub async fn a7_delete(fx: &Fixture) {
+/// Delete files and directory trees; missing targets are fine.
+pub async fn delete(fx: &Fixture) {
     fx.put("file.bin", b"f");
     fx.put("d/f1", b"1");
     fx.put("d/s/f2", b"2");
@@ -116,8 +116,8 @@ pub async fn a7_delete(fx: &Fixture) {
     t.close().await;
 }
 
-/// A8: unsafe paths fail with `InvalidPath` before any request reaches the server.
-pub async fn a8_path_traversal(fx: &Fixture) {
+/// Unsafe paths fail with `InvalidPath` before any request reaches the server.
+pub async fn path_traversal(fx: &Fixture) {
     let mut t = fx.connect().await;
     let ctx = TransferCtx::new();
     let local_dir = tempfile::tempdir().unwrap();
@@ -155,9 +155,9 @@ pub async fn a8_path_traversal(fx: &Fixture) {
     t.close().await;
 }
 
-/// A17: cancelling a throttled upload returns quickly; the transport stays usable (or reports
+/// Cancelling a throttled upload returns quickly; the transport stays usable (or reports
 /// a lost connection). A pre-cancelled context sends nothing.
-pub async fn a17_cancellation(fx: &Fixture, must_survive: bool) {
+pub async fn cancellation(fx: &Fixture, must_survive: bool) {
     let local_dir = tempfile::tempdir().unwrap();
     let local = local_dir.path().join("big.bin");
     std::fs::write(&local, random_bytes(4 << 20, 17)).unwrap();

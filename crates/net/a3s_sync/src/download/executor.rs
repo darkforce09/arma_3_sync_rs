@@ -1,4 +1,4 @@
-//! Run orchestration: task queue, workers, run-level policy and final state (B1-B6, B23-B31).
+//! Run orchestration: task queue, workers, run-level policy and final state.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -26,7 +26,7 @@ const CLOSE_TIMEOUT: Duration = Duration::from_millis(500);
 /// How long the monitor may take to stop.
 const MONITOR_STOP_TIMEOUT: Duration = Duration::from_millis(200);
 
-/// Runs `tasks` (B1-B38) and updates their statuses.
+/// Runs `tasks` and updates their statuses.
 ///
 /// Never panics on bad input: every failure ends up in the report. Emits `Phase(Downloading)`,
 /// `TransferTotal`, `Transfer`, `Speed`, `DiskUsage`, `ActiveConnections`, `ConnectionWaiting`,
@@ -48,7 +48,6 @@ pub async fn download(
     // Dropping this future cancels the run, which stops blocking zsync work.
     let _run_guard = run.clone().drop_guard();
 
-    // B3
     events.emit(SyncEvent::Phase(Phase::Downloading));
     // Sizes come from the remote tree: sums saturate instead of overflowing.
     let total = tasks
@@ -77,7 +76,7 @@ pub async fn download(
     ));
     shared.emit_transfer();
 
-    // B5: directories first, sequentially.
+    // Directories first, sequentially.
     for (index, task) in tasks.iter().enumerate() {
         if shared.should_stop() {
             break;
@@ -88,7 +87,7 @@ pub async fn download(
         }
     }
 
-    // B2, B6: pending files, taken last-first.
+    // Pending files, taken last-first.
     let queue: Vec<usize> = (0..tasks.len())
         .filter(|&i| is_file(&tasks[i]) && tasks[i].status != DownloadStatus::Done)
         .collect();
@@ -98,7 +97,6 @@ pub async fn download(
         run_workers(&shared, workers).await;
     }
 
-    // B28
     shared.emit_transfer();
     events.emit(SyncEvent::ActiveConnections { active: 0 });
     shared.finish_report(tasks, cancel, started)
@@ -177,9 +175,9 @@ fn is_file(task: &DownloadTask) -> bool {
 pub(crate) enum TaskEnd {
     /// Finalized; compressed leaves carry their `.zip`.
     Done(Option<DownloadedZip>),
-    /// A file error (B15).
+    /// A file error.
     Failed(DownloadError),
-    /// The connection is lost (B24).
+    /// The connection is lost.
     ConnectionLost(DownloadError),
     /// Interrupted by a cancel or a stop of the run.
     Cancelled,
@@ -231,7 +229,7 @@ struct State {
     max_active: u32,
     connecting: usize,
     connected: usize,
-    /// The first connection failure of a worker (B27).
+    /// The first connection failure of a worker.
     first_connect_error: Option<DownloadError>,
     stop: Option<Stop>,
 }
@@ -263,7 +261,7 @@ pub(crate) struct Shared {
     pub(crate) request: DownloadRequest,
     pub(crate) tasks: Vec<DownloadTask>,
     pub(crate) zips: Arc<dyn ZipSink>,
-    /// Child of the caller's token; cancelled on stop (B23, B24) too.
+    /// Child of the caller's token; cancelled on stop too.
     pub(crate) run: CancellationToken,
     pub(crate) events: EventSender,
     pub(crate) started: Instant,
@@ -379,7 +377,7 @@ impl Shared {
         state.connected += 1;
     }
 
-    /// B27: a worker could not connect (`None`: cancelled). When no worker connected, the run
+    /// A worker could not connect (`None`: cancelled). When no worker connected, the run
     /// ends with the first failure.
     fn connect_failed(&self, error: Option<DownloadError>) {
         let mut effects = Effects::default();
@@ -419,8 +417,8 @@ impl Shared {
         self.run.cancel();
     }
 
-    /// Takes the next task for worker `id` (B6), marks the worker active (B29) and takes the
-    /// reporter slot if it is free (B31).
+    /// Takes the next task for worker `id`, marks the worker active and takes the
+    /// reporter slot if it is free.
     fn take_next(&self, id: usize) -> Option<usize> {
         let mut effects = Effects::default();
         let index = {
@@ -475,7 +473,7 @@ impl Shared {
         self.apply(effects);
     }
 
-    /// Records the end of a directory task (B5).
+    /// Records the end of a directory task.
     fn finish_directory(&self, index: usize, end: TaskEnd) {
         let mut effects = Effects::default();
         effects.emit(SyncEvent::FileStarted {
@@ -506,7 +504,7 @@ impl Shared {
                 });
             }
             TaskEnd::Failed(error) => {
-                // Errors raised after a stop or a cancel are not recorded (B15, B23).
+                // Errors raised after a stop or a cancel are not recorded.
                 if state.stop.is_some() || self.run.is_cancelled() {
                     tracing::debug!("Ignored after stop: {}: {error}", task.relative_path);
                     return;
@@ -547,7 +545,7 @@ impl Shared {
         }
     }
 
-    /// The current counters (B30).
+    /// The current counters.
     pub(crate) fn snapshot(&self) -> Snapshot {
         let state = self.state.lock();
         let mut transferred = state.done_size;
@@ -594,7 +592,7 @@ impl Shared {
             .emit(SyncEvent::Transfer(self.snapshot().progress));
     }
 
-    /// Builds the report and writes the statuses back into `tasks` (B26, B28).
+    /// Builds the report and writes the statuses back into `tasks`.
     fn finish_report(
         &self,
         tasks: &mut [DownloadTask],
@@ -631,7 +629,7 @@ impl Shared {
     }
 }
 
-/// Gives the reporter slot to the lowest-numbered active worker, if any (B31).
+/// Gives the reporter slot to the lowest-numbered active worker, if any.
 // Mirrors service/connection/ConnectionDownloadProcessor.java:182-188
 fn release_reporter(state: &mut State) {
     state.reporter = state.slots.iter().position(|slot| slot.task.is_some());
@@ -656,7 +654,7 @@ impl Worker {
         }
     }
 
-    /// Whether the transport already completed a file (B14 c).
+    /// Whether the transport already completed a file .
     pub(crate) fn reused(&self) -> bool {
         self.completed > 0
     }
@@ -676,7 +674,7 @@ impl Worker {
         })
     }
 
-    /// Replaces the transport with a new connection (B14).
+    /// Replaces the transport with a new connection.
     pub(crate) async fn reconnect(&mut self) -> Result<(), TaskEnd> {
         if let Some(old) = self.transport.take() {
             close(old).await;

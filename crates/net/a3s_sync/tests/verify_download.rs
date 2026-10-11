@@ -1,4 +1,4 @@
-//! Adversarial verification of the WP09 download executor (resume, zsync, run policy, cancel,
+//! Adversarial verification of the download executor (resume, zsync, run policy, cancel,
 //! throttle, zip hand-off, path safety, sizes, names).
 
 mod download_support;
@@ -484,7 +484,7 @@ async fn v_zsync_length_mismatch_falls_back() {
 
 /// Server file shorter than the control file says (a range past EOF answers 416): the task must
 /// not leave a `.part`, must not corrupt the old local file, and must not be "connection lost".
-/// B22 does not list 416, so a file error is the specified outcome.
+/// The retry policy does not list 416, so a file error is the specified outcome.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn v_zsync_range_416_is_a_clean_file_error() {
     let zs = zsync_setup(42).await;
@@ -514,7 +514,7 @@ async fn v_zsync_range_416_is_a_clean_file_error() {
     assert_eq!(tasks[0].status, DownloadStatus::Running);
 }
 
-/// A connection drop in the middle of a range body: no resume for zsync (B22 → B15 connection
+/// A connection drop in the middle of a range body: no resume for zsync (connection
 /// lost), `.part` deleted, old local file intact.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn v_zsync_drop_mid_range_cleans_part() {
@@ -1248,7 +1248,7 @@ async fn v_symlinked_part_and_target_not_followed() {
     );
 }
 
-/// D-16: a user-created symlinked `@mod` folder inside the destination is followed for
+/// A user-created symlinked `@mod` folder inside the destination is followed for
 /// downloads (only remote names are validated). Pending change at the time of writing.
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -1349,7 +1349,7 @@ async fn v_permission_denied_is_a_file_error() {
     assert_eq!(tasks[0].status, DownloadStatus::Done);
 }
 
-/// The final rename onto an existing non-empty directory fails as a file error (DV12).
+/// The final rename onto an existing non-empty directory fails as a file error.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn v_rename_failure_is_a_file_error() {
     let server = HttpServer::start().await;

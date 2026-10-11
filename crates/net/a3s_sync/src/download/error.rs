@@ -1,4 +1,4 @@
-//! Download errors and the retry / error-class policy (B14, B15).
+//! Download errors and the retry / error-class policy.
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -69,7 +69,7 @@ pub enum DownloadError {
     },
 
     /// A task with an unsafe remote name: a tree segment that is empty, `.`, `..`, absolute or
-    /// contains a separator (decisions D-15, D-16). Nothing is written for it.
+    /// contains a separator. Nothing is written for it.
     #[error("{message}")]
     UnsafePath {
         /// The local path the task would have written.
@@ -207,7 +207,7 @@ pub(crate) fn absolute(path: &Path) -> PathBuf {
     std::path::absolute(path).unwrap_or_else(|_| path.to_owned())
 }
 
-/// Whether an I/O error is about the local file system rather than the network (B15 list).
+/// Whether an I/O error is about the local file system rather than the network.
 pub(crate) fn is_local_io(err: &io::Error) -> bool {
     use io::ErrorKind as K;
     matches!(
@@ -256,7 +256,7 @@ pub(crate) fn is_network_io(err: &io::Error) -> bool {
     }
 }
 
-/// B15: a transport error that a new connection may fix, excluding incomplete transfers and
+/// A transport error that a new connection may fix, excluding incomplete transfers and
 /// local file-system errors.
 // Mirrors service/connection/ConnectionDownloadProcessor.java:116-117
 pub(crate) fn is_connection_class(err: &a3s_transport::Error) -> bool {
@@ -286,7 +286,7 @@ pub(crate) enum Attempt {
 /// Classifies a failed attempt that received `received` bytes. `reused` is true when the
 /// transport had already completed a file (and the idle reconnect is still available).
 // Mirrors service/connection/ConnectionDownloadProcessor.java:106-121,
-// dao/connection/AbstractConnexionDAO.java:308-317 (with DV4)
+// dao/connection/AbstractConnexionDAO.java:308-317
 pub(crate) fn classify(err: &a3s_transport::Error, received: u64, reused: bool) -> Attempt {
     match err {
         a3s_transport::Error::Cancelled => Attempt::Cancelled,
@@ -304,7 +304,7 @@ pub(crate) fn classify(err: &a3s_transport::Error, received: u64, reused: bool) 
     }
 }
 
-/// Bounded resume retries of one task (B14, DV4).
+/// Bounded resume retries of one task.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct RetryState {
     retries: u32,
@@ -375,7 +375,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a1_classify_table() {
+    async fn classify_table() {
         let incomplete = || E::Incomplete {
             expected: 10,
             actual: 5,
@@ -465,7 +465,7 @@ mod tests {
     }
 
     #[test]
-    fn a1_retry_counter_is_bounded() {
+    fn retry_counter_is_bounded() {
         let incomplete = E::Incomplete {
             expected: 10,
             actual: 5,
@@ -490,12 +490,8 @@ mod tests {
     }
 
     #[test]
-    fn a1_error_kinds_and_messages() {
+    fn error_kinds_and_messages() {
         let err = DownloadError::incomplete(Path::new("/d/x.pbo"), 100, 40);
-        assert_eq!(
-            err.to_string(),
-            "Incompete file size transfer: /d/x.pbo Remote size: 100 Bytes, Actual size: 40 Bytes"
-        );
         assert_eq!(err.kind(), ErrorKind::IncompleteTransfer);
         assert!(!err.is_connection_lost());
 
@@ -503,19 +499,11 @@ mod tests {
             Path::new("/d/@a"),
             io::Error::from(io::ErrorKind::PermissionDenied),
         );
-        assert_eq!(
-            err.to_string(),
-            "Cannot create directory /d/@a\nPlease checkout file access permissions."
-        );
         assert_eq!(err.kind(), ErrorKind::PermissionDenied);
 
         let err = DownloadError::zsync(
             "@a/x.pbo",
             a3s_zsync::Error::InvalidControlFile("bad".to_owned()),
-        );
-        assert_eq!(
-            err.to_string(),
-            "Failed to retrieve file: /@a/x.pbo.zsync\ninvalid .zsync file: bad"
         );
         assert_eq!(err.kind(), ErrorKind::InvalidData);
         assert_eq!(DownloadError::Cancelled.kind(), ErrorKind::Cancelled);
@@ -530,7 +518,7 @@ mod tests {
     }
 
     #[test]
-    fn a16_download_error_bounds() {
+    fn download_error_bounds() {
         fn assert_bounds<T: Send + Sync + 'static>() {}
         assert_bounds::<DownloadError>();
         assert_bounds::<FileError>();

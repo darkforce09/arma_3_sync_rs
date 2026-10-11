@@ -1,4 +1,4 @@
-//! Content fingerprint, revision, `ServerInfo` hidden folders and `AutoConfig` (B22–B27).
+//! Content fingerprint, revision, `ServerInfo` hidden folders and `AutoConfig`.
 
 use std::collections::HashMap;
 
@@ -38,7 +38,7 @@ pub(crate) fn revision(old_revision: Option<i32>, content_updated: bool) -> i32 
 }
 
 /// The hidden folder path of an excluded folder, relative to the repository folder, or `None`
-/// where Java's `substring` would throw (B25).
+/// where Java's `substring` would throw.
 ///
 /// `repository_path` is the raw repository path. Java finds the first occurrence of
 /// `<separator><main folder name>` in the lowercased entry and keeps what follows it plus one

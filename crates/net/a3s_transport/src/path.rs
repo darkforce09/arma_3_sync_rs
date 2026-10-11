@@ -82,7 +82,7 @@ mod tests {
     }
 
     #[test]
-    fn a1_validate_relative() {
+    fn validate_relative_cases() {
         for ok in [
             "a/b",
             "/a//b",
@@ -111,7 +111,7 @@ mod tests {
     }
 
     #[test]
-    fn a1_normalize_relative() {
+    fn normalize_relative_cases() {
         assert_eq!(normalize_relative("/a//b/").unwrap(), "a/b");
         assert_eq!(normalize_relative("a\\b\\c.pbo").unwrap(), "a/b/c.pbo");
         assert_eq!(normalize_relative("/").unwrap(), "");

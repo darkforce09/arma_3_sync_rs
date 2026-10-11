@@ -49,7 +49,7 @@ else
         "paths with non-ASCII characters will fail" >&2
 fi
 
-# B2: JDK 25 from scripts/java_env.sh (A3S_JAVA_HOME overrides the default location).
+# JDK 25 from scripts/java_env.sh (A3S_JAVA_HOME overrides the default location).
 # shellcheck source=../../scripts/java_env.sh
 if ! source "$REPO/scripts/java_env.sh" 2>/dev/null; then
     die 4 "no JDK $REQUIRED_MAJOR at ${A3S_JAVA_HOME:-the java_env.sh default} (set A3S_JAVA_HOME)"
@@ -62,7 +62,7 @@ if [[ "$javac_major" != "$REQUIRED_MAJOR" || "$java_major" != "$REQUIRED_MAJOR" 
     die 4 "JDK $REQUIRED_MAJOR required, found javac '$javac_version' / java '$java_version' (set A3S_JAVA_HOME)"
 fi
 
-# B1: Java source root.
+# Java source root.
 find_java_src() {
     if [[ -n "${A3S_JAVA_SRC:-}" ]]; then
         echo "$A3S_JAVA_SRC"
@@ -90,7 +90,7 @@ JAVA_COMMIT="$(git -C "$JAVA_CHECKOUT" rev-parse --short HEAD 2>/dev/null)" || J
 
 RBP_REL="fr/soe/a3s/dao/repository/RepositoryBuildProcessor.java"
 
-# B6: historical variants. <name> <source relative to the Java root>.
+# Historical variants. <name> <source relative to the Java root>.
 VARIANTS=(
     "repository_pre_connections fr/soe/a3s/domain/repository/Repository.java"
     "prefs_pre_github fr/soe/a3s/domain/Preferences.java"
@@ -106,7 +106,7 @@ if [[ $CLEAN -eq 1 ]]; then
     find "$BUILD" -mindepth 1 -maxdepth 1 ! -name .lock -exec rm -rf {} + || die 3 "cannot clean $BUILD"
 fi
 
-# B7: the stamp covers every input of this script. Every .java file of the source root is hashed
+# The stamp covers every input of this script. Every .java file of the source root is hashed
 # (names and contents, ~300 files): this covers the implicitly compiled closure, uncommitted and
 # untracked changes, and source roots that are not git checkouts.
 compute_stamp() {
@@ -135,7 +135,7 @@ apply_edit() {
     fi
 }
 
-# B4: patched copy of RepositoryBuildProcessor (P1 pinned clock, P2 sorted listFiles).
+# Patched copy of RepositoryBuildProcessor (P1 pinned clock, P2 sorted listFiles).
 rm -rf "$BUILD/patched-src" "$BUILD/variant-src" "$BUILD/classes.tmp" "$BUILD/variants.tmp" ||
     die 3 "cannot remove old build directories"
 mkdir -p "$BUILD/patched-src/$(dirname "$RBP_REL")" || die 3 "cannot create patched-src"
@@ -144,7 +144,7 @@ cp "$JAVA_SRC/$RBP_REL" "$PATCHED" || die 3 "cannot copy $RBP_REL"
 apply_edit "$PATCHED" "patch P1" 3 'new Date\(\)' '"harness.HarnessClock.now()"'
 apply_edit "$PATCHED" "patch P2" 2 '\b([A-Za-z_][A-Za-z0-9_]*)\.listFiles\(\)' '"harness.HarnessFs.sorted($1.listFiles())"'
 
-# B5: one javac call; everything not listed is pulled in through -sourcepath.
+# One javac call; everything not listed is pulled in through -sourcepath.
 ARGS="$BUILD/javac.args"
 {
     find "$HARNESS/src/harness" -name '*.java'
@@ -158,7 +158,7 @@ if ! javac --release 25 -encoding UTF-8 -proc:none -implicit:class -nowarn -Xlin
     die 3 "javac failed"
 fi
 
-# B6: variant classes, each compiled alone against the main classes.
+# Variant classes, each compiled alone against the main classes.
 mkdir -p "$BUILD/variants.tmp" || die 3 "cannot create variants.tmp"
 for entry in "${VARIANTS[@]}"; do
     name="${entry%% *}"

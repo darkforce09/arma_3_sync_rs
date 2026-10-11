@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use egui::{Context, FontData, FontDefinitions, FontFamily, FontId, TextStyle};
 
-/// Base text size in points (Q2: `FlatLaf`'s per-OS `defaultFont` is replaced by one size).
+/// Base text size in points (`FlatLaf`'s per-OS `defaultFont` is replaced by one size).
 pub const BODY_SIZE: f32 = 13.0;
 
 /// Size of [`TextStyle::Small`] (local choice).

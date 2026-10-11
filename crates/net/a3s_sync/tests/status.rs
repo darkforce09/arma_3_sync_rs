@@ -51,7 +51,7 @@ fn fav(name: Option<&str>, ip: Option<&str>, port: i32) -> FavoriteServer {
 }
 
 #[test]
-fn a13_determine_sync_status_table() {
+fn determine_sync_status_table() {
     use RepositoryStatus::{Indeterminated, Ok, Updated};
 
     let s10 = server(10, false);
@@ -127,7 +127,7 @@ fn a13_determine_sync_status_table() {
 }
 
 #[test]
-fn a14_update_repository_server_info() {
+fn update_repository_server_info() {
     let mut r = repo();
     r.hidden_folder_paths.insert("@local".to_owned());
     r.revision = 10;
@@ -173,7 +173,7 @@ fn a14_update_repository_server_info() {
 }
 
 #[test]
-fn a14_update_repository_merges_and_sorts_favorites() {
+fn update_repository_merges_and_sorts_favorites() {
     let mut r = repo();
     let mut c = Configuration::default();
     let metadata = RemoteMetadata {
@@ -202,7 +202,7 @@ fn a14_update_repository_merges_and_sorts_favorites() {
 }
 
 #[test]
-fn a14_merge_matches_against_the_sorted_list() {
+fn merge_matches_against_the_sorted_list() {
     // Two local servers share ip and port; Java matches the first one in *sorted* order.
     let mut c = Configuration {
         favorite_servers: vec![
@@ -229,7 +229,7 @@ fn a14_merge_matches_against_the_sorted_list() {
 }
 
 #[test]
-fn a14_merge_into_empty_list() {
+fn merge_into_empty_list() {
     let mut local = Vec::new();
     let mut remote = fav(Some(""), Some("1.2.3.4"), 2302);
     remote.password = Some("pw".to_owned());
@@ -262,7 +262,7 @@ fn a14_merge_into_empty_list() {
 }
 
 #[test]
-fn a14_merge_matches_by_ip_and_port() {
+fn merge_matches_by_ip_and_port() {
     let mut existing = fav(Some(""), Some("1.2.3.4"), 2302);
     existing.password = Some("old".to_owned());
     existing.modset_name = Some("keep".to_owned());
@@ -302,7 +302,7 @@ fn a14_merge_matches_by_ip_and_port() {
 }
 
 #[test]
-fn a14_merge_appends_unmatched_and_duplicates() {
+fn merge_appends_unmatched_and_duplicates() {
     let mut local = vec![fav(Some("A"), Some("1.1.1.1"), 1)];
     let new = fav(Some("New"), Some("2.2.2.2"), 2);
     assert!(merge_favorite_servers(
@@ -316,7 +316,7 @@ fn a14_merge_appends_unmatched_and_duplicates() {
 }
 
 #[test]
-fn a14_merge_null_ip_matches_null_ip() {
+fn merge_null_ip_matches_null_ip() {
     let mut local = vec![fav(Some("A"), None, 5)];
     let mut remote = fav(Some("B"), None, 5);
     remote.password = Some("pw".to_owned());
@@ -326,7 +326,7 @@ fn a14_merge_null_ip_matches_null_ip() {
 }
 
 #[test]
-fn a15_mark_synced_and_failed() {
+fn mark_synced_and_failed() {
     let mut r = repo();
     r.revision = 3;
     assert_eq!(
@@ -363,7 +363,7 @@ fn checked(
 }
 
 #[test]
-fn a17_decide_check_cycle() {
+fn decide_check_cycle_cases() {
     let mut tracker = NotificationTracker::new();
     let repos = [
         checked("notify", true, false, RepositoryStatus::Updated, 5),

@@ -1,5 +1,4 @@
-//! kittest interaction tests for the check tree, check list and dialogs (spec B26–B29,
-//! B40–B41).
+//! kittest interaction tests for the check tree, check list and dialogs.
 
 use a3s_ui::dialog::{Dialog, DialogAction, DialogButton, ProgressDialog, ProgressDialogAction};
 use a3s_ui::gallery::SampleTree;
@@ -44,7 +43,7 @@ fn take_events(harness: &mut Harness<'_, TreeState>) -> Vec<CheckTreeEvent<Strin
 }
 
 #[test]
-fn a13_check_tree_hotspot_label_space_context_collapse() {
+fn check_tree_hotspot_label_space_context_collapse() {
     let mut harness = tree_harness();
 
     harness
@@ -126,7 +125,7 @@ fn a13_check_tree_hotspot_label_space_context_collapse() {
 }
 
 #[test]
-fn a13_check_tree_double_click() {
+fn check_tree_double_click() {
     let mut harness = tree_harness();
     let node = harness.get_by_role_and_label(Role::Button, "@tfar");
     node.click();
@@ -145,7 +144,7 @@ fn a13_check_tree_double_click() {
 }
 
 #[test]
-fn a13_space_without_focus_does_nothing() {
+fn space_without_focus_does_nothing() {
     let mut harness = tree_harness();
     harness.key_press(Key::Space);
     harness.run();
@@ -158,7 +157,7 @@ struct ListState {
 }
 
 #[test]
-fn a14_check_list_toggles_and_highlights() {
+fn check_list_toggles_and_highlights() {
     let state = ListState {
         list: CheckList::new("test_list"),
         items: vec![
@@ -192,7 +191,7 @@ fn a14_check_list_toggles_and_highlights() {
     harness.run();
     assert!(
         harness.state().items[1].checked,
-        "secondary click does not toggle (Q7)"
+        "secondary click does not toggle"
     );
 
     harness.get_by_label("Profile B").click();
@@ -262,7 +261,7 @@ fn identity(dialog: Dialog<'static>) -> Dialog<'static> {
 }
 
 #[test]
-fn a15_modal_ok_cancel_close() {
+fn modal_ok_cancel_close() {
     let mut harness = dialog_harness(true, Content::Label, identity);
     harness.get_by_label("OK").click();
     harness.run();
@@ -285,7 +284,7 @@ fn a15_modal_ok_cancel_close() {
 }
 
 #[test]
-fn a15_backdrop_click_does_nothing() {
+fn backdrop_click_does_nothing() {
     let mut harness = dialog_harness(true, Content::Label, identity);
     harness.get_by_label("Main window").click();
     harness.run();
@@ -293,7 +292,7 @@ fn a15_backdrop_click_does_nothing() {
 }
 
 #[test]
-fn a15_custom_labels_and_hidden_ok() {
+fn custom_labels_and_hidden_ok() {
     let harness = dialog_harness(true, Content::Label, |d| {
         d.ok_label("Credits").cancel_label("Close")
     });
@@ -307,7 +306,7 @@ fn a15_custom_labels_and_hidden_ok() {
 }
 
 #[test]
-fn a15_enter_fires_default_button_from_single_line_edit() {
+fn enter_fires_default_button_from_single_line_edit() {
     let mut harness = dialog_harness(true, Content::SingleLine, |d| {
         d.default_button(Some(DialogButton::Ok))
     });
@@ -323,7 +322,7 @@ fn a15_enter_fires_default_button_from_single_line_edit() {
 }
 
 #[test]
-fn a15_enter_in_multiline_edit_does_not_fire() {
+fn enter_in_multiline_edit_does_not_fire() {
     let mut harness = dialog_harness(true, Content::MultiLine, |d| {
         d.default_button(Some(DialogButton::Ok))
     });
@@ -335,7 +334,7 @@ fn a15_enter_in_multiline_edit_does_not_fire() {
 }
 
 #[test]
-fn a15_non_modal_window_close() {
+fn non_modal_window_close() {
     let mut harness = dialog_harness(false, Content::Label, identity);
     assert!(harness.query_all_by_label("Test dialog").next().is_some());
     harness.get_by_label("Close window").click();
@@ -379,7 +378,7 @@ fn progress_harness() -> Harness<'static, ProgressState> {
 }
 
 #[test]
-fn a16_progress_dialog() {
+fn progress_dialog() {
     let mut harness = progress_harness();
     assert!(
         harness

@@ -67,7 +67,7 @@ public final class LocalFixtures {
 			Main.runChild(variant, Main.perUserProperties(variantWork), "child-variant", variant, variants.toString());
 		}
 
-		// B26: identity dumps by this (parent) JVM with the current classes.
+		// Identity dumps by this (parent) JVM with the current classes.
 		Path dumps = local.resolve("dumps");
 		for (String rel : Io.files(local)) {
 			if (rel.startsWith("dumps/")) {
@@ -114,7 +114,7 @@ public final class LocalFixtures {
 			throw new UsageException("unknown child-local mode: " + mode);
 		}
 
-		// B20: legacy-named byte copy (RepositoryDAO.java:322-328 naming).
+		// Legacy-named byte copy (RepositoryDAO.java:322-328 naming).
 		Path repositories = work.resolve("data").resolve("Arma3Sync").resolve("repositories");
 		Path ftpFile = null;
 		for (String rel : Io.files(repositories)) {
@@ -127,14 +127,14 @@ public final class LocalFixtures {
 		}
 		Files.copy(ftpFile, repositories.resolve("SampleFTP.a3s.repository"));
 
-		// B23: plain repositories.
+		// Plain repositories.
 		for (String name : List.of(LocalData.SAMPLE_HTTP, LocalData.SAMPLE_FTP, LocalData.SAMPLE_SFTP)) {
 			Path plain = work.resolve("plain").resolve(name.replace(' ', '_') + ".repository.gz");
 			Files.createDirectories(plain.getParent());
 			A3SFilesAccessor.write(LocalData.repository(name), plain.toFile());
 		}
 
-		// B25: autoconfig export, after the profile files (CommonService.java:62 mutates the cached profile).
+		// Autoconfig export, after the profile files (CommonService.java:62 mutates the cached profile).
 		Path export = work.resolve("export");
 		Files.createDirectories(export);
 		new CommonService().exportAutoConfig(List.of(LocalData.EVENT_NIGHT, "Default"), List.of(0),

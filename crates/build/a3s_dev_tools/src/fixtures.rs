@@ -279,7 +279,7 @@ mod tests {
     }
 
     #[test]
-    fn a1_compare_trees_reports_sorted_differences() {
+    fn compare_trees_reports_sorted_differences() {
         let tmp = tempfile::tempdir().unwrap();
         let expected = tmp.path().join("expected");
         let actual = tmp.path().join("actual");
@@ -304,7 +304,7 @@ mod tests {
     }
 
     #[test]
-    fn a1_compare_trees_treats_missing_root_as_empty() {
+    fn compare_trees_treats_missing_root_as_empty() {
         let tmp = tempfile::tempdir().unwrap();
         write(&tmp.path().join("actual/x"), "x");
         assert_eq!(
@@ -315,7 +315,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn a1_compare_trees_rejects_symlinks() {
+    fn compare_trees_rejects_symlinks() {
         let tmp = tempfile::tempdir().unwrap();
         let expected = tmp.path().join("expected");
         write(&expected.join("target.txt"), "t");
@@ -335,7 +335,7 @@ mod tests {
     }
 
     #[test]
-    fn a2_install_replaces_only_generated_entries() {
+    fn install_replaces_only_generated_entries() {
         let tmp = tempfile::tempdir().unwrap();
         let fixtures = tmp.path().join("fixtures");
         fake_generated(&fixtures, "old");
@@ -368,7 +368,7 @@ mod tests {
     }
 
     #[test]
-    fn a2_install_refuses_incomplete_generation() {
+    fn install_refuses_incomplete_generation() {
         let tmp = tempfile::tempdir().unwrap();
         let fixtures = tmp.path().join("fixtures");
         fake_generated(&fixtures, "old");
@@ -391,7 +391,7 @@ mod tests {
     }
 
     #[test]
-    fn a2_swap_rolls_back_on_failure() {
+    fn swap_rolls_back_on_failure() {
         let tmp = tempfile::tempdir().unwrap();
         let fixtures = tmp.path().join("fixtures");
         fake_generated(&fixtures, "old");
@@ -410,7 +410,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn a2_install_failure_leaves_fixtures_and_no_staging_dir() {
+    fn install_failure_leaves_fixtures_and_no_staging_dir() {
         use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
 
         let tmp = tempfile::tempdir().unwrap();
@@ -443,7 +443,7 @@ mod tests {
     }
 
     #[test]
-    fn a2_compare_generated_prefixes_entries() {
+    fn compare_generated_prefixes_entries() {
         let tmp = tempfile::tempdir().unwrap();
         let a = tmp.path().join("a");
         let b = tmp.path().join("b");

@@ -1,7 +1,7 @@
-//! WP01 verifier: adversarial tests for the harness wrapper and the generated fixtures.
+//! Adversarial tests for the harness wrapper and the generated fixtures.
 //!
 //! The JDK-backed tests are ignored like `jdk.rs`:
-//! `source scripts/java_env.sh && cargo test -p a3s_dev_tools --test verify_wp01 -- --ignored --test-threads=1`.
+//! `source scripts/java_env.sh && cargo test -p a3s_dev_tools --test verify_harness -- --ignored --test-threads=1`.
 
 mod common;
 
@@ -202,9 +202,9 @@ fn install_replaces_an_entry_whose_type_changed() {
 
 // ------------------------------------------------------------------------------- JDK
 
-/// B46 claims locale independence, and verifiers will feed Rust output with modified-UTF-8
+/// The harness claims locale independence, and verifiers will feed Rust output with modified-UTF-8
 /// names (e.g. `é`) to `verify`. With `LANG=C` (or any locale that is not installed, such as
-/// A8's `de_DE.UTF-8` on this host) the JVM's `sun.jnu.encoding` is ASCII and
+/// `de_DE.UTF-8` on this host) the JVM's `sun.jnu.encoding` is ASCII and
 /// `-Dsun.jnu.encoding=UTF-8` in run.sh is ignored, so the harness crashes on such paths.
 #[test]
 #[ignore = "needs JDK 25: source scripts/java_env.sh"]
@@ -224,7 +224,7 @@ fn verify_handles_unicode_paths_in_any_locale() {
     }
 }
 
-/// B41: a wrong `serialVersionUID` must be a `FAIL` line with Java's message, not a crash.
+/// A wrong `serialVersionUID` must be a `FAIL` line with Java's message, not a crash.
 #[test]
 #[ignore = "needs JDK 25: source scripts/java_env.sh"]
 fn verify_reports_a_wrong_uid_as_fail() {
@@ -282,7 +282,7 @@ fn verify_reports_empty_missing_and_orphan_files_as_fail() {
     );
 }
 
-/// B33: the uploaded files are a Java read plus the upload serialization, so `roundtrip` of the
+/// The uploaded files are a Java read plus the upload serialization, so `roundtrip` of the
 /// built `.a3s` file must give the same bytes (non-zip variants: no serverinfo override).
 #[test]
 #[ignore = "needs JDK 25: source scripts/java_env.sh"]
@@ -380,7 +380,7 @@ fn events_session_add_drops_userconfig() {
     );
 }
 
-/// B45: the manifest lists every other file once, sorted, with its SHA-256 and size.
+/// The manifest lists every other file once, sorted, with its SHA-256 and size.
 #[test]
 #[ignore = "needs JDK 25: source scripts/java_env.sh"]
 fn manifest_matches_the_generated_tree() {
@@ -419,7 +419,7 @@ fn manifest_matches_the_generated_tree() {
     }
 }
 
-/// B45/B46: a partial generation gives the same bytes as the full one for its parts.
+/// A partial generation gives the same bytes as the full one for its parts.
 #[test]
 #[ignore = "needs JDK 25: source scripts/java_env.sh"]
 fn partial_generation_equals_full_generation() {
@@ -438,7 +438,7 @@ fn partial_generation_equals_full_generation() {
     }
 }
 
-/// B45: `generate` refuses a non-empty output directory (exit 2 → `Usage`).
+/// `generate` refuses a non-empty output directory (exit 2 → `Usage`).
 #[test]
 #[ignore = "needs JDK 25: source scripts/java_env.sh"]
 fn generate_refuses_a_non_empty_output_directory() {
@@ -455,7 +455,7 @@ fn generate_refuses_a_non_empty_output_directory() {
 
 /// R6: within one JVM, every empty file's SHA-1 is the literal `"0"`; the identity dump of the
 /// step 1 sync must show the literal once and back-references for the other empty leaves, and
-/// `scenario.json` must give `"0"` for the empty files (B35).
+/// `scenario.json` must give `"0"` for the empty files.
 #[test]
 #[ignore = "needs JDK 25: source scripts/java_env.sh"]
 fn scenario_lists_zero_sha1_for_empty_files() {

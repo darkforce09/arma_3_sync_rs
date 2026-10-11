@@ -1,5 +1,5 @@
-//! Defaults (A5), addon-group tree order (A6) and favorite server / external application order
-//! (A7) of the local types.
+//! Defaults, addon-group tree order and favorite server / external application order
+//! of the local types.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -18,7 +18,7 @@ fn protocol() -> Protocol {
 }
 
 #[test]
-fn a5_repository_defaults() {
+fn repository_defaults() {
     let r = Repository::new("name", protocol());
     let expected = Repository {
         name: "name".to_owned(),
@@ -51,7 +51,7 @@ fn a5_repository_defaults() {
 }
 
 #[test]
-fn a5_profile_defaults() {
+fn profile_defaults() {
     let p = Profile::new("Default");
     assert_eq!(p.name, "Default");
     assert_eq!(p.tree.name, PROFILE_TREE_ROOT_NAME);
@@ -68,7 +68,7 @@ fn a5_profile_defaults() {
 }
 
 #[test]
-fn a5_configuration_defaults() {
+fn configuration_defaults() {
     let c = Configuration::default();
     let expected = Configuration {
         height: 0,
@@ -108,7 +108,7 @@ fn a5_configuration_defaults() {
 }
 
 #[test]
-fn a5_preferences_defaults() {
+fn preferences_defaults() {
     let p = Preferences::default();
     assert_eq!(p.launch_panel_game_launch, MinimizationType::TaskBar);
     assert_eq!(p.launch_panel_minimized, MinimizationType::TaskBar);
@@ -124,7 +124,7 @@ fn a5_preferences_defaults() {
 }
 
 #[test]
-fn a5_launcher_options_defaults() {
+fn launcher_options_defaults() {
     let l = LauncherOptions::default();
     let expected = LauncherOptions {
         game_profile: None,
@@ -153,7 +153,7 @@ fn a5_launcher_options_defaults() {
 }
 
 #[test]
-fn a5_other_types() {
+fn other_types() {
     let addon = Addon::new("@ace", "@ace", "/games/arma3/@ace");
     assert!(!addon.at_arma3_install_root);
     assert_eq!(addon.key, "@ace");
@@ -176,7 +176,7 @@ fn names(dir: &TreeDirectory) -> Vec<&str> {
 }
 
 #[test]
-fn a6_add_child_orders_directories_then_leaves() {
+fn add_child_orders_directories_then_leaves() {
     let mut root = TreeDirectory::new_root();
     root.add_child(leaf("b_leaf"));
     root.add_child(dir("b"));
@@ -189,7 +189,7 @@ fn a6_add_child_orders_directories_then_leaves() {
 }
 
 #[test]
-fn a6_add_child_is_stable_for_equal_names() {
+fn add_child_is_stable_for_equal_names() {
     let mut root = TreeDirectory::new_root();
     let mut first = TreeDirectory::new("abc");
     first.marked = true;
@@ -204,7 +204,7 @@ fn a6_add_child_is_stable_for_equal_names() {
 }
 
 #[test]
-fn a6_remove_child_by_position() {
+fn remove_child_by_position() {
     let mut root = TreeDirectory::new_root();
     root.add_child(dir("a"));
     root.add_child(leaf("x"));
@@ -218,7 +218,7 @@ fn a6_remove_child_by_position() {
 }
 
 #[test]
-fn a6_tree_node_accessors() {
+fn tree_node_accessors() {
     let mut node = leaf("x");
     assert!(!node.selected() && !node.optional());
     node.set_selected(true);
@@ -241,7 +241,7 @@ fn server(name: Option<&str>, port: i32) -> FavoriteServer {
 }
 
 #[test]
-fn a7_sort_favorite_servers() {
+fn sort_favorite_servers() {
     let mut c = Configuration {
         favorite_servers: vec![
             server(Some("b"), 1),
@@ -260,7 +260,7 @@ fn a7_sort_favorite_servers() {
 }
 
 #[test]
-fn a7_external_application_order() {
+fn external_application_order() {
     let app = |name: Option<&str>| ExternalApplication {
         name: name.map(str::to_owned),
         ..Default::default()

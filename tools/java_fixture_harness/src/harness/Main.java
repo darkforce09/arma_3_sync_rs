@@ -237,7 +237,7 @@ public final class Main {
 		}
 	}
 
-	/** B13: no generated file may contain the absolute work path (gzip files are checked inflated). */
+	/** No generated file may contain the absolute work path (gzip files are checked inflated). */
 	private static void checkNoWorkPath(Path out, Path work) throws IOException, HarnessException {
 		Set<String> needles = new LinkedHashSet<String>();
 		needles.add(work.toString());
@@ -264,7 +264,7 @@ public final class Main {
 	}
 
 	/**
-	 * B12: runs {@code harness.Main <args>} in a child JVM with fresh statics. Child stdout and
+	 * Runs {@code harness.Main <args>} in a child JVM with fresh statics. Child stdout and
 	 * stderr both go to this process's stderr.
 	 */
 	static void runChild(String variant, Map<String, String> properties, String... args)
@@ -305,7 +305,7 @@ public final class Main {
 		}
 	}
 
-	/** The B12 per-user properties for a child whose state lives below {@code work}. */
+	/** The per-user properties for a child whose state lives below {@code work}. */
 	static Map<String, String> perUserProperties(Path work) throws IOException {
 		Files.createDirectories(work.resolve("home"));
 		Map<String, String> properties = new java.util.LinkedHashMap<String, String>();

@@ -521,7 +521,7 @@ mod tests {
     }
 
     #[test]
-    fn a8_completion_percent() {
+    fn completion_percent_cases() {
         assert!(completion_percent(&matches(&[]), 2) == 0.0);
         assert!(completion_percent(&matches(&[true, true, false, true]), 1) == 75.0);
         // The isolated first block is cleared.
@@ -536,7 +536,7 @@ mod tests {
     }
 
     #[test]
-    fn a8_completion_connections() {
+    fn completion_connections_cases() {
         let cpus = std::thread::available_parallelism().map_or(1, std::num::NonZero::get);
         let info = |n| ServerInfo {
             number_of_connections: n,
@@ -566,7 +566,7 @@ mod tests {
     }
 
     #[test]
-    fn a8_classify_leaves() {
+    fn classify_leaves_cases() {
         let base = tempfile::tempdir().expect("tempdir");
         let b = base.path();
         std::fs::create_dir_all(b.join("d")).expect("mkdir");
@@ -630,7 +630,7 @@ mod tests {
     }
 
     #[test]
-    fn a8_local_completion() {
+    fn local_completion_cases() {
         let content = pseudo_random(4 * BLOCK_SIZE);
         let control = ControlFile::generate(
             Cursor::new(&content),
@@ -662,7 +662,7 @@ mod tests {
     }
 
     #[test]
-    fn a8_error_kinds() {
+    fn error_kinds() {
         let err = CompletionError::Zsync {
             relative_path: "a/x.zsync".to_owned(),
             message: "m".to_owned(),

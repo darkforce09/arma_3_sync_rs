@@ -13,7 +13,7 @@
 //!   null-normalising getters are then applied;
 //! * a field of an unexpected kind is treated as missing, and an unknown enum constant takes the
 //!   getter default (or `None`); both record a warning. Java would fail the whole file here
-//!   (approved local-only deviation D-8);
+//!   (a local-only difference from Java);
 //! * null elements of lists and sets are skipped.
 //!
 //! Hard errors are limited to an unreadable stream, a wrong root class, and a null
@@ -703,7 +703,7 @@ impl<'g, 'w> Lenient<'g, 'w> {
     // -----------------------------------------------------------------------------------------
     // Preferences
 
-    /// Applies the null-normalising getters; null minimization types read as `TaskBar` (Q6).
+    /// Applies the null-normalising getters; null minimization types read as `TaskBar`.
     // Mirrors domain/Preferences.java:18-83
     fn preferences(&mut self, id: NodeId) -> Result<Preferences> {
         let prefer_github_updates = match self.raw(id, "preferGitHubUpdates")? {

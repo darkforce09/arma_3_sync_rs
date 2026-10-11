@@ -17,7 +17,7 @@ use crate::model::{PlanDirectory, PlanLeaf, PlanNode, PlanTree};
 /// is added too. Unreadable folders are silently skipped.
 ///
 /// A local symbolic link is never followed: it becomes one deleted file node for the link
-/// itself, even when it points to a folder (D-15; Java lists the target's content, so a link
+/// itself, even when it points to a folder (Java lists the target's content, so a link
 /// could make it delete outside the destination, and link loops never end). Folders whose name
 /// is not a plain path component (see [`super::validate_names`]) are not listed.
 // Mirrors service/RepositoryService.java:607-659
@@ -219,7 +219,7 @@ mod tests {
     }
 
     #[test]
-    fn a5_extra_files_in_remote_folders() {
+    fn extra_files_in_remote_folders() {
         let (base, mut tree) = setup();
         let b = base.path();
         let added = add_extra_local_files(&mut tree, b, false);
@@ -257,7 +257,7 @@ mod tests {
     }
 
     #[test]
-    fn a5_extra_root_only_with_exact_match() {
+    fn extra_root_only_with_exact_match() {
         let (base, mut tree) = setup();
         let b = base.path();
         add_extra_local_files(&mut tree, b, true);
@@ -275,7 +275,7 @@ mod tests {
     }
 
     #[test]
-    fn a5_extra_hidden_folder_skipped() {
+    fn extra_hidden_folder_skipped() {
         let (base, mut tree) = setup();
         mark_hidden(&mut tree, &["@a".to_owned()].into());
         assert_eq!(add_extra_local_files(&mut tree, base.path(), false), 0);
@@ -283,7 +283,7 @@ mod tests {
     }
 
     #[test]
-    fn a5_empty_deleted_folder_does_not_set_changed() {
+    fn empty_deleted_folder_does_not_set_changed() {
         let base = tempfile::tempdir().expect("tempdir");
         let b = base.path();
         std::fs::create_dir_all(b.join("@a/empty")).expect("mkdir");

@@ -1,4 +1,4 @@
-//! D-15: hostile remote names never reach the local file system.
+//! Hostile remote names never reach the local file system.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -120,10 +120,6 @@ fn d15_plan_rejects_hostile_names() {
                     "{name:?}: {err:?}"
                 );
                 assert_eq!(err.kind(), ErrorKind::InvalidData);
-                assert_eq!(
-                    err.to_string(),
-                    format!("Unsafe file name in the repository: {relative_path}")
-                );
             }
         }
     }

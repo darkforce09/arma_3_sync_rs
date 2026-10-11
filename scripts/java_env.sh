@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Source this to get the JDK used by the Java fixture harness (WP01).
+# Source this to get the JDK used by the Java fixture harness.
 #   source scripts/java_env.sh
 # Override with A3S_JAVA_HOME. The default is the user-local Temurin JDK 25 install
 # (Bazzite/immutable distros: no system JDK).

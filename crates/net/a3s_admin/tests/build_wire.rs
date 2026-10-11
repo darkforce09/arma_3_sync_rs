@@ -125,10 +125,8 @@ fn put_order(keys: &[&str]) -> Vec<String> {
     map.iter().map(|e| e.key.clone()).collect()
 }
 
-// ------------------------------------------------------------------------------- A6
-
 #[test]
-fn a6_first_changelog() {
+fn first_changelog() {
     let sync = root(vec![
         dir("@a", true, vec![leaf("x", "1")]),
         dir("@b", true, vec![]),
@@ -159,7 +157,7 @@ fn a6_first_changelog() {
 }
 
 #[test]
-fn a6_content_change_new_deleted_updated() {
+fn content_change_new_deleted_updated() {
     let (old_sync, new_sync) = change_trees();
     let old = raw(&Changelogs {
         list: vec![changelog(1, &["@a", "@b", "@Upper", "@nested"])],
@@ -187,7 +185,7 @@ fn a6_content_change_new_deleted_updated() {
 }
 
 #[test]
-fn a6_trimming_keeps_at_most_one_less_than_before() {
+fn trimming_keeps_at_most_one_less_than_before() {
     let sync = root(vec![dir("@a", true, vec![])]);
     for (old_len, new_len) in [(9, 10), (10, 10), (12, 12)] {
         let old_list: Vec<Changelog> = (1..=old_len).map(|r| changelog(r, &["@a"])).collect();
@@ -209,7 +207,7 @@ fn a6_trimming_keeps_at_most_one_less_than_before() {
 }
 
 #[test]
-fn a6_no_content_change_keeps_the_list_byte_identical() {
+fn no_content_change_keeps_the_list_byte_identical() {
     let sync = root(vec![dir("@a", true, vec![])]);
     let old_value = Changelogs {
         list: vec![changelog(1, &["@a", "@b"]), changelog(2, &["@a"])],
@@ -219,8 +217,6 @@ fn a6_no_content_change_keeps_the_list_byte_identical() {
     let plan = plan_changelogs(Some(&old), Some(&sync), &sync, 2, DATE, false).unwrap();
     assert!(a3s_types::encode_stream(&plan).unwrap() == old_bytes);
 }
-
-// ------------------------------------------------------------------------------- A7
 
 const WOG_ORIGINAL_ORDER: [&str; 14] = [
     "@RHSUSAF",
@@ -274,7 +270,7 @@ fn wog_addons() -> Vec<String> {
 }
 
 #[test]
-fn a7_hash_map_model_reproduces_wog_orders() {
+fn hash_map_model_reproduces_wog_orders() {
     let addons = wog_addons();
     assert_eq!(addons.len(), 14);
     let names: Vec<&str> = addons.iter().map(String::as_str).collect();
@@ -293,7 +289,7 @@ fn a7_hash_map_model_reproduces_wog_orders() {
 }
 
 #[test]
-fn a7_hash_map_capacities() {
+fn hash_map_capacities() {
     let keys: Vec<String> = (0..25).map(|i| format!("key{i}")).collect();
     // n → (putAll table/threshold, readObject table, sequential-put table)
     for (n, put_all, read, seq) in [
@@ -325,7 +321,7 @@ fn a7_hash_map_capacities() {
 }
 
 #[test]
-fn a7_resize_with_collisions_keeps_bucket_then_insertion_order() {
+fn resize_with_collisions_keeps_bucket_then_insertion_order() {
     // Keys colliding in a 16-bucket table but split by the resize to 32 and 64.
     let mut colliding: Vec<String> = (0..10_000)
         .map(|i| format!("c{i}"))
@@ -343,10 +339,8 @@ fn a7_resize_with_collisions_keeps_bucket_then_insertion_order() {
     assert_eq!(put_order(&keys), expected);
 }
 
-// ------------------------------------------------------------------------------- A8
-
 #[test]
-fn a8_changelog_sharing() {
+fn changelog_sharing() {
     let (old_sync, new_sync) = change_trees();
     let old = raw(&Changelogs {
         list: vec![changelog(1, &["@a", "@b", "@Upper", "@nested"])],
@@ -408,7 +402,7 @@ fn leaf_sha1s(graph: &Graph) -> Vec<Value> {
 }
 
 #[test]
-fn a8_sync_sharing() {
+fn sync_sharing() {
     let tree = root(vec![
         dir("racine", false, vec![leaf("e1", "0")]),
         leaf("e2", "0"),
@@ -434,7 +428,7 @@ fn a8_sync_sharing() {
         field(&graph, nested, "name")
     );
 
-    // "0" from the SHA-1 cache: one other instance (a deserialized cache), Q11.
+    // "0" from the SHA-1 cache: one other instance (a deserialized cache).
     let mixed = [true, false, true, false];
     let (_, graph) = emit(&SyncEmit::new(&tree, &mixed));
     let sha1s = leaf_sha1s(&graph);
@@ -442,10 +436,8 @@ fn a8_sync_sharing() {
     assert_ne!(sha1s[0], sha1s[1]);
 }
 
-// ------------------------------------------------------------------------------- A9
-
 #[test]
-fn a9_wog_changelogs_carry_over() {
+fn wog_changelogs_carry_over() {
     let path = wog().join("changelogs");
     let old: RawGraph = a3s_repo_files::read_a3s(&path).unwrap();
     let sync = root(vec![dir("@a", true, vec![])]);
@@ -461,8 +453,6 @@ fn a9_wog_changelogs_carry_over() {
     assert_eq!(changed.list[9].new_addons, ["@a"]);
     assert_eq!(changed.list[9].deleted_addons, fixture.list[9].addons);
 }
-
-// ------------------------------------------------------------------------------- A10
 
 struct OldEvents {
     raw: RawGraph,
@@ -550,7 +540,7 @@ fn hash_map(graph: &Graph, value: Value) -> (i32, i32, Vec<(Value, Value)>) {
 }
 
 #[test]
-fn a10_events_carry_over() {
+fn events_carry_over() {
     let old = old_events();
     let mut addons: Vec<String> = vec!["@a".to_owned(), "GM".to_owned()];
     addons.extend((0..12).map(|i| format!("@m{i}")));

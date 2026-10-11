@@ -85,7 +85,7 @@ pub(crate) fn sanitize_java(name: &str) -> String {
 /// Sanitized, file-system-safe form of `name`.
 ///
 /// Java's rules (trim, whitespace runs and `\ / : * ? " < > |` become `_`, empty becomes
-/// `"repository"`), plus two local-only additions (approved deviation D-8): remaining control
+/// `"repository"`), plus two local-only additions: remaining control
 /// characters (`< U+0020`, `U+007F`) become `_`, and the result is truncated to 64 bytes on a
 /// char boundary.
 pub fn sanitize(name: &str) -> String {

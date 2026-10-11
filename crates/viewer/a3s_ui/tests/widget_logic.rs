@@ -1,9 +1,9 @@
-//! Pure widget logic: percent text and the tri-state rule (spec B25, B34).
+//! Pure widget logic: percent text and the tri-state rule.
 
 use a3s_ui::widgets::{CheckState, percent_text};
 
 #[test]
-fn a11_percent_text() {
+fn percent_text_cases() {
     for ((value, min, max), expected) in [
         ((0, 0, 100), "0%"),
         ((50, 0, 100), "50%"),
@@ -24,7 +24,7 @@ fn a11_percent_text() {
 }
 
 #[test]
-fn a12_check_state_for_node() {
+fn check_state_for_node() {
     use CheckState::{Checked, Indeterminate, Unchecked};
     let none: [bool; 0] = [];
 

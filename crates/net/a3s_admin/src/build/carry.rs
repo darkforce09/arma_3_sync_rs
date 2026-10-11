@@ -240,7 +240,7 @@ impl Memo {
     }
 
     /// The new instance of an old `Boolean`. Booleans are canonical (`Boolean.valueOf`), so two
-    /// old `Boolean` objects with the same value become one (Q11).
+    /// old `Boolean` objects with the same value become one.
     pub fn boolean(&mut self, b: &mut Builder, v: OldBool) -> Value {
         match v {
             OldBool::Null => Value::Null,

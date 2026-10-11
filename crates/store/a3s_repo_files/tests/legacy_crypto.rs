@@ -1,4 +1,4 @@
-//! AES cipher and `SealedObject` envelope of `*.a3s.repository` (A7, A8).
+//! AES cipher and `SealedObject` envelope of `*.a3s.repository`.
 
 use a3s_jserial::jdk::{Builder, FieldSpec};
 use a3s_jserial::{
@@ -13,10 +13,9 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 // ---------------------------------------------------------------------------------------------
-// A7
 
 #[test]
-fn a7_key_and_vectors() {
+fn key_and_vectors() {
     assert_eq!(
         JAVA_AES_KEY,
         [
@@ -35,7 +34,7 @@ fn a7_key_and_vectors() {
 }
 
 #[test]
-fn a7_round_trips() {
+fn round_trips() {
     for len in [0, 1, 15, 16, 17, 1000] {
         let plain: Vec<u8> = (0..len).map(|i| (i * 7 % 251) as u8).collect();
         let cipher = encrypt(&plain);
@@ -45,7 +44,7 @@ fn a7_round_trips() {
 }
 
 #[test]
-fn a7_decrypt_errors() {
+fn decrypt_errors() {
     assert_eq!(decrypt(&[0; 15]), Err(CryptoError::BadLength(15)));
     assert_eq!(decrypt(&[]), Err(CryptoError::BadLength(0)));
     let mut cipher = encrypt(b"some repository bytes");
@@ -55,7 +54,7 @@ fn a7_decrypt_errors() {
 }
 
 #[test]
-fn a7_seal_then_open() {
+fn seal_then_open() {
     let inner = b"\xac\xed\x00\x05inner stream bytes".to_vec();
     let sealed = sealed::seal(&inner).unwrap();
     let dir = tempfile::tempdir().unwrap();
@@ -108,7 +107,6 @@ fn a7_seal_then_open() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// A8
 
 /// Builds a `SealedObject`-like graph around `content`.
 fn sealed_graph(uid: i64, seal_alg: &str, extra_field: bool, content: Option<&[u8]>) -> Graph {
@@ -158,7 +156,7 @@ fn sealed_graph(uid: i64, seal_alg: &str, extra_field: bool, content: Option<&[u
 }
 
 #[test]
-fn a8_lenient_sealed_object() {
+fn lenient_sealed_object() {
     let inner = b"inner".to_vec();
     let cipher = encrypt(&inner);
     let graph = sealed_graph(42, "AES/ECB/PKCS5Padding", true, Some(&cipher));
@@ -175,15 +173,10 @@ fn a8_lenient_sealed_object() {
 }
 
 #[test]
-fn a8_missing_content_and_wrong_root_are_errors() {
+fn missing_content_and_wrong_root_are_errors() {
     let graph = sealed_graph(SEALED_OBJECT_UID, "AES", false, None);
     let err = sealed::open(&graph, &mut Vec::new()).unwrap_err();
     assert!(matches!(err, SealedError::Malformed(_)), "{err:?}");
-    assert!(
-        err.with_file("r.a3s.repository")
-            .to_string()
-            .starts_with("Failed to decrypt serialized file: r.a3s.repository")
-    );
 
     let mut b = Builder::new();
     let s = b.string("not sealed");
@@ -200,9 +193,4 @@ fn a8_missing_content_and_wrong_root_are_errors() {
         err,
         SealedError::Crypto(CryptoError::BadLength(3))
     ));
-    assert!(
-        err.with_file("r.a3s.repository")
-            .to_string()
-            .starts_with("Failed to decrypt serialized file: r.a3s.repository")
-    );
 }

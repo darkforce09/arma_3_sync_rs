@@ -1,7 +1,7 @@
 //! Dialog bases: an OK/Cancel dialog (`ui/AbstractDialog.java`) and a progress dialog
 //! (`ui/AbstractProgressDialog.java`).
 //!
-//! Dialogs are in-app egui windows, not OS viewports (Q9). The caller shows a dialog every frame
+//! Dialogs are in-app egui windows, not OS viewports. The caller shows a dialog every frame
 //! while it is open and closes it when an action other than `None` comes back.
 //!
 //! Keyboard routing follows Swing's focused window: Enter (default button) and Escape go to the
@@ -182,7 +182,7 @@ impl<'a> Dialog<'a> {
                 self.body(ui, add_contents, has_keys)
             });
         });
-        // Q8: Escape closes; clicking the backdrop does nothing.
+        // Escape closes; clicking the backdrop does nothing.
         if action == DialogAction::None && has_keys && consume(ctx, Key::Escape) {
             action = DialogAction::Close;
         }

@@ -1,5 +1,5 @@
-//! One task: directory creation, full download with resume, finalization (B5, B7-B16), and the
-//! local path checks of decision D-15.
+//! One task: directory creation, full download with resume, finalization, and the
+//! local path checks that keep every write inside the destination.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -41,7 +41,7 @@ pub(crate) fn control_path(task: &DownloadTask) -> String {
     format!("{}{ZSYNC_EXTENSION}", task.relative_path)
 }
 
-/// The resume offset (B9): the length of the partial file iff the task is `Running` and
+/// The resume offset: the length of the partial file iff the task is `Running` and
 /// `0 < part_len < expected`.
 // Mirrors dao/connection/AbstractConnexionDAO.java:282-293
 pub(crate) fn resume_offset(
@@ -53,7 +53,7 @@ pub(crate) fn resume_offset(
     (status == DownloadStatus::Running && len > 0 && len < expected).then_some(len)
 }
 
-/// Checks the task's tree path before anything is written (decisions D-15, D-16): every segment
+/// Checks the task's tree path before anything is written: every segment
 /// must be a plain name ([`crate::plan::is_safe_name`]), so the local path cannot leave the
 /// destination folder through `..`, an absolute path or a separator. Symbolic links the user
 /// created inside the destination (e.g. an `@mod` folder on another disk) are followed: a remote
@@ -70,7 +70,7 @@ pub(crate) fn check_local_path(task: &DownloadTask) -> Option<DownloadError> {
     }
 }
 
-/// Creates a directory task's folder (B5).
+/// Creates a directory task's folder.
 // Mirrors dao/connection/AbstractConnexionDAO.java:339-347
 pub(crate) async fn create_directory(task: &DownloadTask) -> TaskEnd {
     if let Some(error) = check_local_path(task) {
@@ -119,7 +119,7 @@ pub(crate) async fn run_task(worker: &mut Worker, index: usize) -> TaskEnd {
     full_download(worker, index, &task).await
 }
 
-/// The local target, its `.part` and the expected size of a full download (B8).
+/// The local target, its `.part` and the expected size of a full download.
 // Mirrors dao/connection/AbstractConnexionDAO.java:266-280
 fn full_target(task: &DownloadTask) -> (PathBuf, PathBuf, u64) {
     let (target, expected) = match task.kind {
@@ -145,7 +145,7 @@ pub(crate) fn remote_file(remote: &str) -> RemoteFile {
     RemoteFile::new(name, parent, false)
 }
 
-/// A transport error on `remote` as a download error (WP07 B13 messages).
+/// A transport error on `remote` as a download error.
 pub(crate) fn fetch_error(
     worker: &Worker,
     remote: &str,
@@ -201,7 +201,7 @@ async fn regular_file_len(path: &Path) -> Option<u64> {
         .map(|m| m.len())
 }
 
-/// Syncs `part` to disk and renames it to `target`, replacing any existing file (B13, DV3).
+/// Syncs `part` to disk and renames it to `target`, replacing any existing file.
 pub(crate) async fn finalize(part: &Path, target: &Path) -> Result<(), DownloadError> {
     let sync = async {
         let file = tokio::fs::OpenOptions::new().write(true).open(part).await?;
@@ -244,7 +244,7 @@ async fn watch_effective_offset(
 /// Polling interval of [`watch_effective_offset`].
 const OFFSET_PROBE_INTERVAL: Duration = Duration::from_millis(20);
 
-/// A full download with resume (B7-B16).
+/// A full download with resume.
 // Mirrors dao/connection/AbstractConnexionDAO.java:243-318
 #[allow(clippy::too_many_lines)]
 async fn full_download(worker: &mut Worker, index: usize, task: &DownloadTask) -> TaskEnd {
@@ -258,12 +258,10 @@ async fn full_download(worker: &mut Worker, index: usize, task: &DownloadTask) -
         return TaskEnd::Cancelled;
     };
 
-    // B7
     if let Err(err) = tokio::fs::create_dir_all(&task.destination_dir).await {
         return TaskEnd::Failed(DownloadError::create_directory(&task.destination_dir, err));
     }
 
-    // B8
     let (target, part, expected) = full_target(task);
     let remote = remote_path(task);
     let shared = Arc::clone(&worker.shared);
@@ -271,7 +269,6 @@ async fn full_download(worker: &mut Worker, index: usize, task: &DownloadTask) -
     let mut retry = RetryState::default();
     loop {
         let resumable = worker.transport.as_ref().is_some_and(can_resume);
-        // B9
         let status = shared.status(index);
         let part_len = regular_file_len(&part).await;
         let offset =
@@ -292,7 +289,6 @@ async fn full_download(worker: &mut Worker, index: usize, task: &DownloadTask) -
                 0
             };
 
-        // B10, B11
         shared.set_running(index);
         let progress = shared.begin_attempt(worker.id, offset, expected);
         let ctx = worker.transfer_ctx(Arc::clone(&progress));
@@ -309,7 +305,7 @@ async fn full_download(worker: &mut Worker, index: usize, task: &DownloadTask) -
         };
         let received = shared.end_attempt(worker.id);
 
-        // B12: a short file is incomplete on every protocol (DV13); a longer one is kept.
+        // A short file is incomplete on every protocol; a longer one is kept.
         let result = result.and_then(|len| {
             if len < expected {
                 Err(a3s_transport::Error::Incomplete {
@@ -336,7 +332,6 @@ async fn full_download(worker: &mut Worker, index: usize, task: &DownloadTask) -
             {
                 return TaskEnd::Failed(DownloadError::local_io(&part, err));
             }
-            // B13
             if let Err(error) = finalize(&part, &target).await {
                 return TaskEnd::Failed(error);
             }
@@ -360,7 +355,6 @@ async fn full_download(worker: &mut Worker, index: usize, task: &DownloadTask) -
             }
             return TaskEnd::Failed(DownloadError::incomplete(&target, expected, offset));
         }
-        // B14, B15
         match retry.decide(&err, received, worker.reused()) {
             Attempt::Retry { reconnect } => {
                 let message = match &err {
@@ -410,7 +404,7 @@ mod tests {
     }
 
     #[test]
-    fn a2_resume_offset_table() {
+    fn resume_offset_table() {
         use DownloadStatus::{Pending, Running};
         assert_eq!(resume_offset(Running, Some(40), 100), Some(40));
         assert_eq!(resume_offset(Running, Some(0), 100), None);
@@ -421,7 +415,7 @@ mod tests {
     }
 
     #[test]
-    fn a2_part_and_remote_paths() {
+    fn part_and_remote_paths() {
         assert_eq!(part_path(Path::new("x.pbo")), PathBuf::from("x.pbo.part"));
         assert_eq!(
             part_path(Path::new("/d/x.pbo.zip")),
@@ -439,7 +433,7 @@ mod tests {
     }
 
     #[test]
-    fn a2_check_local_path_rejects_hostile_tasks() {
+    fn check_local_path_rejects_hostile_tasks() {
         let dir = tempfile::tempdir().expect("tempdir");
         let dest = dir.path().join("dest");
         std::fs::create_dir_all(dest.join("@a")).expect("mkdir");
@@ -463,7 +457,7 @@ mod tests {
             assert_eq!(err.kind(), a3s_error::ErrorKind::InvalidData);
         }
 
-        // D-16: symbolic links the user created inside the destination are followed.
+        // Symbolic links the user created inside the destination are followed.
         #[cfg(unix)]
         {
             let outside = dir.path().join("outside");

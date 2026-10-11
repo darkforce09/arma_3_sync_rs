@@ -1,4 +1,4 @@
-//! Port of `src/test/java/fr/soe/a3s/dao/PreferencesDAOTest.java` (A16).
+//! Port of `src/test/java/fr/soe/a3s/dao/PreferencesDAOTest.java`.
 
 use a3s_paths::AppDirs;
 use a3s_repo_files::local::LocalStore;
@@ -8,7 +8,7 @@ use a3s_types::constants::{
 use a3s_types::local::Preferences;
 
 #[test]
-fn a16_write_then_read_preferences_file() {
+fn write_then_read_preferences_file() {
     let tmp = tempfile::tempdir().unwrap();
     let dirs = AppDirs::from_roots(
         tmp.path().join("config"),

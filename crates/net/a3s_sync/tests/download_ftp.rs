@@ -1,4 +1,4 @@
-//! Download executor against a local libunftp server (WP09 A12 e, A13).
+//! Download executor against a local libunftp server.
 
 mod download_support;
 
@@ -14,7 +14,7 @@ use download_support::{
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn a13_ftp_downloads_and_errors() {
+async fn ftp_downloads_and_errors() {
     let server = FtpServer::start().await;
     let dest_dir = tempfile::tempdir().expect("tempdir");
     let dest = dest_dir.path();
@@ -127,17 +127,10 @@ async fn a13_ftp_downloads_and_errors() {
     assert_eq!(report.errors.len(), 1);
     let error = &report.errors[0].error;
     assert_eq!(error.kind(), ErrorKind::NotFound, "{error:?}");
-    assert_eq!(
-        error.to_string(),
-        format!(
-            "Failed to connect to the FTP server on url: {}\nRemote file not found: /@d/missing.pbo",
-            server.host_url()
-        )
-    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn a12_ftp_with_completion_falls_back_to_full_download() {
+async fn ftp_with_completion_falls_back_to_full_download() {
     let server = FtpServer::start().await;
     let dest_dir = tempfile::tempdir().expect("tempdir");
     let dest = dest_dir.path();

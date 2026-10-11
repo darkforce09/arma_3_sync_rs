@@ -67,7 +67,7 @@ impl CheckList {
     }
 
     /// Shows the list. A primary click anywhere on a row toggles it and selects it
-    /// (`ui/CheckBoxList.java:24-37`; Java reacts to any mouse button, Q7). The returned
+    /// (`ui/CheckBoxList.java:24-37`; Java reacts to any mouse button). The returned
     /// response is marked changed when an item was toggled.
     pub fn show(&mut self, ui: &mut Ui, items: &mut [CheckItem]) -> Response {
         let def = theme::current(ui.ctx());

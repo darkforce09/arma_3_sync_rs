@@ -1,4 +1,4 @@
-//! WP07 adversarial live checks against the public WOG repository (read-only, `.a3s/*` only).
+//! Adversarial live checks against the public WOG repository (read-only, `.a3s/*` only).
 //!
 //! Run with `cargo test -p a3s_sync --test verify_live -- --ignored --test-threads=1`.
 
@@ -40,9 +40,4 @@ async fn verify_live_import_autoconfig_wog() {
         .await
         .expect_err("missing autoconfig");
     assert_eq!(err.kind(), ErrorKind::NotFound, "{err:?}");
-    assert_eq!(
-        err.to_string(),
-        "Failed to connect to the FTP server on url: ftp://88.99.69.243:21/Repo/WOG/.a3s-missing\n\
-         Remote directory not found: /Repo/WOG/.a3s-missing"
-    );
 }

@@ -13,42 +13,42 @@ use crate::support::ftp::AbortOnDrop;
 use crate::support::webdav::{PASSWORD, USER, fixture, fixture_with};
 
 #[tokio::test]
-async fn a3_upload_file_round_trip() {
-    common::a3_upload_file_round_trip(&fixture().await).await;
+async fn upload_file_round_trip() {
+    common::upload_file_round_trip(&fixture().await).await;
 }
 
 #[tokio::test]
-async fn a4_upload_bytes_identity() {
-    common::a4_upload_bytes_identity(&fixture().await).await;
+async fn upload_bytes_identity() {
+    common::upload_bytes_identity(&fixture().await).await;
 }
 
 #[tokio::test]
-async fn a5_exists() {
-    common::a5_exists(&fixture().await).await;
+async fn exists() {
+    common::exists(&fixture().await).await;
 }
 
 #[tokio::test]
-async fn a6_mkdirs_idempotent() {
-    common::a6_mkdirs_idempotent(&fixture().await).await;
+async fn mkdirs_idempotent() {
+    common::mkdirs_idempotent(&fixture().await).await;
 }
 
 #[tokio::test]
-async fn a7_delete() {
-    common::a7_delete(&fixture().await).await;
+async fn delete() {
+    common::delete(&fixture().await).await;
 }
 
 #[tokio::test]
-async fn a8_path_traversal() {
-    common::a8_path_traversal(&fixture().await).await;
+async fn path_traversal() {
+    common::path_traversal(&fixture().await).await;
 }
 
 #[tokio::test]
-async fn a17_cancellation() {
-    common::a17_cancellation(&fixture().await, false).await;
+async fn cancellation() {
+    common::cancellation(&fixture().await, false).await;
 }
 
 #[tokio::test]
-async fn a14_protocol_details() {
+async fn protocol_details() {
     let (fx, log) = fixture_with(USER, PASSWORD, true).await;
     let mut t = fx.connect().await;
     let ctx = TransferCtx::new();
@@ -115,7 +115,7 @@ async fn a14_protocol_details() {
 }
 
 #[tokio::test]
-async fn a15_write_verbs_do_not_follow_redirects() {
+async fn write_verbs_do_not_follow_redirects() {
     let hits: Arc<Mutex<Vec<String>>> = Arc::default();
     let router_hits = Arc::clone(&hits);
     let router = axum::Router::new().fallback(move |req: axum::extract::Request| {
@@ -167,7 +167,7 @@ async fn a15_write_verbs_do_not_follow_redirects() {
 /// 409 Conflict on `MKCOL`/`PUT` is a missing parent (`NotFound`); a 207 answer to `DELETE`
 /// is a partial failure, never success.
 #[tokio::test]
-async fn a14_conflict_and_partial_delete() {
+async fn conflict_and_partial_delete() {
     let router = axum::Router::new().fallback(|req: axum::extract::Request| async move {
         match (req.method().as_str(), req.uri().path()) {
             ("PROPFIND", "/c/") => StatusCode::NOT_FOUND.into_response(),

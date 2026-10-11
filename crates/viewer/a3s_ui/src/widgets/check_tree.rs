@@ -579,7 +579,7 @@ fn paint_expander(painter: &Painter, rect: Rect, expanded: bool, color: Color32)
 /// Paints a `FlatLaf`-like check box. The indeterminate state paints the unchecked box plus the
 /// bar of `ui/main/tree/IndeterminateIcon.java:17-26`.
 ///
-/// D-13: the bar uses `accentPrimary` instead of Java's hard-coded rgba(50, 20, 255, 200), and
+/// The bar uses `accentPrimary` instead of Java's hard-coded rgba(50, 20, 255, 200), and
 /// the unchecked border uses `textDisabled` (`stateFocus` while hovered).
 pub(crate) fn paint_checkbox(
     painter: &Painter,

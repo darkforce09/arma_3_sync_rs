@@ -41,7 +41,7 @@ public final class BuiltFixtures {
 	static final long STEP3_MTIME = 1704110400000L;
 	static final String[] A3S_FILES = { "sync", "serverinfo", "changelogs", "autoconfig", "events" };
 
-	/** B28 step 1 tree: path and size; -1 marks a directory. */
+	/** Step 1 tree: path and size; -1 marks a directory. */
 	static final Object[][] STEP1_TREE = { { "@Mod_A/addons/mod_a.pbo", 20000 },
 			{ "@Mod_A/addons/mod_a.pbo.bisign", 300 }, { "@Mod_A/addons/empty.txt", 0 }, { "@Mod_A/mod.cpp", 120 },
 			{ "@mod_b/Addons/mod_b.ebo", 9000 }, { "@mod_b/Addons/empty2.txt", 0 },
@@ -102,7 +102,7 @@ public final class BuiltFixtures {
 		EventsSession.generate(built.resolve("events_session"), work.resolve("events_session"));
 	}
 
-	/** B34: identity dumps of the five {@code .a3s} files and of the uploaded files. */
+	/** Identity dumps of the five {@code .a3s} files and of the uploaded files. */
 	private static void dumpStep(Path stepDir) throws Exception {
 		for (String name : A3S_FILES) {
 			Path a3s = stepDir.resolve("repo").resolve(".a3s").resolve(name);
@@ -119,7 +119,7 @@ public final class BuiltFixtures {
 		}
 	}
 
-	/** B35: {@code scenario.json}, derived from the snapshots. */
+	/** {@code scenario.json}, derived from the snapshots. */
 	private static String scenario(String variant, Path variantOut) throws Exception {
 		Json.Obj protocol = Json.obj().put("type", isHttp(variant) ? "HTTP" : "FTP")
 				.put("url", isHttp(variant) ? "repo.example.org/arma3" : "ftp.example.org/arma3")
@@ -240,7 +240,7 @@ public final class BuiltFixtures {
 		}
 	}
 
-	/** B28/B30: the step 1 tree, contents from {@link SampleContent}, pinned mtimes. */
+	/** The step 1 tree, contents from {@link SampleContent}, pinned mtimes. */
 	static void createSampleTree(Path repo) throws Exception {
 		String lower = repo.toString().toLowerCase(Locale.ROOT);
 		String needle = "/" + FOLDER.toLowerCase(Locale.ROOT);
@@ -275,7 +275,7 @@ public final class BuiltFixtures {
 		}
 	}
 
-	/** B27/B29: repository creation and settings through {@code RepositoryService}. */
+	/** Repository creation and settings through {@code RepositoryService}. */
 	static void setUpRepository(RepositoryService service, String variant, Path repo) throws Exception {
 		String name = repositoryName(variant);
 		List<FavoriteServer> configured = new ConfigurationDAO().getConfiguration().getFavoriteServers();
@@ -312,7 +312,7 @@ public final class BuiltFixtures {
 	}
 
 	/**
-	 * B31: one GUI build through {@code service/administration/RepositoryBuildProcessor}, followed
+	 * One GUI build through {@code service/administration/RepositoryBuildProcessor}, followed
 	 * by the zip post-processing of {@link #normalizeNewZips}.
 	 */
 	static void build(String name, Path repo, long buildDate) throws Exception {
@@ -337,7 +337,7 @@ public final class BuiltFixtures {
 	 * ({@code ZipDAO.java:135-136}). Because {@code RepositoryBuildProcessor.java:487} only excludes
 	 * {@code .pbo.zip}, a generated {@code .ebo.zip} becomes a sync leaf on the next build (Java
 	 * quirk, kept), so its bytes and mtime must be pinned in the working tree, not only in the
-	 * snapshot: DOS time 1980-01-01 00:00 (B32) and mtime = the build date.
+	 * snapshot: DOS time 1980-01-01 00:00 and mtime = the build date.
 	 */
 	private static void normalizeNewZips(Path repo, Map<String, Long> before, long buildDate) throws Exception {
 		for (Map.Entry<String, Long> zip : zipMtimes(repo).entrySet()) {
@@ -370,7 +370,7 @@ public final class BuiltFixtures {
 		}
 	}
 
-	/** B32/B33: repository copy with normalized zips, plus the upload serialization. */
+	/** Repository copy with normalized zips, plus the upload serialization. */
 	static void snapshot(RepositoryService service, String name, Path repo, Path stepOut) throws Exception {
 		Path repoOut = stepOut.resolve("repo");
 		Io.copyTree(repo, repoOut);
@@ -393,7 +393,7 @@ public final class BuiltFixtures {
 		}
 	}
 
-	/** B31 step 3 file changes; new and rewritten files get step 3 mtimes. */
+	/** Step 3 file changes; new and rewritten files get step 3 mtimes. */
 	private static void modifyTree(Path repo) throws Exception {
 		Io.deleteTree(repo.resolve("Collection/@Nested"));
 		Map<String, Integer> changes = new LinkedHashMap<String, Integer>();
@@ -417,7 +417,7 @@ public final class BuiltFixtures {
 		}
 	}
 
-	/** B31 step 3 events through the GUI flow: addEvent then saveEvent per event, then writeEvents. */
+	/** Step 3 events through the GUI flow: addEvent then saveEvent per event, then writeEvents. */
 	private static void writeStep3Events(RepositoryService service, String name) throws Exception {
 		EventDTO night = new EventDTO();
 		night.setName(typed("Night Op"));

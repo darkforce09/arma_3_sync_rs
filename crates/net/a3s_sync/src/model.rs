@@ -719,7 +719,7 @@ mod tests {
     }
 
     #[test]
-    fn a1_from_sync_tree_matches_the_wog_fixture() {
+    fn from_sync_tree_matches_the_wog_fixture() {
         let sync = wog_sync();
         let tree = PlanTree::from_sync_tree(&sync);
         assert_eq!(tree.root.name, "racine");
@@ -765,7 +765,7 @@ mod tests {
     }
 
     #[test]
-    fn a1_changed_propagates_to_every_ancestor() {
+    fn changed_propagates_to_every_ancestor() {
         let mut tree = PlanTree::from_sync_tree(&hand_built());
         assert!(tree.root.changed);
         assert!(dir_changed(&tree, "@a"));
@@ -798,7 +798,7 @@ mod tests {
     }
 
     #[test]
-    fn a1_walk_is_pre_order_and_children_sorted() {
+    fn walk_is_pre_order_and_children_sorted() {
         let mut sync = SyncTreeDirectory::new_root();
         // Out of Java order on purpose.
         sync.children = vec![
@@ -825,7 +825,7 @@ mod tests {
     }
 
     #[test]
-    fn a1_negative_sizes_become_zero() {
+    fn negative_sizes_become_zero() {
         let mut sync = SyncTreeDirectory::new_root();
         sync.children = vec![SyncTreeNode::Leaf(SyncTreeLeaf {
             name: "x".to_owned(),
@@ -841,7 +841,7 @@ mod tests {
     }
 
     #[test]
-    fn a2_paths_and_lookups() {
+    fn paths_and_lookups() {
         let mut tree = PlanTree::from_sync_tree(&hand_built());
         assert_eq!(
             tree.get("@a/addons/x.pbo").map(PlanNode::name),
@@ -888,7 +888,7 @@ mod tests {
     }
 
     #[test]
-    fn a2_nested_racine_folder() {
+    fn nested_racine_folder() {
         let mut sync = SyncTreeDirectory::new_root();
         sync.children = vec![dir("@a", vec![dir("racine", vec![leaf("x", true)])])];
         let tree = PlanTree::from_sync_tree(&sync);
@@ -898,7 +898,7 @@ mod tests {
     }
 
     #[test]
-    fn a2_add_child_ordering() {
+    fn add_child_ordering() {
         let mut d = PlanDirectory::new("d");
         d.add_child(PlanNode::Leaf(PlanLeaf::new("a")));
         d.add_child(PlanNode::Leaf(PlanLeaf::new("_x")));
@@ -917,7 +917,7 @@ mod tests {
     }
 
     #[test]
-    fn a2_display_name_precedence() {
+    fn display_name_precedence() {
         let mut d = PlanDirectory::new("@ace");
         assert_eq!(d.display_name(), "@ace");
         d.hidden = true;
@@ -932,7 +932,7 @@ mod tests {
     }
 
     #[test]
-    fn a2_set_selected_recursive() {
+    fn set_selected_recursive_cases() {
         let mut tree = PlanTree::from_sync_tree(&hand_built());
         assert!(tree.set_selected_recursive("@a", true));
         assert!(tree.get("@a").is_some_and(PlanNode::selected));
@@ -958,7 +958,7 @@ mod tests {
     }
 
     #[test]
-    fn a3_download_size_table() {
+    fn download_size_table() {
         let mut l = PlanLeaf::new("x");
         l.size = 1000;
         l.compressed_size = 400;
@@ -975,7 +975,7 @@ mod tests {
     }
 
     #[test]
-    fn a3_download_task_from_node() {
+    fn download_task_from_node() {
         let mut l = PlanLeaf::new("x.pbo");
         l.size = 1000;
         l.compressed = true;

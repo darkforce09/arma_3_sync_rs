@@ -10,7 +10,7 @@ use axum::response::IntoResponse as _;
 use crate::support::ftp::AbortOnDrop;
 
 #[tokio::test]
-async fn a16_http_exists_and_unsupported_writes() {
+async fn http_exists_and_unsupported_writes() {
     let router = axum::Router::new().fallback(|req: axum::extract::Request| async move {
         let path = req.uri().path().to_owned();
         let head = req.method() == Method::HEAD;

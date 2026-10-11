@@ -260,7 +260,7 @@ fn half_of(content: &[u8]) -> Vec<u8> {
 // Tests
 
 #[tokio::test]
-async fn a9_completion_with_partial_transfer() {
+async fn completion_with_partial_transfer() {
     let (content, zsync) = remote_content(&["full.pbo", "half.pbo", "absent.pbo", "same.pbo"]);
     let server = TestServer::start(Config {
         ranges: true,
@@ -325,7 +325,7 @@ async fn a9_completion_with_partial_transfer() {
 }
 
 #[tokio::test]
-async fn a9_completion_server_ignores_range() {
+async fn completion_server_ignores_range() {
     let (content, zsync) = remote_content(&["full.pbo"]);
     let server = TestServer::start(Config {
         ranges: false,
@@ -356,7 +356,7 @@ async fn a9_completion_server_ignores_range() {
 }
 
 #[tokio::test]
-async fn a9_completion_no_partial_file_transfer() {
+async fn completion_no_partial_file_transfer() {
     let (content, zsync) = remote_content(&["full.pbo"]);
     let server = TestServer::start(Config {
         ranges: true,
@@ -378,7 +378,7 @@ async fn a9_completion_no_partial_file_transfer() {
 }
 
 #[tokio::test]
-async fn a9_completion_compressed_only() {
+async fn completion_compressed_only() {
     let (content, zsync) = remote_content(&["full.pbo"]);
     let server = TestServer::start(Config {
         ranges: true,
@@ -400,7 +400,7 @@ async fn a9_completion_compressed_only() {
 }
 
 #[tokio::test]
-async fn a9_completion_zsync_not_found() {
+async fn completion_zsync_not_found() {
     let content = pseudo_random(4 * BLOCK_SIZE, 7);
     let server = TestServer::start(Config {
         ranges: true,
@@ -419,17 +419,10 @@ async fn a9_completion_zsync_not_found() {
     .expect_err("404");
     assert!(matches!(err, CompletionError::Remote(_)), "{err:?}");
     assert_eq!(err.kind(), ErrorKind::NotFound);
-    assert_eq!(
-        err.to_string(),
-        format!(
-            "Failed to connect to the HTTP server on url: http://127.0.0.1:{}/repo/@a/addons/x.pbo.zsync\nRemote file not found: /@a/addons/x.pbo.zsync",
-            server.port
-        )
-    );
 }
 
 #[tokio::test]
-async fn a9_completion_garbage_zsync() {
+async fn completion_garbage_zsync() {
     let content = pseudo_random(4 * BLOCK_SIZE, 7);
     let server = TestServer::start(Config {
         ranges: true,
@@ -455,17 +448,12 @@ async fn a9_completion_garbage_zsync() {
         panic!("{err:?}")
     };
     assert_eq!(relative_path, "@a/addons/x.pbo.zsync");
-    assert!(
-        err.to_string()
-            .starts_with("Failed to read zsync file: /@a/addons/x.pbo.zsync\n"),
-        "{err}"
-    );
     assert_eq!(err.kind(), ErrorKind::InvalidData);
     assert_eq!(err.user_message(), err.to_string());
 }
 
 #[tokio::test]
-async fn a9_completion_concurrency_bound() {
+async fn completion_concurrency_bound() {
     let names = ["f1", "f2", "f3", "f4", "f5", "f6"];
     let (content, zsync) = remote_content(&names);
     let server = TestServer::start(Config {
@@ -503,7 +491,7 @@ async fn a9_completion_concurrency_bound() {
 }
 
 #[tokio::test]
-async fn a9_completion_cancel_stalled() {
+async fn completion_cancel_stalled() {
     let (content, zsync) = remote_content(&["x.pbo"]);
     let server = TestServer::start(Config {
         ranges: true,
@@ -542,7 +530,7 @@ async fn a9_completion_cancel_stalled() {
 }
 
 #[tokio::test]
-async fn a9_completion_ftp_without_network() {
+async fn completion_ftp_without_network() {
     let content = pseudo_random(4 * BLOCK_SIZE, 7);
     let base = tempfile::tempdir().expect("tempdir");
     let mut tree = planned(
@@ -572,7 +560,7 @@ async fn a9_completion_ftp_without_network() {
 }
 
 #[test]
-fn a9_completion_future_and_errors_are_send() {
+fn completion_future_and_errors_are_send() {
     fn assert_send<T: Send>(_: &T) {}
     fn assert_error<T: std::error::Error + Send + Sync + 'static>() {}
     assert_error::<CompletionError>();

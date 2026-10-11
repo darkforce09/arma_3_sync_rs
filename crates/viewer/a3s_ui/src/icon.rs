@@ -236,7 +236,7 @@ fn recolor(rgba: &mut [u8], tint: Color32) {
 
 /// Rasterizes `icon` to fit a `px`×`px` square, then applies `tint`.
 ///
-/// [`UiIcon::App`] is always drawn from `app-rendered.png` (Q5).
+/// [`UiIcon::App`] is always drawn from `app-rendered.png`.
 pub(crate) fn rasterize(icon: UiIcon, px: u32, tint: Option<Color32>) -> StraightImage {
     let px = px.max(1);
     let mut image = if icon == UiIcon::App {
@@ -420,7 +420,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a7_scaled_size_injected_scale() {
+    fn scaled_size_injected_scale() {
         assert_eq!(scaled_size_with(12, 1.0), 12);
         assert_eq!(scaled_size_with(4, 1.0), 8);
         assert_eq!(scaled_size_with(12, 1.5), 18);
@@ -428,7 +428,7 @@ mod tests {
     }
 
     #[test]
-    fn a7_parse_scale_fallbacks() {
+    fn parse_scale_fallbacks() {
         assert_eq!(parse_scale(None), 1.5);
         assert_eq!(parse_scale(Some("abc")), 1.5);
         assert_eq!(parse_scale(Some("NaN")), 1.5);
@@ -440,7 +440,7 @@ mod tests {
     }
 
     #[test]
-    fn a8_every_icon_rasterizes_at_27_px() {
+    fn every_icon_rasterizes_at_27_px() {
         let palette = &ThemeLibrary::dark().palette;
         for icon in UiIcon::ALL {
             let image = rasterize(icon, 27, None);
@@ -467,7 +467,7 @@ mod tests {
     }
 
     #[test]
-    fn a8_folder_keeps_original_colour() {
+    fn folder_keeps_original_colour() {
         let image = rasterize(UiIcon::Folder, 27, None);
         let opaque: Vec<_> = image
             .rgba
@@ -481,7 +481,7 @@ mod tests {
     }
 
     #[test]
-    fn a8_warning_renders_status_warning_not_svg_fill() {
+    fn warning_renders_status_warning_not_svg_fill() {
         let palette = &ThemeLibrary::light().palette;
         let tint = tint_for(palette, UiIcon::Warning, IconState::Normal);
         assert_eq!(tint, Some(palette.status_warning));
@@ -496,7 +496,7 @@ mod tests {
     }
 
     #[test]
-    fn a9_app_png_decodes_to_512() {
+    fn app_png_decodes_to_512() {
         let pixmap = app_pixmap();
         assert_eq!((pixmap.width(), pixmap.height()), (512, 512));
     }

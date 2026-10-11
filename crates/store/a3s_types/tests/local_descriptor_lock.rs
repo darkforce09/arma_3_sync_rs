@@ -1,4 +1,4 @@
-//! Locks the Java class descriptors written to `export.a3s.autoconfig` (A15).
+//! Locks the Java class descriptors written to `export.a3s.autoconfig`.
 //!
 //! Every descriptor in `a3s_types::local::wire` is listed here with its exact name,
 //! serialVersionUID, flags, fields in wire order and superclass. Java clients reject files whose
@@ -37,7 +37,7 @@ fn profile_classes() -> Vec<(MakeDesc, Expected)> {
             wire::auto_config_export_desc,
             Expected {
                 name: "fr.soe.a3s.domain.AutoConfig",
-                // PROVISIONAL — confirm with WP01: JVM-computed default UID (the class declares
+                // PROVISIONAL — JVM-computed default UID (the class declares
                 // none), computed from the Java source.
                 uid: 6_424_431_620_520_340_750,
                 flags: S,
@@ -192,7 +192,7 @@ fn check(make: MakeDesc, want: &Expected) {
 }
 
 #[test]
-fn a15_class_descriptors_are_locked() {
+fn class_descriptors_are_locked() {
     let all: Vec<_> = profile_classes()
         .into_iter()
         .chain(repository_classes())
@@ -204,7 +204,7 @@ fn a15_class_descriptors_are_locked() {
 }
 
 #[test]
-fn a15_class_names_and_enum_constants_are_locked() {
+fn class_names_and_enum_constants_are_locked() {
     use a3s_types::constants::ModsetType;
     assert_eq!(wire::AUTO_CONFIG_EXPORT, "fr.soe.a3s.domain.AutoConfig");
     assert_eq!(wire::MODSET_TYPE, "fr.soe.a3s.constant.ModsetType");

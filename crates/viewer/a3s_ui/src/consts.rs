@@ -37,7 +37,7 @@ pub const JAVA_RED: Color32 = Color32::from_rgb(0xFF, 0x00, 0x00);
 /// (`ui/repository/tree/CheckTreeCellRendererRepository.java:44`).
 pub const JAVA_BLUE: Color32 = Color32::from_rgb(0x00, 0x00, 0xFF);
 
-/// [`JAVA_BLUE`] adjusted for the theme (D-13).
+/// [`JAVA_BLUE`] adjusted for the theme.
 ///
 /// Pure blue is unreadable on the dark surface, so the dark theme uses a lighter blue
 /// (`#7C9CFF`); light mode keeps Swing's `#0000FF`.

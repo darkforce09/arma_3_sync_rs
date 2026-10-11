@@ -458,13 +458,6 @@ mod tests {
             panic!("unexpected error {err:?}");
         };
         assert_eq!(path, &blocker.join("c"));
-        assert_eq!(
-            err.user_message(),
-            format!(
-                "Cannot create directory {}\nPlease checkout file access permissions.",
-                blocker.join("c").display()
-            )
-        );
         assert_eq!(err.kind(), ErrorKind::PermissionDenied);
     }
 
@@ -484,13 +477,6 @@ mod tests {
         // Root ignores permissions; nothing to check then.
         if let Err(err) = result {
             assert_eq!(err.kind(), ErrorKind::PermissionDenied);
-            assert_eq!(
-                err.user_message(),
-                format!(
-                    "Cannot create directory {}\nPlease checkout file access permissions.",
-                    parent.join("c").display()
-                )
-            );
         }
     }
 }

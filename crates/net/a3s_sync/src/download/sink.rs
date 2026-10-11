@@ -1,4 +1,4 @@
-//! Hand-off of downloaded `.zip` files to the unzipper (WP10).
+//! Hand-off of downloaded `.zip` files to the unzipper.
 
 use std::path::PathBuf;
 
@@ -8,7 +8,7 @@ use parking_lot::Mutex;
 ///
 /// Java hands `.pbo.zip` files to `UnZipFlowProcessor.unZipAsynchronously`
 /// (`service/connection/ConnectionDownloadProcessor.java:98-104`). Here every compressed leaf is
-/// handed over, `.ebo.zip` included (DV9).
+/// handed over, `.ebo.zip` included.
 pub trait ZipSink: Send + Sync {
     /// Called once per finished `.zip`, from a worker. Must not block.
     fn submit(&self, zip: DownloadedZip);
@@ -78,7 +78,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a16_sink_is_object_safe() {
+    fn sink_is_object_safe() {
         let collect = Arc::new(CollectZips::new());
         let sink: Arc<dyn ZipSink> = collect.clone();
         let zip = DownloadedZip {

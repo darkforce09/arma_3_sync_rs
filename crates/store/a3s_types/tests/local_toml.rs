@@ -1,4 +1,4 @@
-//! serde / TOML round trips of the local types (A9).
+//! serde / TOML round trips of the local types.
 
 use a3s_types::constants::{
     CheckRepositoriesFrequency, IconResize, LookAndFeel, MinimizationType, ModsetType, StartWithOs,
@@ -31,7 +31,7 @@ fn server(name: &str) -> FavoriteServer {
 }
 
 #[test]
-fn a9_repository_round_trip() {
+fn repository_round_trip() {
     let mut upload = Protocol::new(ProtocolType::Sftp, "upload.example/r", "22", "u", "p", true);
     upload.encryption_mode = Some(EncryptionMode::ExplicitSsl);
     upload.connection_timeout = None;
@@ -59,7 +59,7 @@ fn a9_repository_round_trip() {
 }
 
 #[test]
-fn a9_profile_round_trip() {
+fn profile_round_trip() {
     let mut group = TreeDirectory::new("Group");
     group.modset_type = Some(ModsetType::Repository);
     group.modset_repository_name = Some("Repo".to_owned());
@@ -86,7 +86,7 @@ fn a9_profile_round_trip() {
 }
 
 #[test]
-fn a9_configuration_round_trip() {
+fn configuration_round_trip() {
     let mut c = Configuration {
         height: 600,
         width: 800,
@@ -118,7 +118,7 @@ fn a9_configuration_round_trip() {
 }
 
 #[test]
-fn a9_preferences_round_trip() {
+fn preferences_round_trip() {
     let p = Preferences {
         launch_panel_game_launch: MinimizationType::Tray,
         launch_panel_minimized: MinimizationType::Close,
@@ -135,7 +135,7 @@ fn a9_preferences_round_trip() {
 }
 
 #[test]
-fn a9_missing_keys_take_java_initializers() {
+fn missing_keys_take_java_initializers() {
     assert_eq!(
         toml::from_str::<Configuration>("").unwrap(),
         Configuration::default()

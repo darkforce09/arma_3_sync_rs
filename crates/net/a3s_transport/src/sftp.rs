@@ -379,7 +379,7 @@ mod tests {
     use crate::Error;
 
     #[test]
-    fn a12_configured_base() {
+    fn configured_base_cases() {
         assert_eq!(configured_base("").unwrap(), ConfiguredBase::Home);
         for root in ["/", "//", "/./"] {
             assert_eq!(
@@ -401,7 +401,7 @@ mod tests {
 
     // Ported from src/test/java/fr/soe/a3s/dao/connection/sftp/SftpDAOTest.java.
     #[test]
-    fn a2_sftp_url_normalisation() {
+    fn sftp_url_normalisation() {
         let url = normalize_url("sftp:///enterprise.vpzbrig21.de/arma3sync/workshop");
         assert_eq!(url, "enterprise.vpzbrig21.de/arma3sync/workshop");
         assert_eq!(

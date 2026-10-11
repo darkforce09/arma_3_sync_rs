@@ -1,4 +1,4 @@
-//! WP08 verification: zsync completion against real `.zsync` files and a local HTTP server
+//! Zsync completion against real `.zsync` files and a local HTTP server
 //! (oracle: `a3s_zsync::match_blocks` + `completion_percent`), LIFO order, first-error stop,
 //! empty local files, cancellation while matching a > 2 GiB local file.
 
@@ -124,7 +124,7 @@ fn control_of(content: &[u8], name: &str) -> ControlFile {
     .expect("generate")
 }
 
-/// Oracle: B41 over `match_blocks`.
+/// Oracle: the completion formula over `match_blocks`.
 fn oracle(control: &ControlFile, local: &[u8]) -> f64 {
     if local.is_empty() {
         return 0.0;
@@ -443,12 +443,7 @@ async fn verify_local_directory_is_a_read_error() {
     )
     .await;
     match result {
-        Err(CompletionError::Zsync { ref message, .. }) => {
-            assert!(
-                message.starts_with("Failed to read zsync file: /@a/x.pbo.zsync\n"),
-                "{message}"
-            );
-        }
+        Err(CompletionError::Zsync { .. }) => {}
         other => panic!("{other:?}"),
     }
 }

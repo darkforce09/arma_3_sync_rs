@@ -1,5 +1,4 @@
-//! WP03 verifier: `export.a3s.autoconfig` encoder edge cases and descriptor stability (B45-B47,
-//! wire table, A14/A15), plus TOML and protocol-helper edge cases (B32-B33, B48-B49).
+//! `export.a3s.autoconfig` encoder edge cases and descriptor stability, plus TOML and protocol-helper edge cases.
 
 use std::collections::BTreeMap;
 
@@ -388,7 +387,7 @@ fn verify_export_stream_descriptors_match_locked_descriptors() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// TOML (B48, B49)
+// TOML
 
 #[test]
 fn verify_toml_runtime_flags_are_not_persisted() {
@@ -447,7 +446,7 @@ fn verify_toml_repository_requires_name_and_protocol() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Protocol helpers (B32, B33)
+// Protocol helpers
 
 fn valid() -> Protocol {
     Protocol::new(ProtocolType::Ftp, "host/path", "21", "user", "", false)

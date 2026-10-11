@@ -89,7 +89,6 @@ md4 = "0.11.0"
 mslnk = "0.1.8"
 parking_lot = "0.12.5"
 percent-encoding = "2.3"
-proptest = "1.11"
 rayon = "1.12"
 rcgen = { version = "0.14.10", default-features = false, features = ["aws_lc_rs", "pem"] }
 regex = "1.13"

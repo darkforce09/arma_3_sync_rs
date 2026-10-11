@@ -222,7 +222,7 @@ mod tests {
     }
 
     #[test]
-    fn a3_sha1_and_updated() {
+    fn sha1_and_updated() {
         let base = tempfile::tempdir().expect("tempdir");
         let base = base.path();
         std::fs::create_dir_all(base.join("d")).expect("mkdir");
@@ -276,7 +276,7 @@ mod tests {
     }
 
     #[test]
-    fn a3_sha1_cache() {
+    fn sha1_cache() {
         let base = tempfile::tempdir().expect("tempdir");
         let base = base.path();
         std::fs::write(base.join("a"), b"abc").expect("write");
@@ -325,7 +325,7 @@ mod tests {
     }
 
     #[test]
-    fn a3_sha1_progress_events() {
+    fn sha1_progress_events() {
         let base = tempfile::tempdir().expect("tempdir");
         let base = base.path();
         for name in ["a", "b", "c"] {
@@ -359,7 +359,7 @@ mod tests {
     }
 
     #[test]
-    fn a3_sha1_directory_error_keeps_other_hashes() {
+    fn sha1_directory_error_keeps_other_hashes() {
         let base = tempfile::tempdir().expect("tempdir");
         let base = base.path();
         std::fs::create_dir(base.join("isdir")).expect("mkdir");
@@ -386,7 +386,7 @@ mod tests {
     }
 
     #[test]
-    fn a3_sha1_cancelled() {
+    fn sha1_cancelled() {
         let base = tempfile::tempdir().expect("tempdir");
         let base = base.path();
         std::fs::write(base.join("a"), b"abc").expect("write");
@@ -404,7 +404,7 @@ mod tests {
     }
 
     #[test]
-    fn a4_hidden_paths() {
+    fn hidden_paths() {
         let set = |items: &[&str]| -> BTreeSet<String> {
             items.iter().map(|s| (*s).to_owned()).collect()
         };
@@ -422,7 +422,7 @@ mod tests {
     }
 
     #[test]
-    fn a4_mark_hidden_sets_and_clears() {
+    fn mark_hidden_sets_and_clears() {
         let mut tree = planned(
             vec![
                 dir("@a", vec![dir("addons", vec![leaf("x", None)])]),

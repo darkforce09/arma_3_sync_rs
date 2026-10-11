@@ -1,4 +1,4 @@
-//! Encoding, validation and writing of the five `.a3s` files (B44–B53).
+//! Encoding, validation and writing of the five `.a3s` files.
 
 use std::path::Path;
 
@@ -19,7 +19,7 @@ const MAX_STREAM_BYTES: u64 = 256 * 1024 * 1024;
 /// by this build share Java's string literal, while leaves whose `"0"` came from the SHA-1 cache
 /// share the one instance a deserialized cache holds (Java reloads the cache with the repository
 /// in a new session). A same-session rebuild that adds empty files is the one case where Java
-/// shares all of them (Q11).
+/// shares all of them.
 pub struct SyncEmit<'a> {
     tree: &'a SyncTreeDirectory,
 
@@ -128,7 +128,7 @@ impl JavaCodec for SyncEmit<'_> {
     }
 }
 
-/// Encodes `value` and checks that both Java and Rust readers accept the stream (Q6).
+/// Encodes `value` and checks that both Java and Rust readers accept the stream.
 ///
 /// Java's check is exact: [`a3s_jserial::java_filter_stats`] replays the JDK 25 serial filter
 /// counters (`depth`, `totalObjectRefs`, `streamBytes`) at every point `ObjectInputStream` calls
@@ -177,7 +177,7 @@ pub(crate) fn create_a3s_folder(folder: &Path) -> Result<(), BuildError> {
 ///
 /// `write_a3s` encodes `value` again. Encoding is a pure function of the value (no clock, no
 /// randomness, no hash-map iteration), so the written stream is the one [`encode_checked`]
-/// validated (`a14_outcome_equals_written_files` checks the decoded files against it).
+/// validated (`outcome_equals_written_files` checks the decoded files against it).
 pub(crate) fn write<T: JavaCodec>(
     folder: &Path,
     file: A3sFile,

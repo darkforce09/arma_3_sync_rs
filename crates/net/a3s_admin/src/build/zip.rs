@@ -1,4 +1,4 @@
-//! Compression stage: `<file>.zip` next to every `.pbo`/`.ebo` (B41–B43).
+//! Compression stage: `<file>.zip` next to every `.pbo`/`.ebo`.
 
 use std::fs;
 use std::io::{self, BufReader, Read as _, Write as _};
@@ -38,7 +38,7 @@ pub(crate) enum ZipAction {
 }
 
 /// Decides per leaf: re-hashed leaves lose their zip and are compressed again, leaves without a
-/// zip are compressed, others reuse their zip (B42).
+/// zip are compressed, others reuse their zip.
 // Mirrors dao/repository/RepositoryBuildProcessor.java:548-575
 pub(crate) fn plan(
     leaves: &[LeafRef],
@@ -159,7 +159,7 @@ pub(crate) fn run(
 }
 
 /// Uncompressed repositories: deletes the `.zip` of every compressible leaf that has one; the
-/// caller clears `compressed` on every compressible leaf (B43). Returns the number of zips.
+/// caller clears `compressed` on every compressible leaf. Returns the number of zips.
 // Mirrors dao/zip/DeleteZipBatchProcessor.java:54-105
 pub(crate) fn delete(
     leaves: &[LeafRef],

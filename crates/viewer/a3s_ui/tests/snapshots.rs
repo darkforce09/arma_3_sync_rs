@@ -1,4 +1,4 @@
-//! Headless wgpu snapshots of the gallery and the dialogs (spec A17, A18).
+//! Headless wgpu snapshots of the gallery and the dialogs.
 //!
 //! Rendered through wgpu on Mesa's lavapipe Vulkan driver. Regenerate with
 //! `UPDATE_SNAPSHOTS=1`.
@@ -40,7 +40,7 @@ fn snapshot_gallery(
 }
 
 #[test]
-fn a17_gallery_light() {
+fn gallery_light() {
     snapshot_gallery(
         "gallery_light",
         ThemeMode::Light,
@@ -52,7 +52,7 @@ fn a17_gallery_light() {
 }
 
 #[test]
-fn a17_gallery_dark() {
+fn gallery_dark() {
     snapshot_gallery(
         "gallery_dark",
         ThemeMode::Dark,
@@ -64,21 +64,21 @@ fn a17_gallery_dark() {
 }
 
 #[test]
-fn a17_icons_light() {
+fn icons_light() {
     snapshot_gallery("icons_light", ThemeMode::Light, (1000.0, 520.0), |ui, g| {
         g.icons_ui(ui);
     });
 }
 
 #[test]
-fn a17_icons_dark() {
+fn icons_dark() {
     snapshot_gallery("icons_dark", ThemeMode::Dark, (1000.0, 520.0), |ui, g| {
         g.icons_ui(ui);
     });
 }
 
 #[test]
-fn a17_progress_light() {
+fn progress_light() {
     snapshot_gallery(
         "progress_light",
         ThemeMode::Light,
@@ -90,7 +90,7 @@ fn a17_progress_light() {
 }
 
 #[test]
-fn a17_progress_dark() {
+fn progress_dark() {
     snapshot_gallery(
         "progress_dark",
         ThemeMode::Dark,
@@ -102,7 +102,7 @@ fn a17_progress_dark() {
 }
 
 #[test]
-fn a17_check_tree_dark() {
+fn check_tree_dark() {
     snapshot_gallery(
         "check_tree_dark",
         ThemeMode::Dark,
@@ -136,7 +136,7 @@ fn snapshot_dialog(name: &str, mode: ThemeMode, mut show: impl FnMut(&mut egui::
 }
 
 #[test]
-fn a18_dialog_modal_dark() {
+fn dialog_modal_dark() {
     snapshot_dialog("dialog_modal_dark", ThemeMode::Dark, |ui| {
         backdrop(ui);
         Dialog::new("snapshot_modal", "Modal dialog").show(ui.ctx(), |ui| {
@@ -146,7 +146,7 @@ fn a18_dialog_modal_dark() {
 }
 
 #[test]
-fn a18_dialog_window_light() {
+fn dialog_window_light() {
     snapshot_dialog("dialog_window_light", ThemeMode::Light, |ui| {
         backdrop(ui);
         Dialog::new("snapshot_window", "Dialog")
@@ -158,7 +158,7 @@ fn a18_dialog_window_light() {
 }
 
 #[test]
-fn a18_progress_dialog_dark() {
+fn progress_dialog_dark() {
     let mut dialog = ProgressDialog::new("snapshot_progress", "Downloading files...");
     dialog.progress = Progress::of(50, 100);
     snapshot_dialog("progress_dialog_dark", ThemeMode::Dark, move |ui| {

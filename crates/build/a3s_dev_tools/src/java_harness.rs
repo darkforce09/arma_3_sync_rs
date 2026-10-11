@@ -414,7 +414,7 @@ fn describe(script: &str, args: &[OsString]) -> String {
         .join(" ")
 }
 
-/// Maps the harness exit code to an error (B47).
+/// Maps the harness exit code to an error.
 fn check_status(
     command: &str,
     output: &Output,
@@ -446,7 +446,7 @@ mod tests {
     use super::{HarnessError, Part, VerifyReport};
 
     #[test]
-    fn a3_report_parsing_maps_lines() {
+    fn report_parsing_maps_lines() {
         let stdout = "OK\t/r/.a3s/sync\tfr.soe.a3s.domain.repository.SyncTreeDirectory\n\
                       FAIL\t/r/.a3s/serverinfo\tFailed to read file: serverinfo | The file seems to be corrupted.\n\
                       SKIP\t/r/readme.txt\n\
@@ -467,7 +467,7 @@ mod tests {
     }
 
     #[test]
-    fn a3_report_parsing_rejects_bad_output() {
+    fn report_parsing_rejects_bad_output() {
         let missing_summary = "OK\t/a\tX\n";
         assert!(matches!(
             VerifyReport::parse(missing_summary),
@@ -489,7 +489,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn a3_exit_codes_map_to_results() {
+    fn exit_codes_map_to_results() {
         use std::os::unix::process::ExitStatusExt as _;
         use std::process::{ExitStatus, Output};
 
@@ -526,7 +526,7 @@ mod tests {
     }
 
     #[test]
-    fn a3_stderr_tail_keeps_the_last_lines() {
+    fn stderr_tail_keeps_the_last_lines() {
         let stderr: String = (0..100).map(|i| format!("line {i}\n")).collect();
         let tail = super::stderr_tail(stderr.as_bytes());
         assert_eq!(tail.lines().count(), 40);
@@ -535,7 +535,7 @@ mod tests {
     }
 
     #[test]
-    fn a3_part_arguments_round_trip() {
+    fn part_arguments_round_trip() {
         for part in Part::ALL {
             assert_eq!(Part::from_arg(part.as_arg()), Some(part));
         }
