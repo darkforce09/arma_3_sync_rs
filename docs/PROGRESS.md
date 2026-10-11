@@ -82,6 +82,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 - D-11 2026-10-10: WP12 Q7 — fix nested `racine` folder upload paths (user).
 - D-12 2026-10-10: deny.toml ignores RUSTSEC-2023-0071 (rsa Marvin, private-key ops only; we only verify SFTP host keys). Re-evaluate if SFTP public-key auth is added.
 - D-13 2026-10-11: a3s_ui indeterminate mark = accent_primary, unchecked border = text_disabled, mode-aware JAVA_BLUE helper (readability on dark; local-only).
+- D-14 2026-10-11: Rust builder excludes .ebo.zip (and any compression-stage .zip) from the sync tree; Java only excludes .pbo.zip (user).
 - D-10 2026-10-10: JDK = user-local Temurin 25.0.4.1 (Bazzite, no dnf); harness sources scripts/java_env.sh; no Gradle — compile with javac.
 - D-9 2026-10-10: custom agent types need a session restart; until then spawn general-purpose/opus with a ROLE header. (Now registered in this session.)
 
