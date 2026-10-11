@@ -9,7 +9,7 @@ use axum::response::IntoResponse as _;
 use parking_lot::Mutex;
 
 use crate::common;
-use crate::support::ftp::AbortOnDrop;
+use crate::support::AbortOnDrop;
 use crate::support::webdav::{PASSWORD, USER, fixture, fixture_with};
 
 #[tokio::test]

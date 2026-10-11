@@ -21,27 +21,22 @@ dependencies = [
  "a3s_jserial",
  "a3s_repo_files",
  "a3s_sync",
+ "a3s_test_servers",
  "a3s_transport",
  "a3s_types",
  "a3s_zsync",
  "axum",
- "base64 0.22.1",
  "dav-server",
  "flate2",
  "futures",
- "libunftp",
  "parking_lot",
  "rayon",
- "rcgen",
- "russh",
- "russh-sftp",
  "serde_json",
  "sha1 0.11.0",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
- "unftp-sbe-fs",
  "zip",
 ]
 
@@ -135,6 +130,7 @@ version = "0.1.0-alpha.1"
 dependencies = [
  "a3s_foundation",
  "a3s_repo_files",
+ "a3s_test_servers",
  "a3s_transport",
  "a3s_types",
  "a3s_zsync",
@@ -142,7 +138,6 @@ dependencies = [
  "chrono",
  "fs4",
  "futures",
- "libunftp",
  "parking_lot",
  "reqwest",
  "sha1 0.11.0",
@@ -151,8 +146,26 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "tracing",
- "unftp-sbe-fs",
  "zip",
+]
+
+[[package]]
+name = "a3s_test_servers"
+version = "0.1.0-alpha.1"
+dependencies = [
+ "a3s_transport",
+ "a3s_types",
+ "axum",
+ "base64 0.22.1",
+ "dav-server",
+ "libunftp",
+ "parking_lot",
+ "rcgen",
+ "russh",
+ "russh-sftp",
+ "tempfile",
+ "tokio",
+ "unftp-sbe-fs",
 ]
 
 [[package]]
@@ -173,15 +186,13 @@ name = "a3s_transport"
 version = "0.1.0-alpha.1"
 dependencies = [
  "a3s_repo_files",
+ "a3s_test_servers",
  "a3s_types",
  "axum",
  "base64 0.22.1",
  "bytes",
- "dav-server",
  "futures",
- "libunftp",
  "parking_lot",
- "rcgen",
  "reqwest",
  "russh",
  "russh-sftp",
@@ -192,9 +203,9 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "tokio-rustls",
+ "tokio-socks",
  "tokio-util",
  "tracing",
- "unftp-sbe-fs",
  "url",
 ]
 
@@ -6413,6 +6424,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c9cc2678c2cdd569ef8215e2afd7954ada2ae20b4fdd2c5fe6139a3b02d105db"
 dependencies = [
  "rustls",
+ "tokio",
+]
+
+[[package]]
+name = "tokio-socks"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a7e2948f60dbe26b35f2c7fb74ac2854c1fddded0fe9d7548fcc674a246f7615"
+dependencies = [
+ "either",
+ "futures-util",
+ "thiserror 1.0.69",
  "tokio",
 ]
 

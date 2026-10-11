@@ -36,9 +36,8 @@ tracing.workspace = true
 zip.workspace = true
 
 [dev-dependencies]
+a3s_test_servers.workspace = true
 axum.workspace = true
-libunftp.workspace = true
 parking_lot.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["full"] }
-unftp-sbe-fs.workspace = true

@@ -46,6 +46,7 @@ a3s_ui = { path = "crates/viewer/a3s_ui", version = "=0.1.0-alpha.1", default-fe
 arma3sync = { path = "crates/application/arma3sync", version = "=0.1.0-alpha.1", default-features = false }
 
 a3s_dev_tools = { path = "crates/development/a3s_dev_tools", version = "=0.1.0-alpha.1", default-features = false }
+a3s_test_servers = { path = "crates/development/a3s_test_servers", version = "=0.1.0-alpha.1", default-features = false }
 
 # ---------------------------------------------------------------------------------
 # External crates. Keep sorted.
@@ -90,6 +91,7 @@ tempfile = "3.27"
 thiserror = "2.0"
 tokio = { version = "1.53", default-features = false }
 tokio-rustls = { version = "0.26.6", default-features = false, features = ["aws_lc_rs", "tls12"] }
+tokio-socks = "0.5.3"
 tokio-util = "0.7.20"
 toml = "1.1"
 tracing = "0.1.44"

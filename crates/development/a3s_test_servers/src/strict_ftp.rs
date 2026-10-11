@@ -1,6 +1,8 @@
-//! Minimal scripted FTP server that applies RFC 3659 §5.3 strictly: the restart marker set by
-//! `REST` is cleared by any command other than the transfer command that follows it (like the
-//! WOG repository server). Serves one in-memory file and logs every command.
+//! Minimal scripted FTP server that applies RFC 3659 §5.3 strictly.
+//!
+//! The restart marker set by `REST` is cleared by any command other than the transfer command
+//! that follows it (like the WOG repository server). Serves one in-memory file and logs every
+//! command.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -10,7 +12,7 @@ use parking_lot::Mutex;
 use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 
-use super::ftp::AbortOnDrop;
+use crate::AbortOnDrop;
 
 /// Behaviour switches of the stub.
 #[derive(Clone, Copy, Debug, Default)]
@@ -29,6 +31,9 @@ pub struct Behaviour {
 
     /// Never send the completion reply (226) of a `RETR`.
     pub withhold_completion: bool,
+
+    /// A command (upper-case verb) that is never answered.
+    pub silent: Option<&'static str>,
 }
 
 pub struct StrictFtp {
@@ -86,6 +91,9 @@ async fn session(
         log.lock().push(line.clone());
         let (verb, arg) = line.split_once(' ').unwrap_or((line.as_str(), ""));
         let verb = verb.to_ascii_uppercase();
+        if behaviour.silent == Some(verb.as_str()) {
+            continue;
+        }
         if verb != "RETR" && verb != "REST" {
             // RFC 3659 §5.3: REST must immediately precede the transfer command.
             restart = 0;

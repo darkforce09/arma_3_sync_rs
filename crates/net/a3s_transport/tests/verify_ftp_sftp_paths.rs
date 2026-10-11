@@ -3,21 +3,18 @@
 //! FTP resume restarts when the remote size is unknown, and the SFTP configured base
 //! (`""` = home, `"/"` = root, `"/x/"` = absolute).
 
-#[allow(dead_code, unused_imports)]
-#[path = "transport/support/mod.rs"]
-mod support;
-
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
+use a3s_test_servers as support;
 use a3s_transport::{Error, RemoteKind, TransferCtx, Transport, TransportOptions};
 use a3s_types::{Protocol, ProtocolType};
 use parking_lot::Mutex;
 use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 
-use support::ftp::AbortOnDrop;
+use support::AbortOnDrop;
 use support::strict_ftp::{self, Behaviour};
 use support::{random_bytes, snapshot};
 
@@ -152,9 +149,10 @@ async fn verify_ftp_known_dir_replaced_by_file() {
 // ---------------------------------------------------------------------------------------
 
 /// How the stub answers `LIST -a`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum DashA {
     /// Lists dot entries, `.` and `..`.
+    #[default]
     Supported,
 
     /// Treats `-a` as a path: 550.
@@ -162,9 +160,15 @@ enum DashA {
 }
 
 /// Behaviour of the MLST-less stub.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 struct NoMlst {
     dash_a: DashA,
+
+    /// `LIST` sends lines in no known format.
+    garbage_listing: bool,
+
+    /// `DELE` of an existing file is refused with 550.
+    refuse_dele: bool,
 }
 
 struct NoMlstFtp {
@@ -316,7 +320,7 @@ async fn no_mlst_session(
                 _ => "550 cannot create".to_owned(),
             },
             "DELE" => match resolve(&cwd, arg) {
-                Some(v) if real(root, &v).is_file() => {
+                Some(v) if real(root, &v).is_file() && !behaviour.refuse_dele => {
                     std::fs::remove_file(real(root, &v))?;
                     "250 deleted".to_owned()
                 }
@@ -356,10 +360,14 @@ async fn no_mlst_session(
                     (Some(listener), Some(v)) => {
                         write.write_all(b"150 listing\r\n").await?;
                         let (mut data, _) = listener.accept().await?;
-                        let body: String = listing(&real(root, &v), all)
-                            .into_iter()
-                            .map(|l| format!("{l}\r\n"))
-                            .collect();
+                        let body: String = if behaviour.garbage_listing {
+                            "?? unknown listing format ??\r\n".to_owned()
+                        } else {
+                            listing(&real(root, &v), all)
+                                .into_iter()
+                                .map(|l| format!("{l}\r\n"))
+                                .collect()
+                        };
                         data.write_all(body.as_bytes()).await?;
                         data.shutdown().await?;
                         drop(data);
@@ -394,6 +402,7 @@ fn assert_no_list_path(commands: &[String]) {
 async fn verify_ftp_no_mlst_exists_outside_session() {
     let fx = serve_no_mlst(NoMlst {
         dash_a: DashA::Supported,
+        ..NoMlst::default()
     })
     .await;
     fx.put("d/f.bin", b"f");
@@ -421,6 +430,7 @@ async fn verify_ftp_no_mlst_exists_outside_session() {
 async fn verify_ftp_no_mlst_session_dot_files() {
     let fx = serve_no_mlst(NoMlst {
         dash_a: DashA::Supported,
+        ..NoMlst::default()
     })
     .await;
     fx.put("d/f.bin", b"f");
@@ -445,6 +455,7 @@ async fn verify_ftp_no_mlst_session_dot_files() {
 async fn verify_ftp_no_mlst_dash_a_refused_falls_back() {
     let fx = serve_no_mlst(NoMlst {
         dash_a: DashA::Refused,
+        ..NoMlst::default()
     })
     .await;
     fx.put("d/f.bin", b"f");
@@ -469,6 +480,7 @@ async fn verify_ftp_no_mlst_dash_a_refused_falls_back() {
 async fn verify_ftp_no_mlst_recursive_delete() {
     let fx = serve_no_mlst(NoMlst {
         dash_a: DashA::Supported,
+        ..NoMlst::default()
     })
     .await;
     fx.put("keep.bin", b"k");
@@ -501,6 +513,7 @@ async fn verify_ftp_no_mlst_recursive_delete() {
 async fn verify_ftp_no_mlst_delete_hidden_left_is_error() {
     let fx = serve_no_mlst(NoMlst {
         dash_a: DashA::Refused,
+        ..NoMlst::default()
     })
     .await;
     fx.put("t/.hidden", b"h");
@@ -512,6 +525,26 @@ async fn verify_ftp_no_mlst_delete_hidden_left_is_error() {
     assert!(!fx.root.join("t/f.bin").exists());
     // Still usable.
     assert!(!t.exists("t/f.bin", &ctx).await.unwrap());
+    t.close().await;
+}
+
+/// Without MLST and with an unusable listing, a refused `DELE` cannot be confirmed as "already
+/// gone": it is an error, not `Ok`, and `exists` finds nothing (like Java's empty listing).
+#[tokio::test]
+async fn verify_ftp_no_mlst_unusable_listing_refused_dele_is_error() {
+    let fx = serve_no_mlst(NoMlst {
+        garbage_listing: true,
+        refuse_dele: true,
+        ..NoMlst::default()
+    })
+    .await;
+    fx.put("d/f.bin", b"f");
+    let mut t = fx.connect().await;
+    let ctx = TransferCtx::new();
+    let result = t.delete("d/f.bin", RemoteKind::File, &ctx).await;
+    assert!(matches!(result, Err(Error::Remote { .. })), "{result:?}");
+    assert!(fx.root.join("d/f.bin").is_file());
+    assert!(!t.exists("d/f.bin", &ctx).await.unwrap());
     t.close().await;
 }
 

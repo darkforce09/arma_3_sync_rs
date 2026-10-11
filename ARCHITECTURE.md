@@ -42,6 +42,7 @@ A crate may depend on crates from its own group or a group listed above it in th
 | `arma3sync` | The `arma3sync` binary: command line, interactive console, build information. | `main/ArmA3Sync`, `console/*`, `version.properties` |
 | **development** | | |
 | `a3s_dev_tools` | Java fixture harness wrapper: fixture regeneration, Java cross-checks. Dev-dependency only. | – |
+| `a3s_test_servers` | In-process FTP(S), SFTP, WebDAV, TCP relay and SOCKS servers for the network crates' tests. Dev-dependency only. | – |
 
 Planned parts (the viewer application) get a crate when its ttm ticket starts, inside the
 group that fits.
@@ -179,8 +180,13 @@ Wire compatibility is the requirement; these differences are deliberate.
   profiles, and import never replaces an existing repository (Java overwrites its file with the
   bare imported one). A name held by a store file that cannot be read stays taken.
 * **Proxy** is applied per connection with Java's effective routing, but its credentials go to
-  the proxy only (Java's default `Authenticator` also answered the repository server) and a
-  SOCKS4 proxy speaks SOCKS4 (Java's default made it SOCKS5).
+  the proxy only (Java's default `Authenticator` also answered the repository server), a
+  SOCKS4 proxy speaks SOCKS4 (Java's default made it SOCKS5), and a SOCKS proxy also carries
+  SFTP connections (Java's MINA client bypassed it).
+* **Transports:** an FTP `DELE` or `RMD` refused with 550 counts as "already gone" only once
+  `MLST`, `CWD` or a usable listing confirms the target is missing (Java ignores every 550).
+  WebDAV maps 409 on `PUT`/`MKCOL` to a missing parent and a 207 answer to `DELETE` to an
+  error (Java maps only 401 and 404, and takes 207 as success).
 * **Platform integration** (local only): start-with-Windows writes the per-user `Run` value
   `arma3sync-rs` (Java: machine-wide `ArmA3Sync`, which needs admin rights and is left alone)
   pointing at the real executable (Java: the working folder); Linux and macOS get XDG and

@@ -1,5 +1,5 @@
-//! The configured proxy: routing per target, host/port/credential mapping, and a download
-//! through a local HTTP proxy.
+//! The configured proxy: routing per target, host/port/credential mapping, a download through a
+//! local HTTP proxy, and FTP(S) and SFTP through a local SOCKS proxy.
 
 use std::sync::Arc;
 
@@ -11,7 +11,9 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse as _;
 use parking_lot::Mutex;
 
-use crate::support::ftp::AbortOnDrop;
+use crate::support::AbortOnDrop;
+use crate::support::socks::{SocksProxy, Tunnel};
+use crate::support::{Fixture, random_bytes};
 
 fn proxy(protocol_type: ProtocolType, url: &str, port: &str, login: &str) -> Proxy {
     Proxy {
@@ -27,6 +29,7 @@ fn proxy(protocol_type: ProtocolType, url: &str, port: &str, login: &str) -> Pro
     }
 }
 
+/// Java's routing, except that SOCKS also serves SFTP.
 #[test]
 fn routing_follows_the_java_system_properties() {
     use ProtocolType::{
@@ -39,12 +42,12 @@ fn routing_follows_the_java_system_properties() {
         (Ftp, &[], ""),
         (
             Socks4,
-            &[Ftp, Ftps, Http, Https, HttpWebdav, HttpsWebdav],
+            &[Ftp, Ftps, Sftp, Http, Https, HttpWebdav, HttpsWebdav],
             "socks4",
         ),
         (
             Socks5,
-            &[Ftp, Ftps, Http, Https, HttpWebdav, HttpsWebdav],
+            &[Ftp, Ftps, Sftp, Http, Https, HttpWebdav, HttpsWebdav],
             "socks5",
         ),
         (Ftps, &[], ""),
@@ -180,4 +183,132 @@ async fn http_download_goes_through_the_proxy() {
     // An HTTPS-type proxy does not serve an `http://` repository.
     configured.proxy_protocol.as_mut().unwrap().protocol_type = ProtocolType::Https;
     assert_eq!(transport_options(&target, &configured).unwrap().proxy, None);
+}
+
+/// Connects to `fixture` through `socks`, configured as a `proxy_type` proxy with `login`.
+async fn connect_through(
+    fixture: &Fixture,
+    socks: &SocksProxy,
+    proxy_type: ProtocolType,
+    login: &str,
+) -> Transport {
+    let configured = proxy(proxy_type, "127.0.0.1", &socks.port.to_string(), login);
+    let options = transport_options(&fixture.protocol, &configured).unwrap();
+    assert!(options.proxy.is_some());
+    Transport::connect(&fixture.protocol, &options)
+        .await
+        .unwrap()
+}
+
+/// Download, resumed download (a data connection opened by hand) and upload over FTP and FTPS
+/// through SOCKS4 and SOCKS5: the control and every data connection are tunnels.
+#[tokio::test]
+async fn ftp_goes_through_a_socks_proxy() {
+    let cases = [
+        (ProtocolType::Socks5, Some(("u", "secret")), false),
+        (ProtocolType::Socks5, None, true),
+        (ProtocolType::Socks4, None, false),
+        (ProtocolType::Socks4, Some(("u", "")), true),
+    ];
+    for (proxy_type, credentials, ftps) in cases {
+        let case = format!("{proxy_type:?} {credentials:?} ftps={ftps}");
+        // SOCKS4 has no password: the proxy only sees the user id.
+        let required = credentials.filter(|_| proxy_type == ProtocolType::Socks5);
+        let socks = SocksProxy::start(required).await;
+        let fx = crate::support::ftp::fixture(ftps).await;
+        let data = random_bytes(200_000, 5);
+        fx.put("d/a.bin", &data);
+        let login = credentials.map_or("anonymous", |(user, _)| user);
+        let mut t = connect_through(&fx, &socks, proxy_type, login).await;
+        let ctx = TransferCtx::new();
+        assert!(t.fetch("d/a.bin", &ctx).await.unwrap() == data, "{case}");
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("a.bin");
+        std::fs::write(&dest, &data[..1000]).unwrap();
+        let len = t.download_file("d/a.bin", &dest, 1000, &ctx).await.unwrap();
+        assert_eq!(len, data.len() as u64, "{case}");
+        assert!(std::fs::read(&dest).unwrap() == data, "{case}");
+        assert_eq!(ctx.start_offset.get(), Some(1000), "{case}");
+        t.upload_bytes(b"up", "e/b.bin", &ctx).await.unwrap();
+        assert_eq!(
+            std::fs::read(fx.base.join("e/b.bin")).unwrap(),
+            b"up",
+            "{case}"
+        );
+        t.close().await;
+
+        let tunnels = socks.tunnels();
+        let version = if proxy_type == ProtocolType::Socks5 {
+            5
+        } else {
+            4
+        };
+        let user = credentials.map(|(user, _)| user.to_owned());
+        assert!(
+            tunnels
+                .iter()
+                .all(|tunnel| tunnel.version == version && tunnel.user == user),
+            "{case}: {tunnels:?}"
+        );
+        let control = format!("127.0.0.1:{}", fx.protocol.port);
+        let (controls, data_connections): (Vec<&Tunnel>, Vec<&Tunnel>) =
+            tunnels.iter().partition(|tunnel| tunnel.target == control);
+        assert_eq!(controls.len(), 1, "{case}: {tunnels:?}");
+        // fetch, resumed download, upload (and the listings of `mkdirs`, if any).
+        assert!(data_connections.len() >= 3, "{case}: {tunnels:?}");
+    }
+}
+
+/// SFTP through SOCKS5 with credentials.
+#[tokio::test]
+async fn sftp_goes_through_a_socks_proxy() {
+    let socks = SocksProxy::start(Some(("u", "secret"))).await;
+    let fx = crate::support::sftp::fixture().await;
+    fx.put("a.bin", b"over socks");
+    let mut t = connect_through(&fx, &socks, ProtocolType::Socks5, "u").await;
+    assert_eq!(
+        t.fetch("a.bin", &TransferCtx::new()).await.unwrap(),
+        b"over socks"
+    );
+    t.close().await;
+    assert_eq!(
+        socks.tunnels(),
+        vec![Tunnel {
+            version: 5,
+            user: Some("u".to_owned()),
+            target: format!("127.0.0.1:{}", fx.protocol.port),
+        }]
+    );
+}
+
+/// Wrong SOCKS5 credentials fail the connection; an HTTP proxy cannot carry FTP.
+#[tokio::test]
+async fn socks_refusals() {
+    let socks = SocksProxy::start(Some(("u", "other"))).await;
+    let fx = crate::support::ftp::fixture(false).await;
+    let configured = proxy(
+        ProtocolType::Socks5,
+        "127.0.0.1",
+        &socks.port.to_string(),
+        "u",
+    );
+    let options = transport_options(&fx.protocol, &configured).unwrap();
+    let result = Transport::connect(&fx.protocol, &options).await;
+    assert!(result.is_err());
+    assert!(socks.tunnels().is_empty());
+
+    let mut options = a3s_transport::TransportOptions::from_protocol(&fx.protocol);
+    options.proxy = Some(a3s_transport::ProxyConfig {
+        scheme: "http".to_owned(),
+        host: "127.0.0.1".to_owned(),
+        port: socks.port,
+        login: None,
+        password: None,
+    });
+    let result = Transport::connect(&fx.protocol, &options).await;
+    assert!(
+        matches!(result, Err(a3s_transport::Error::InvalidProtocol(_))),
+        "{:?}",
+        result.err()
+    );
 }

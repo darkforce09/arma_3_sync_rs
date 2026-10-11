@@ -6,7 +6,7 @@ use a3s_types::{Protocol, ProtocolType};
 use libunftp::ServerBuilder;
 use unftp_sbe_fs::Filesystem;
 
-use super::{Fixture, outer_with_root, tls_pem_files};
+use crate::{AbortOnDrop, Fixture, outer_with_root, tls_pem_files};
 
 /// Serves `root` on `127.0.0.1:<port>`; returns the port and the accept task.
 pub async fn serve(root: PathBuf, ftps: bool) -> (u16, tokio::task::JoinHandle<()>) {
@@ -59,19 +59,10 @@ pub async fn fixture_with_path(ftps: bool, remote_path: &str) -> Fixture {
         base,
         outer,
         request_count: None,
-        _server: Box::new(AbortOnDrop(task)),
+        server: Box::new(AbortOnDrop(task)),
     }
 }
 
 pub async fn fixture(ftps: bool) -> Fixture {
     fixture_with_path(ftps, "").await
-}
-
-/// Aborts a server task when the fixture is dropped.
-pub struct AbortOnDrop(pub tokio::task::JoinHandle<()>);
-
-impl Drop for AbortOnDrop {
-    fn drop(&mut self) {
-        self.0.abort();
-    }
 }

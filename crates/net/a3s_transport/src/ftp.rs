@@ -1,16 +1,17 @@
 //! FTP / explicit FTPS transport (`dao/connection/ftp/FtpDAO.java`).
 //!
-//! All commands use absolute paths below the base directory resolved at connect time.
+//! All commands use absolute paths below the base directory resolved at connect time. Every
+//! control command races the cancellation token of its [`TransferCtx`].
 
 use std::collections::HashSet;
 use std::future::Future;
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
-use a3s_types::{Protocol, ProtocolType};
+use a3s_types::{Protocol, ProtocolType, ssl_policy};
 use rustls::pki_types::ServerName;
 use suppaftp::list::{File as ListEntry, ListParser};
 use suppaftp::tokio::{AsyncRustlsConnector, AsyncRustlsFtpStream};
@@ -20,7 +21,8 @@ use tokio::io::{AsyncRead, AsyncReadExt as _};
 use tokio_rustls::TlsConnector;
 
 use crate::ctx::{TransferCtx, copy, copy_upload};
-use crate::options::{TransportOptions, is_local_test_host};
+use crate::options::TransportOptions;
+use crate::proxy::Dialer;
 use crate::session::SessionState;
 use crate::{Error, RemoteKind, Result, UploadSource, path};
 
@@ -34,12 +36,18 @@ pub struct FtpTransport {
     base: String,
     read_timeout: Option<Duration>,
 
-    /// Address of the control connection's peer; passive data connections go there (NAT
-    /// workaround).
-    peer_ip: IpAddr,
+    /// Address of the FTP server. Passive data connections go there whatever address the
+    /// server announces (servers behind NAT often announce a private one).
+    server_ip: IpAddr,
+
+    /// Opens the data connections, through the SOCKS proxy if one is configured.
+    dialer: Dialer,
 
     /// TLS settings for data connections opened by hand (FTPS).
     data_tls: Option<(TlsConnector, ServerName<'static>)>,
+
+    /// Absolute working directory of the control connection; `None` while unknown.
+    cwd: Option<String>,
     pub(crate) session: SessionState,
 
     /// Set when the control connection could not be resynchronised after an interrupted
@@ -87,16 +95,36 @@ fn remote_error(err: FtpError, operation: &'static str, path: &str) -> Error {
     }
 }
 
-async fn with_timeout<T>(
+/// Runs one control command (or waits for one reply), racing the cancellation token and,
+/// with `timeout`, the clock. The outer error is [`Error::Cancelled`] or [`Error::Timeout`]; the
+/// inner result is the server's answer.
+///
+/// A command interrupted before its reply arrived leaves that reply on the control connection,
+/// where it would answer the next command: the transport is poisoned. A token already
+/// cancelled sends nothing.
+async fn control<T>(
+    poisoned: &mut bool,
+    ctx: &TransferCtx,
     timeout: Option<Duration>,
-    fut: impl Future<Output = FtpResult<T>>,
-) -> Result<T> {
-    match timeout {
-        Some(t) => tokio::time::timeout(t, fut)
-            .await
-            .map_err(|_elapsed| Error::Timeout)?
-            .map_err(Error::Ftp),
-        None => fut.await.map_err(Error::Ftp),
+    command: impl Future<Output = FtpResult<T>>,
+) -> Result<FtpResult<T>> {
+    ctx.check_cancelled()?;
+    let reply = async {
+        match timeout {
+            Some(timeout) => tokio::time::timeout(timeout, command).await.ok(),
+            None => Some(command.await),
+        }
+    };
+    tokio::select! {
+        biased;
+        () = ctx.cancel.cancelled() => {
+            *poisoned = true;
+            Err(Error::Cancelled)
+        }
+        reply = reply => reply.ok_or_else(|| {
+            *poisoned = true;
+            Error::Timeout
+        }),
     }
 }
 
@@ -199,21 +227,38 @@ impl FtpTransport {
         let port = protocol
             .port_number()
             .ok_or_else(|| Error::InvalidProtocol(format!("invalid port '{}'", protocol.port)))?;
+        let dialer = Dialer::new(options, "FTP")?;
         let addr = tokio::net::lookup_host((host.as_str(), port))
             .await?
             .next()
             .ok_or_else(|| Error::InvalidProtocol(format!("unknown host '{host}'")))?;
 
-        let connect = AsyncRustlsFtpStream::connect_timeout(
-            addr,
-            options.connect_timeout.unwrap_or(Duration::from_secs(300)),
-        );
-        let mut stream = connect.await?;
+        let connect_timeout = options.connect_timeout.unwrap_or(Duration::from_secs(300));
+        // A failed connect is a connection error, as from `AsyncFtpStream::connect_timeout`.
+        let socket = tokio::time::timeout(connect_timeout, dialer.connect(addr))
+            .await
+            .unwrap_or_else(|elapsed| {
+                Err(std::io::Error::new(std::io::ErrorKind::TimedOut, elapsed))
+            })
+            .map_err(FtpError::ConnectionError)?;
+        let data_dialer = dialer.clone();
+        let mut stream = AsyncRustlsFtpStream::connect_with_stream(socket)
+            .await?
+            .passive_stream_builder(move |announced| {
+                let dialer = data_dialer.clone();
+                let target = SocketAddr::new(addr.ip(), announced.port());
+                Box::pin(async move {
+                    dialer
+                        .connect(target)
+                        .await
+                        .map_err(FtpError::ConnectionError)
+                })
+            });
 
         let mut data_tls = None;
         if protocol.protocol_type == ProtocolType::Ftps {
             let validate = protocol.validate_ssl_certificate;
-            if !validate && !is_local_test_host(&host) && !options.allow_insecure_tls {
+            if !validate && !ssl_policy::is_allowed_for(&host, options.allow_insecure_tls) {
                 return Err(Error::InsecureTlsRefused(host));
             }
             let config = Arc::new(crate::tls::client_config(validate)?);
@@ -235,8 +280,6 @@ impl FtpTransport {
         })?;
         stream.transfer_type(FileType::Binary).await?;
         stream.set_mode(Mode::Passive);
-        // Servers behind NAT often announce a private address in their PASV reply.
-        stream.set_passive_nat_workaround(true);
 
         // Base directory (FtpDAO.java:70-73, 172-193): `CWD <remote path>`, or the login
         // directory.
@@ -257,8 +300,10 @@ impl FtpTransport {
             stream,
             base,
             read_timeout: options.read_timeout,
-            peer_ip: addr.ip(),
+            server_ip: addr.ip(),
+            dialer,
             data_tls,
+            cwd: None,
             session: SessionState::default(),
             poisoned: false,
         })
@@ -287,7 +332,8 @@ impl FtpTransport {
     /// the transport when that fails.
     ///
     /// `ABOR` is not used: some servers (libunftp) answer it and then still send the reply
-    /// of the interrupted transfer, which desynchronises the control connection.
+    /// of the interrupted transfer, which desynchronises the control connection. The wait is
+    /// bounded but ignores cancellation: it is the clean-up of a cancelled transfer.
     async fn resync(&mut self) {
         let timeout = self.resync_timeout();
         match tokio::time::timeout(timeout, self.stream.noop()).await {
@@ -306,7 +352,7 @@ impl FtpTransport {
     }
 
     /// Reads the final reply of a data transfer opened by hand; poisons the transport when
-    /// no reply arrives.
+    /// no reply arrives. Bounded, and ignores cancellation like [`Self::resync`].
     async fn drain_manual_reply(&mut self) {
         let timeout = self.resync_timeout();
         let reply = tokio::time::timeout(
@@ -321,15 +367,6 @@ impl FtpTransport {
         }
     }
 
-    /// Marks the transport poisoned when a completion reply timed out: the reply may still
-    /// arrive later and desynchronise the control connection.
-    fn poison_on_timeout<T>(&mut self, result: Result<T>) -> Result<T> {
-        if matches!(result, Err(Error::Timeout)) {
-            self.poisoned = true;
-        }
-        result
-    }
-
     async fn retrieve<W>(
         &mut self,
         relative: &str,
@@ -341,23 +378,30 @@ impl FtpTransport {
     {
         self.ensure_usable()?;
         let absolute = self.absolute(relative);
-        let mut transfer = self
-            .stream
-            .retr_as_stream(&absolute)
-            .await
-            .map_err(|e| map_ftp_error(e, relative))?;
-        let copied = copy(&mut transfer, writer, ctx, self.read_timeout).await;
+        let mut transfer = control(
+            &mut self.poisoned,
+            ctx,
+            None,
+            self.stream.retr_as_stream(&absolute),
+        )
+        .await?
+        .map_err(|e| map_ftp_error(e, relative))?;
+        let copied = match copy(&mut transfer, writer, ctx, self.read_timeout).await {
+            Ok(n) => ctx.check_cancelled().map(|()| n),
+            Err(err) => Err(err),
+        };
         match copied {
             Ok(n) => {
                 // Servers such as libunftp accept `RETR` (150) and report a missing file on
                 // completion (550).
-                let finished = with_timeout(self.read_timeout, transfer.finish())
-                    .await
-                    .map_err(|err| match err {
-                        Error::Ftp(err) => map_ftp_error(err, relative),
-                        other => other,
-                    });
-                self.poison_on_timeout(finished)?;
+                control(
+                    &mut self.poisoned,
+                    ctx,
+                    self.read_timeout,
+                    transfer.finish(),
+                )
+                .await?
+                .map_err(|e| map_ftp_error(e, relative))?;
                 Ok(n)
             }
             Err(err) => {
@@ -407,12 +451,11 @@ impl FtpTransport {
 
     /// Size of a remote file from `SIZE`, else from the `size=` fact of `MLST`; `None` when
     /// the server answers neither (or the file is missing).
-    async fn remote_size(&mut self, absolute: &str) -> Result<Option<u64>> {
-        match self
+    async fn remote_size(&mut self, absolute: &str, ctx: &TransferCtx) -> Result<Option<u64>> {
+        let size = self
             .stream
-            .custom_command(format!("SIZE {absolute}"), &[Status::File])
-            .await
-        {
+            .custom_command(format!("SIZE {absolute}"), &[Status::File]);
+        match control(&mut self.poisoned, ctx, None, size).await? {
             Ok(response) => {
                 if let Some(size) = reply_text(&response)
                     .get(3..)
@@ -424,7 +467,14 @@ impl FtpTransport {
             Err(FtpError::UnexpectedResponse(_)) => {}
             Err(e) => return Err(e.into()),
         }
-        match self.stream.mlst(Some(absolute)).await {
+        match control(
+            &mut self.poisoned,
+            ctx,
+            None,
+            self.stream.mlst(Some(absolute)),
+        )
+        .await?
+        {
             Ok(facts) => Ok(mlst_size(&facts)),
             Err(FtpError::UnexpectedResponse(_) | FtpError::BadResponse) => Ok(None),
             Err(e) => Err(e.into()),
@@ -448,7 +498,7 @@ impl FtpTransport {
         ctx: &TransferCtx,
     ) -> Result<Resume> {
         let absolute = self.absolute(relative);
-        let Some(size) = self.remote_size(&absolute).await? else {
+        let Some(size) = self.remote_size(&absolute, ctx).await? else {
             return Ok(Resume::Restart);
         };
         if offset > size {
@@ -461,11 +511,8 @@ impl FtpTransport {
         }
 
         // PASV, then connect the data socket.
-        let reply = match self
-            .stream
-            .custom_command("PASV", &[Status::PassiveMode])
-            .await
-        {
+        let pasv = self.stream.custom_command("PASV", &[Status::PassiveMode]);
+        let reply = match control(&mut self.poisoned, ctx, None, pasv).await? {
             Ok(reply) => reply,
             Err(FtpError::UnexpectedResponse(_)) => return Ok(Resume::Restart),
             Err(e) => return Err(e.into()),
@@ -473,25 +520,27 @@ impl FtpTransport {
         let Some(port) = parse_pasv_port(&reply_text(&reply)) else {
             return Ok(Resume::Restart);
         };
-        let connect = tokio::net::TcpStream::connect((self.peer_ip, port));
-        let data = crate::ctx::maybe_timeout(Some(self.resync_timeout()), connect).await?;
+        let connect = self.dialer.connect(SocketAddr::new(self.server_ip, port));
+        let data = tokio::select! {
+            () = ctx.cancel.cancelled() => return Err(Error::Cancelled),
+            data = crate::ctx::maybe_timeout(Some(self.resync_timeout()), connect) => data?,
+        };
 
         // REST immediately before RETR.
-        match self
+        let rest = self
             .stream
-            .custom_command(format!("REST {offset}"), &[Status::RequestFilePending])
-            .await
-        {
+            .custom_command(format!("REST {offset}"), &[Status::RequestFilePending]);
+        match control(&mut self.poisoned, ctx, None, rest).await? {
             Ok(_) => {}
             Err(FtpError::UnexpectedResponse(_)) => return Ok(Resume::Restart),
             Err(e) => return Err(e.into()),
         }
-        self.stream
-            .custom_command(
-                format!("RETR {absolute}"),
-                &[Status::AboutToSend, Status::AlreadyOpen],
-            )
-            .await
+        let retr = self.stream.custom_command(
+            format!("RETR {absolute}"),
+            &[Status::AboutToSend, Status::AlreadyOpen],
+        );
+        control(&mut self.poisoned, ctx, None, retr)
+            .await?
             .map_err(|e| map_ftp_error(e, relative))?;
 
         let mut reader: Box<dyn AsyncRead + Send + Unpin> = match &self.data_tls {
@@ -512,6 +561,7 @@ impl FtpTransport {
             let mut limited = (&mut reader).take(remaining + 1);
             let n = copy(&mut limited, &mut file, ctx, self.read_timeout).await?;
             file.sync_all().await?;
+            ctx.check_cancelled()?;
             Ok::<_, Error>(n)
         }
         .await;
@@ -526,15 +576,13 @@ impl FtpTransport {
                 Ok(Resume::Restart)
             }
             Ok(n) => {
-                let reply = with_timeout(
-                    self.read_timeout,
-                    self.stream.read_response_in(&[
-                        Status::ClosingDataConnection,
-                        Status::RequestedFileActionOk,
-                    ]),
-                )
-                .await;
-                self.poison_on_timeout(reply)?;
+                let reply = self.stream.read_response_in(&[
+                    Status::ClosingDataConnection,
+                    Status::RequestedFileActionOk,
+                ]);
+                control(&mut self.poisoned, ctx, self.read_timeout, reply)
+                    .await?
+                    .map_err(Error::Ftp)?;
                 let total = offset + n;
                 // Mirrors dao/connection/ftp/FtpDAO.java:387-393 (size check after the
                 // transfer).
@@ -556,25 +604,24 @@ impl FtpTransport {
     /// Lists the directory `absolute_dir` like Java (`FtpDAO.java:460-462`): `CWD` into it,
     /// `LIST` without argument (servers split `LIST` arguments on spaces), `CWD` back to the
     /// base. With `all`, `LIST -a` is tried first so dot-files are included.
-    async fn list_dir(&mut self, absolute_dir: &str, all: bool) -> Result<Listing> {
-        if !self.try_cwd(absolute_dir).await? {
+    async fn list_dir(
+        &mut self,
+        absolute_dir: &str,
+        all: bool,
+        ctx: &TransferCtx,
+    ) -> Result<Listing> {
+        if !self.try_cwd(absolute_dir, ctx).await? {
             return Ok(Listing::Missing);
         }
-        let mut lines = if all {
-            self.stream.list(Some("-a")).await
-        } else {
-            self.stream.list(None).await
-        };
+        let argument = if all { Some("-a") } else { None };
+        let mut lines = control(&mut self.poisoned, ctx, None, self.stream.list(argument)).await?;
         if all && matches!(lines, Err(FtpError::UnexpectedResponse(_))) {
-            lines = self.stream.list(None).await;
+            lines = control(&mut self.poisoned, ctx, None, self.stream.list(None)).await?;
         }
         let base = self.base.clone();
-        match self.stream.cwd(&base).await {
-            // Every command uses absolute paths: a refused CWD back does not invalidate the
-            // listing.
-            Ok(()) | Err(FtpError::UnexpectedResponse(_)) => {}
-            Err(e) => return Err(e.into()),
-        }
+        // Every command uses absolute paths: a refused CWD back does not invalidate the
+        // listing.
+        self.try_cwd(&base, ctx).await?;
         match lines {
             Ok(lines) => Ok(parse_listing(&lines).map_or(Listing::Unusable, Listing::Entries)),
             // The directory exists (CWD succeeded): some servers answer an empty one so.
@@ -594,8 +641,12 @@ impl FtpTransport {
     /// Names in the directory `absolute_dir`: empty when it is missing, `None` when the
     /// listing is unusable.
     // Mirrors dao/connection/ftp/FtpDAO.java:460-477.
-    async fn list_names(&mut self, absolute_dir: &str) -> Result<Option<HashSet<String>>> {
-        Ok(match self.list_dir(absolute_dir, false).await? {
+    async fn list_names(
+        &mut self,
+        absolute_dir: &str,
+        ctx: &TransferCtx,
+    ) -> Result<Option<HashSet<String>>> {
+        Ok(match self.list_dir(absolute_dir, false, ctx).await? {
             Listing::Entries(entries) => {
                 Some(entries.iter().map(|e| e.name().to_owned()).collect())
             }
@@ -605,7 +656,7 @@ impl FtpTransport {
     }
 
     // Mirrors dao/connection/ftp/FtpDAO.java:430-458.
-    pub async fn exists(&mut self, relative: &str, _ctx: &TransferCtx) -> Result<bool> {
+    pub async fn exists(&mut self, relative: &str, ctx: &TransferCtx) -> Result<bool> {
         self.ensure_usable()?;
         let (parent, name) = path::split_parent(relative);
         if self.session.is_active() {
@@ -614,7 +665,7 @@ impl FtpTransport {
                 .cached_listing(parent)
                 .map(|names| names.contains(name));
             if found.is_none()
-                && let Some(names) = self.list_names(&self.absolute(parent)).await?
+                && let Some(names) = self.list_names(&self.absolute(parent), ctx).await?
             {
                 self.session.store_listing(parent, names);
                 found = self
@@ -629,28 +680,41 @@ impl FtpTransport {
                 _ => {}
             }
         }
-        self.exists_absolute(&self.absolute(relative)).await
+        // An unusable listing finds nothing, like Java's empty `listFiles`.
+        Ok(self
+            .find_absolute(&self.absolute(relative), ctx)
+            .await?
+            .unwrap_or(false))
     }
 
-    /// `MLST`, or an uncached listing of the parent when the server has no `MLST`.
+    /// Whether `absolute` exists: `MLST`, or an uncached listing of the parent when the server
+    /// has no `MLST`. `None` when that listing is unusable, so the answer is unknown.
     // Mirrors dao/connection/ftp/FtpDAO.java:479-494.
-    async fn exists_absolute(&mut self, absolute: &str) -> Result<bool> {
-        let code = match self.stream.mlst(Some(absolute)).await {
+    async fn find_absolute(&mut self, absolute: &str, ctx: &TransferCtx) -> Result<Option<bool>> {
+        let code = match control(
+            &mut self.poisoned,
+            ctx,
+            None,
+            self.stream.mlst(Some(absolute)),
+        )
+        .await?
+        {
             // BadResponse: a 250 reply without a fact line.
-            Ok(_) | Err(FtpError::BadResponse) => return Ok(true),
+            Ok(_) | Err(FtpError::BadResponse) => return Ok(Some(true)),
             Err(FtpError::UnexpectedResponse(response)) => response,
             Err(e) => return Err(e.into()),
         };
         match mlst_outcome(code.status.code()) {
-            MlstOutcome::Found => Ok(true),
-            MlstOutcome::Missing => Ok(false),
+            MlstOutcome::Found => Ok(Some(true)),
+            MlstOutcome::Missing => Ok(Some(false)),
             MlstOutcome::Fallback => {
                 let trimmed = absolute.trim_end_matches('/');
                 let (parent, name) = trimmed.rsplit_once('/').unwrap_or(("", trimmed));
                 let parent = if parent.is_empty() { "/" } else { parent };
-                Ok(match self.list_dir(parent, true).await? {
-                    Listing::Entries(entries) => entries.iter().any(|e| e.name() == name),
-                    Listing::Missing | Listing::Unusable => false,
+                Ok(match self.list_dir(parent, true, ctx).await? {
+                    Listing::Entries(entries) => Some(entries.iter().any(|e| e.name() == name)),
+                    Listing::Missing => Some(false),
+                    Listing::Unusable => None,
                 })
             }
             MlstOutcome::Failed => Err(Error::Ftp(FtpError::UnexpectedResponse(code))),
@@ -658,9 +722,12 @@ impl FtpTransport {
     }
 
     /// `CWD`: `true` if the directory exists.
-    async fn try_cwd(&mut self, absolute: &str) -> Result<bool> {
-        match self.stream.cwd(absolute).await {
-            Ok(()) => Ok(true),
+    async fn try_cwd(&mut self, absolute: &str, ctx: &TransferCtx) -> Result<bool> {
+        match control(&mut self.poisoned, ctx, None, self.stream.cwd(absolute)).await? {
+            Ok(()) => {
+                self.cwd = Some(absolute.to_owned());
+                Ok(true)
+            }
             Err(FtpError::UnexpectedResponse(_)) => Ok(false),
             Err(e) => Err(e.into()),
         }
@@ -670,7 +737,8 @@ impl FtpTransport {
     ///
     /// In a session the deepest known directory of the chain is re-checked with `CWD`: if it
     /// vanished, the whole known chain is forgotten and every segment is checked again
-    /// (`FtpDAO.java:631-639`), so missing directories are recreated.
+    /// (`FtpDAO.java:631-639`), so missing directories are recreated. A known directory that
+    /// is already the working directory is not entered again (`FtpDAO.java:625-627`).
     // Mirrors dao/connection/ftp/FtpDAO.java:621-660.
     pub async fn mkdirs(&mut self, relative_dir: &str, ctx: &TransferCtx) -> Result<()> {
         self.ensure_usable()?;
@@ -679,13 +747,18 @@ impl FtpTransport {
             let parent = prefixes.last().map_or("", String::as_str);
             prefixes.push(path::join_relative(parent, segment));
         }
+        if let Some(target) = prefixes.last()
+            && self.session.is_known_dir(target)
+            && self.cwd.as_deref() == Some(self.absolute(target).as_str())
+        {
+            return Ok(());
+        }
         let mut start = 0;
         if let Some(known) = prefixes
             .iter()
             .rposition(|dir| self.session.is_known_dir(dir))
         {
-            ctx.check_cancelled()?;
-            if self.try_cwd(&self.absolute(&prefixes[known])).await? {
+            if self.try_cwd(&self.absolute(&prefixes[known]), ctx).await? {
                 // Its ancestors exist too.
                 start = known + 1;
             } else {
@@ -696,17 +769,16 @@ impl FtpTransport {
             let current = &prefixes[index];
             let parent = if index == 0 { "" } else { &prefixes[index - 1] };
             let segment = path::split_parent(current).1;
-            ctx.check_cancelled()?;
             let absolute = self.absolute(current);
-            if self.try_cwd(&absolute).await? {
+            if self.try_cwd(&absolute, ctx).await? {
                 self.session.mark_known_dir(current);
                 continue;
             }
-            match self.stream.mkdir(&absolute).await {
+            match control(&mut self.poisoned, ctx, None, self.stream.mkdir(&absolute)).await? {
                 Ok(()) => self.session.mark_created_dir(current, parent, segment),
                 Err(err @ FtpError::UnexpectedResponse(_)) => {
                     // Another connection may have created it meanwhile.
-                    if self.try_cwd(&absolute).await? {
+                    if self.try_cwd(&absolute, ctx).await? {
                         self.session.mark_known_dir(current);
                     } else {
                         return Err(remote_error(err, "create directory", current));
@@ -749,18 +821,31 @@ impl FtpTransport {
         relative: &str,
         ctx: &TransferCtx,
     ) -> Result<u64> {
-        ctx.check_cancelled()?;
         let absolute = self.absolute(relative);
-        let mut transfer = self
-            .stream
-            .put_with_stream(&absolute)
-            .await
-            .map_err(|e| map_ftp_error(e, relative))?;
-        match copy_upload(&mut source.reader, &mut transfer, ctx, self.read_timeout).await {
+        let mut transfer = control(
+            &mut self.poisoned,
+            ctx,
+            None,
+            self.stream.put_with_stream(&absolute),
+        )
+        .await?
+        .map_err(|e| map_ftp_error(e, relative))?;
+        let copied =
+            match copy_upload(&mut source.reader, &mut transfer, ctx, self.read_timeout).await {
+                Ok(n) => ctx.check_cancelled().map(|()| n),
+                Err(err) => Err(err),
+            };
+        match copied {
             Ok(n) => {
                 // A 550 here is a refused store (permissions, quota), not a missing file.
-                let finished = with_timeout(self.read_timeout, transfer.finish()).await;
-                self.poison_on_timeout(finished)?;
+                control(
+                    &mut self.poisoned,
+                    ctx,
+                    self.read_timeout,
+                    transfer.finish(),
+                )
+                .await?
+                .map_err(Error::Ftp)?;
                 Ok(n)
             }
             Err(err) => {
@@ -781,7 +866,7 @@ impl FtpTransport {
         self.ensure_usable()?;
         let absolute = self.absolute(relative);
         match kind {
-            RemoteKind::File => self.delete_file(&absolute).await?,
+            RemoteKind::File => self.delete_file(&absolute, ctx).await?,
             RemoteKind::Directory => self.delete_dir(absolute, ctx).await?,
         }
         let (parent, name) = path::split_parent(relative);
@@ -789,11 +874,15 @@ impl FtpTransport {
         Ok(())
     }
 
-    /// `DELE`; a 550 is only accepted when the file is confirmed missing.
-    async fn delete_file(&mut self, absolute: &str) -> Result<()> {
-        match self.stream.rm(absolute).await {
+    /// `DELE`; a 550 is only accepted when the file is confirmed missing (an unusable
+    /// listing confirms nothing).
+    async fn delete_file(&mut self, absolute: &str, ctx: &TransferCtx) -> Result<()> {
+        match control(&mut self.poisoned, ctx, None, self.stream.rm(absolute)).await? {
             Ok(()) => Ok(()),
-            Err(e) if reply_code(&e) == Some(550) && !self.exists_absolute(absolute).await? => {
+            Err(e)
+                if reply_code(&e) == Some(550)
+                    && self.find_absolute(absolute, ctx).await? == Some(false) =>
+            {
                 Ok(())
             }
             Err(e) => Err(remote_error(e, "delete file", absolute)),
@@ -810,17 +899,17 @@ impl FtpTransport {
     ) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>> {
         Box::pin(async move {
             ctx.check_cancelled()?;
-            let entries = match self.list_dir(&absolute, true).await? {
+            let entries = match self.list_dir(&absolute, true, ctx).await? {
                 Listing::Entries(entries) => entries,
                 Listing::Missing => {
-                    if self.exists_absolute(&absolute).await? {
-                        return Err(Error::Remote {
-                            operation: "list directory",
-                            path: absolute,
-                            reason: "cannot enter the directory".into(),
-                        });
+                    if self.find_absolute(&absolute, ctx).await? == Some(false) {
+                        return Ok(());
                     }
-                    return Ok(());
+                    return Err(Error::Remote {
+                        operation: "list directory",
+                        path: absolute,
+                        reason: "cannot enter the directory".into(),
+                    });
                 }
                 Listing::Unusable => {
                     return Err(Error::Remote {
@@ -835,14 +924,16 @@ impl FtpTransport {
                 if entry.is_directory() {
                     self.delete_dir(child, ctx).await?;
                 } else {
-                    self.delete_file(&child).await?;
+                    self.delete_file(&child, ctx).await?;
                 }
             }
-            match self.stream.rmdir(&absolute).await {
+            match control(&mut self.poisoned, ctx, None, self.stream.rmdir(&absolute)).await? {
                 Ok(()) => Ok(()),
                 // 550 is fine only if the directory is really gone (not, e.g., still holding
                 // entries hidden from the listing).
-                Err(e) if reply_code(&e) == Some(550) && !self.try_cwd(&absolute).await? => Ok(()),
+                Err(e) if reply_code(&e) == Some(550) && !self.try_cwd(&absolute, ctx).await? => {
+                    Ok(())
+                }
                 Err(e) => Err(remote_error(e, "remove directory", &absolute)),
             }
         })

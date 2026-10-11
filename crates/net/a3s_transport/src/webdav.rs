@@ -57,7 +57,7 @@ impl WebdavTransport {
     }
 
     /// Collection URL: always `/`-terminated, or servers answer 301.
-    // Mirrors dao/connection/RemoteFile.java:58-62.
+    // Mirrors dao/connection/RemoteFile.java:58-62 (trailing `/` of a directory).
     fn dir_url(&self, relative: &str) -> Url {
         let mut url = url_for(
             &self.http.base,
@@ -81,7 +81,7 @@ impl WebdavTransport {
     }
 
     /// `HEAD` on the file: 2xx → `true`, 404/410 → `false`.
-    // Mirrors dao/connection/webdav/WebdavDAO.java:249-277 (Sardine `exists` = HEAD).
+    // Mirrors dao/connection/webdav/WebdavDAO.java:250-277 (Sardine `exists` is a HEAD).
     pub async fn exists(&self, relative: &str, ctx: &TransferCtx) -> Result<bool> {
         let url = self.file_url(relative);
         let head = self
@@ -139,7 +139,7 @@ impl WebdavTransport {
     }
 
     /// `PUT` with an explicit `Content-Length`, streaming the body in chunks.
-    // Mirrors dao/connection/webdav/WebdavDAO.java:279-345.
+    // Mirrors dao/connection/webdav/WebdavDAO.java:280-373 (`uploadFile`, `uploadObjectFile`).
     pub(crate) async fn upload(
         &mut self,
         source: UploadSource,
@@ -172,7 +172,8 @@ impl WebdavTransport {
     }
 
     /// `DELETE` (the server deletes collections recursively); missing → `Ok`.
-    // Mirrors dao/connection/webdav/WebdavDAO.java:375-407.
+    // Mirrors dao/connection/webdav/WebdavDAO.java:376-407; a 207 answer is an error here (Java
+    // takes it as success).
     pub async fn delete(
         &mut self,
         relative: &str,
@@ -205,8 +206,8 @@ impl WebdavTransport {
 }
 
 /// Status check for `PUT` and `MKCOL`: 409 Conflict means a missing parent collection.
-// Approved deviation from dao/connection/webdav/WebdavDAO.java:231-242 (Java maps only
-// 401/404): 409 → `NotFound` here, and a 207 answer to DELETE is `Error::Remote`.
+// Extends dao/connection/webdav/WebdavDAO.java:231-242, which maps only 401 and 404: 409 is
+// `NotFound` here.
 fn check_write_status(status: StatusCode, url: &Url, path: &str) -> Result<()> {
     if status == StatusCode::CONFLICT {
         return Err(Error::NotFound(path.to_owned()));

@@ -5,14 +5,14 @@ use std::path::Path;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use a3s_types::{Protocol, ProtocolType};
+use a3s_types::{Protocol, ProtocolType, ssl_policy};
 use base64::Engine as _;
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use reqwest::{StatusCode, Url};
 use tokio::io::AsyncWriteExt as _;
 
 use crate::ctx::{TransferCtx, maybe_timeout};
-use crate::options::{TransportOptions, is_local_test_host};
+use crate::options::TransportOptions;
 use crate::session::SessionState;
 use crate::{Error, Result, path};
 
@@ -88,7 +88,7 @@ pub(crate) fn build_client(
         ProtocolType::Https | ProtocolType::HttpsWebdav
     );
     if tls && !protocol.validate_ssl_certificate {
-        if !is_local_test_host(protocol.hostname()) && !options.allow_insecure_tls {
+        if !ssl_policy::is_allowed_for(protocol.hostname(), options.allow_insecure_tls) {
             return Err(Error::InsecureTlsRefused(protocol.hostname().to_owned()));
         }
         tracing::warn!(
@@ -373,12 +373,50 @@ impl HttpTransport {
     /// Whether the server answers range requests (`HttpDAO.checkPartialFileTransfer`):
     /// `Range: bytes=0-1` on `.a3s/sync` must return 206.
     pub async fn supports_ranges(&mut self, ctx: &TransferCtx) -> bool {
-        match self
-            .send(".a3s/sync", Some("bytes=0-1".to_owned()), ctx)
+        self.probe_range(".a3s/sync", ctx)
             .await
-        {
-            Ok(response) => response.status() == StatusCode::PARTIAL_CONTENT,
-            Err(_) => false,
-        }
+            .is_ok_and(|probe| probe.supports_ranges())
+    }
+
+    /// Requests `Range: bytes=0-1` of `relative` and returns the status and the response
+    /// headers, which the partial-transfer check shows when the server ignored the range. The
+    /// body is not read. Error statuses fail like a download.
+    // Mirrors dao/connection/http/HttpDAO.java:431-446, 540-560.
+    pub async fn probe_range(&mut self, relative: &str, ctx: &TransferCtx) -> Result<RangeProbe> {
+        path::validate_relative(relative)?;
+        let response = self
+            .send(relative, Some("bytes=0-1".to_owned()), ctx)
+            .await?;
+        let headers = response
+            .headers()
+            .iter()
+            .map(|(name, value)| {
+                (
+                    name.as_str().to_owned(),
+                    String::from_utf8_lossy(value.as_bytes()).into_owned(),
+                )
+            })
+            .collect();
+        Ok(RangeProbe {
+            status: response.status().as_u16(),
+            headers,
+        })
+    }
+}
+
+/// Answer of [`HttpTransport::probe_range`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RangeProbe {
+    /// HTTP status: 206 when the server honoured the range.
+    pub status: u16,
+
+    /// Response headers in the order received (lower-case names, values decoded lossily).
+    pub headers: Vec<(String, String)>,
+}
+
+impl RangeProbe {
+    /// Whether the server answered with 206 Partial Content.
+    pub fn supports_ranges(&self) -> bool {
+        self.status == StatusCode::PARTIAL_CONTENT.as_u16()
     }
 }

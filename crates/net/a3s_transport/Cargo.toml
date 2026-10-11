@@ -32,16 +32,14 @@ suppaftp = { workspace = true, features = ["tokio-rustls-aws-lc-rs"] }
 thiserror.workspace = true
 tokio = { workspace = true, features = ["fs", "io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
 tokio-rustls.workspace = true
+tokio-socks.workspace = true
 tokio-util = { workspace = true, features = ["io"] }
 tracing.workspace = true
 url.workspace = true
 
 [dev-dependencies]
 a3s_repo_files.workspace = true
+a3s_test_servers.workspace = true
 axum.workspace = true
-dav-server.workspace = true
-libunftp.workspace = true
-rcgen.workspace = true
 tempfile.workspace = true
-unftp-sbe-fs.workspace = true
 tokio = { workspace = true, features = ["full"] }

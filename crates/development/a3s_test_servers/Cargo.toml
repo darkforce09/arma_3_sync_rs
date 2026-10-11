@@ -1,0 +1,33 @@
+[package]
+name = "a3s_test_servers"
+description = "In-process FTP(S), SFTP, WebDAV, TCP and SOCKS test servers for the network crates' tests."
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+include.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[lints]
+workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+
+[dependencies]
+a3s_transport.workspace = true
+a3s_types.workspace = true
+axum.workspace = true
+base64.workspace = true
+dav-server.workspace = true
+libunftp.workspace = true
+parking_lot.workspace = true
+rcgen.workspace = true
+russh.workspace = true
+russh-sftp.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["full"] }
+unftp-sbe-fs.workspace = true

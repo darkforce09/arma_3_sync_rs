@@ -1,16 +1,16 @@
-//! Transport tests against in-process FTP/FTPS (libunftp), SFTP (russh), WebDAV (dav-server)
-//! and HTTP (axum) servers, and the configured proxy.
+//! Transport tests against the in-process FTP/FTPS, SFTP, WebDAV and SOCKS servers of
+//! `a3s_test_servers`, local HTTP (axum) servers, and the configured proxy.
 
 mod common;
 mod ftp;
 mod http;
 mod proxy;
 mod sftp;
-mod support;
 mod webdav;
 
 use std::path::PathBuf;
 
+use a3s_test_servers as support;
 use a3s_transport::{RemoteKind, TransferCtx, Transport};
 
 /// `Transport` and the futures of every write method are `Send` (spawned by the upload

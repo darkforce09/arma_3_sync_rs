@@ -360,18 +360,12 @@ impl HttpServer {
 // ---------------------------------------------------------------------------------------------
 // libunftp FTP server
 
-/// An anonymous FTP server over a tempdir.
+/// An anonymous FTP server (`a3s_test_servers::ftp`) serving `root` as `/repo`.
 pub struct FtpServer {
     pub port: u16,
     pub root: PathBuf,
     _dir: tempfile::TempDir,
-    task: tokio::task::JoinHandle<()>,
-}
-
-impl Drop for FtpServer {
-    fn drop(&mut self) {
-        self.task.abort();
-    }
+    _task: a3s_test_servers::AbortOnDrop,
 }
 
 impl FtpServer {
@@ -379,31 +373,12 @@ impl FtpServer {
         let dir = tempfile::tempdir().expect("tempdir");
         let root = dir.path().join("root");
         std::fs::create_dir_all(root.join("repo")).expect("mkdir");
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("bind FTP");
-        let port = listener.local_addr().expect("addr").port();
-        let served = root.clone();
-        let task = tokio::spawn(async move {
-            while let Ok((stream, _)) = listener.accept().await {
-                let served = served.clone();
-                let server = libunftp::ServerBuilder::new(Box::new(move || {
-                    unftp_sbe_fs::Filesystem::new(served.clone()).expect("filesystem back-end")
-                }))
-                .greeting("a3s download test server")
-                .passive_ports(40000..=60000)
-                .build()
-                .expect("FTP server");
-                tokio::spawn(async move {
-                    let _ignored = server.service(stream).await;
-                });
-            }
-        });
+        let (port, task) = a3s_test_servers::ftp::serve(root.clone(), false).await;
         Self {
             port,
             root: root.join("repo"),
             _dir: dir,
-            task,
+            _task: a3s_test_servers::AbortOnDrop(task),
         }
     }
 
@@ -438,15 +413,7 @@ impl FtpServer {
 
 /// Deterministic pseudo-random bytes.
 pub fn random_bytes(len: usize, seed: u64) -> Vec<u8> {
-    let mut state = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
-    (0..len)
-        .map(|_| {
-            state ^= state << 13;
-            state ^= state >> 7;
-            state ^= state << 17;
-            (state >> 24) as u8
-        })
-        .collect()
+    a3s_test_servers::random_bytes(len, seed)
 }
 
 /// A request with `connections` workers, no speed limit and no disk-usage sampling.

@@ -1,9 +1,10 @@
-//! In-process test servers and shared helpers. `a3s_admin`'s `tests/net_support` includes this
-//! module by path, so changes here must keep compiling there.
+//! In-process test servers for the network crates' tests, and shared helpers.
 
 pub mod ftp;
 pub mod sftp;
+pub mod socks;
 pub mod strict_ftp;
+pub mod tcp;
 pub mod webdav;
 
 use std::path::{Path, PathBuf};
@@ -25,7 +26,7 @@ pub struct Fixture {
     pub request_count: Option<Box<dyn Fn() -> usize + Send + Sync>>,
 
     /// Keeps the server alive.
-    pub _server: Box<dyn std::any::Any + Send + Sync>,
+    pub server: Box<dyn std::any::Any + Send + Sync>,
 }
 
 impl Fixture {
@@ -45,6 +46,15 @@ impl Fixture {
         let path = self.base.join(relative);
         std::fs::create_dir_all(path.parent().expect("file has a parent")).expect("mkdir");
         std::fs::write(path, bytes).expect("write");
+    }
+}
+
+/// Aborts a server task when dropped.
+pub struct AbortOnDrop(pub tokio::task::JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
     }
 }
 

@@ -22,9 +22,12 @@ pub enum Error {
     #[error("{0}")]
     InvalidProtocol(String),
 
+    /// Certificate validation is disabled for a host that
+    /// [`a3s_types::ssl_policy::is_allowed_for`] refuses.
     #[error(
         "SSL certificate validation is disabled for the non-local host '{0}'. Enable certificate \
-         validation, or set A3S_ALLOW_INSECURE_SSL=1 for a controlled development test."
+         validation, or set {env}=1 for a controlled development test.",
+        env = a3s_types::ssl_policy::ALLOW_INSECURE_ENV
     )]
     InsecureTlsRefused(String),
 

@@ -312,3 +312,91 @@ async fn a_ftp_missing_completion_reply_poisons() {
         "{result:?}"
     );
 }
+
+/// A reply that never comes (the `RETR` answer, the completion of a transfer, an `MLST`
+/// answer) is interrupted by cancellation within a second, without any read timeout; the
+/// connection is poisoned afterwards because the late reply would answer the next command.
+#[tokio::test]
+async fn ftp_commands_race_cancellation() {
+    let withheld = [
+        Behaviour {
+            silent: Some("RETR"),
+            ..Behaviour::default()
+        },
+        Behaviour {
+            withhold_completion: true,
+            ..Behaviour::default()
+        },
+        Behaviour {
+            silent: Some("MLST"),
+            ..Behaviour::default()
+        },
+    ];
+    for behaviour in withheld {
+        let stub = strict_ftp::serve(STUB_PATH, random_bytes(10, 1), behaviour).await;
+        let mut options = TransportOptions::from_protocol(&stub.protocol);
+        options.read_timeout = None;
+        let mut t = Transport::connect(&stub.protocol, &options).await.unwrap();
+        let ctx = TransferCtx::new();
+        let cancel = ctx.cancel.clone();
+        let cancelled_at = tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            cancel.cancel();
+            std::time::Instant::now()
+        });
+        let result = if behaviour.silent == Some("MLST") {
+            t.exists("f.pbo", &ctx).await.map(|_| ())
+        } else {
+            t.fetch("f.pbo", &ctx).await.map(|_| ())
+        };
+        let returned = std::time::Instant::now();
+        let cancelled_at = cancelled_at.await.unwrap();
+        assert!(
+            matches!(result, Err(Error::Cancelled)),
+            "{behaviour:?}: {result:?}"
+        );
+        assert!(
+            returned.duration_since(cancelled_at) < std::time::Duration::from_secs(1),
+            "{behaviour:?}"
+        );
+        let next = t.exists("f.pbo", &TransferCtx::new()).await;
+        assert!(
+            matches!(next, Err(Error::ConnectionPoisoned)),
+            "{behaviour:?}: {next:?}"
+        );
+    }
+}
+
+/// Uploads into the current working directory of a session send no further `CWD`
+/// (`FtpDAO.makeDir` returns at once for the current directory); another directory does.
+#[tokio::test]
+async fn session_uploads_skip_cwd_into_current_directory() {
+    let fx = fixture(false).await;
+    let relay = a3s_test_servers::tcp::Relay::start(fx.protocol.port.parse().unwrap()).await;
+    let protocol = relay.protocol(&fx.protocol);
+    let options = TransportOptions::from_protocol(&protocol);
+    let mut t = Transport::connect(&protocol, &options).await.unwrap();
+    let ctx = TransferCtx::new();
+    let cwd_count = |relay: &a3s_test_servers::tcp::Relay| {
+        relay
+            .lines()
+            .iter()
+            .filter(|line| line.starts_with("CWD "))
+            .count()
+    };
+    let mut session = t.upload_session();
+    // Creates d, then enters it once.
+    session.upload_bytes(b"1", "d/1.bin", &ctx).await.unwrap();
+    session.upload_bytes(b"2", "d/2.bin", &ctx).await.unwrap();
+    relay.clear_lines();
+    session.upload_bytes(b"3", "d/3.bin", &ctx).await.unwrap();
+    session.upload_bytes(b"4", "d/4.bin", &ctx).await.unwrap();
+    assert_eq!(cwd_count(&relay), 0, "{:?}", relay.lines());
+    session.upload_bytes(b"5", "e/5.bin", &ctx).await.unwrap();
+    assert!(cwd_count(&relay) > 0, "{:?}", relay.lines());
+    drop(session);
+    for name in ["d/1.bin", "d/2.bin", "d/3.bin", "d/4.bin", "e/5.bin"] {
+        assert!(fx.base.join(name).is_file(), "{name}");
+    }
+    t.close().await;
+}

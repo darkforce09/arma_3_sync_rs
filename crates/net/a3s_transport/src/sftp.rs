@@ -17,6 +17,7 @@ use tokio::io::{AsyncSeekExt as _, AsyncWriteExt as _};
 
 use crate::ctx::{TransferCtx, copy, copy_upload};
 use crate::options::TransportOptions;
+use crate::proxy::Dialer;
 use crate::session::SessionState;
 use crate::{Error, RemoteKind, Result, UploadSource, path};
 
@@ -160,9 +161,14 @@ impl SftpTransport {
         let handler = HostKeyLogger { host: host.clone() };
         // One timeout covers connect, authentication and the SFTP subsystem.
         let timeout = options.connect_timeout.unwrap_or(DEFAULT_CONNECT_TIMEOUT);
+        let dialer = Dialer::new(options, "SFTP")?;
         let setup = async {
-            let mut session =
-                russh::client::connect(config, (host.as_str(), port), handler).await?;
+            // A failed connect is an SSH error, as from `russh::client::connect`.
+            let socket = dialer
+                .connect_host(&host, port)
+                .await
+                .map_err(russh::Error::IO)?;
+            let mut session = russh::client::connect_stream(config, socket, handler).await?;
             match session.authenticate_password(login, password).await? {
                 AuthResult::Success => {}
                 AuthResult::Failure { .. } => return Err(Error::Unauthorized),

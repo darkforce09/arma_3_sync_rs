@@ -31,7 +31,7 @@ use crate::session::SessionState;
 
 pub use ctx::{StartOffset, Throttle, TransferCtx};
 pub use error::{Error, Result};
-pub use options::{ProxyConfig, TransportOptions, is_local_test_host};
+pub use options::{ProxyConfig, TransportOptions};
 pub use session::{UploadSession, UploadSessionStats};
 pub use tokio_util::sync::CancellationToken;
 

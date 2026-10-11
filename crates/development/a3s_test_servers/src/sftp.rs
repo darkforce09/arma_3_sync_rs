@@ -16,8 +16,7 @@ use russh_sftp::protocol::{
 };
 use tokio::io::{AsyncReadExt as _, AsyncSeekExt as _, AsyncWriteExt as _};
 
-use super::ftp::AbortOnDrop;
-use super::{Fixture, outer_with_root};
+use crate::{AbortOnDrop, Fixture, outer_with_root};
 
 pub const USER: &str = "a3s";
 pub const PASSWORD: &str = "secret";
@@ -385,7 +384,7 @@ pub async fn fixture_with(home: &str, url_path: &str, password: &str, base: &str
         base: root.join(base.trim_start_matches('/')),
         outer,
         request_count: None,
-        _server: Box::new(AbortOnDrop(task)),
+        server: Box::new(AbortOnDrop(task)),
     }
 }
 

@@ -15,14 +15,15 @@ use a3s_admin::{UploadError, UploadReport, UploadResume, build_repository, uploa
 use a3s_repo_files::A3sFile;
 use a3s_repo_files::hash::Sha1Cache;
 use a3s_sync::{EventSender, Outcome, Phase, SyncEvent};
+use a3s_test_servers::tcp::Relay;
 use a3s_transport::{CancellationToken, TransferCtx, TransportOptions};
 use a3s_types::local::Repository;
 use a3s_types::{Protocol, ProtocolType, ServerInfo};
 use parking_lot::Mutex;
 
 use net_support::{
-    DavServer, Events, NOT_IN_SYNC, Proxy, built_repo, copy_tree, data_files, gunzip, repository,
-    servers, tree,
+    DavServer, Events, NOT_IN_SYNC, built_repo, copy_tree, data_files, gunzip, repository, servers,
+    tree,
 };
 
 /// Directories and uploaded files of the `http_zip` sample with `.zsync` and `.zip` files.
@@ -316,12 +317,12 @@ async fn webdav_incremental_upload_orders_writes() {
 #[tokio::test]
 async fn ftp_session_spans_the_whole_upload() {
     let fixture = servers::ftp::fixture(false).await;
-    let proxy = Proxy::start(fixture.protocol.port.parse().expect("port")).await;
+    let relay = Relay::start(fixture.protocol.port.parse().expect("port")).await;
     let (_dir, local) = local_copy("http_zip");
     let mut repo = setup(
         ProtocolType::Http,
         &local,
-        &proxy.protocol(&fixture.protocol),
+        &relay.protocol(&fixture.protocol),
         true,
     );
     repo.parallel_upload_connections = 1;
@@ -329,10 +330,10 @@ async fn ftp_session_spans_the_whole_upload() {
 
     std::fs::write(local.join("@Mod_A/addons/mod_a.pbo"), vec![7u8; 21_000]).expect("modify");
     rebuild(&repo);
-    proxy.clear_lines();
+    relay.clear_lines();
     let report = upload_ok(&repo, &Events::default()).await;
     assert_eq!(report.uploaded_files, 3);
-    let lines = proxy.lines();
+    let lines = relay.lines();
     // `mod_a.pbo`, its `.zip` and `.zsync` go to `@Mod_A/addons`: once the first is stored the
     // directory is known, so the parent `@Mod_A` is not checked again.
     let first_store = lines
@@ -424,9 +425,9 @@ fn is_file_start(event: &SyncEvent) -> Option<&str> {
 }
 
 async fn parallel_upload(server_protocol: &Protocol, base: &Path, files: usize, raw: i32) -> usize {
-    let proxy = Proxy::start(server_protocol.port.parse().expect("port")).await;
+    let relay = Relay::start(server_protocol.port.parse().expect("port")).await;
     let dir = tempfile::tempdir().expect("tempdir");
-    let mut repo = many_files_repo(dir.path(), files, &proxy.protocol(server_protocol));
+    let mut repo = many_files_repo(dir.path(), files, &relay.protocol(server_protocol));
     repo.parallel_upload_connections = raw;
     let events = Events::default();
     let report = upload_ok(&repo, &events).await;
@@ -446,7 +447,7 @@ async fn parallel_upload(server_protocol: &Protocol, base: &Path, files: usize, 
         .position(|e| is_file_start(e).is_some())
         .expect("files");
     assert!(last_dir < first_file);
-    proxy.max_connections.load(Ordering::SeqCst)
+    relay.max_connections.load(Ordering::SeqCst)
 }
 
 #[tokio::test]
@@ -660,12 +661,12 @@ async fn resume_skips_files_of_the_failed_attempt() {
 #[tokio::test]
 async fn connection_lost_keeps_resume_and_metadata() {
     let fixture = servers::ftp::fixture(false).await;
-    let proxy = Proxy::start(fixture.protocol.port.parse().expect("port")).await;
+    let relay = Relay::start(fixture.protocol.port.parse().expect("port")).await;
     let dir = tempfile::tempdir().expect("tempdir");
-    let mut repo = many_files_repo(dir.path(), 4, &proxy.protocol(&fixture.protocol));
+    let mut repo = many_files_repo(dir.path(), 4, &relay.protocol(&fixture.protocol));
     repo.parallel_upload_connections = 1;
     let events = Events::default();
-    let cut = proxy.cut.clone();
+    let cut = relay.cut.clone();
     let sender = events_with(&events, move |event| {
         if is_file_start(event).is_some() {
             cut.cancel();

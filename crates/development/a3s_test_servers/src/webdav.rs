@@ -14,8 +14,7 @@ use dav_server::fakels::FakeLs;
 use dav_server::localfs::LocalFs;
 use parking_lot::Mutex;
 
-use super::ftp::AbortOnDrop;
-use super::{Fixture, outer_with_root};
+use crate::{AbortOnDrop, Fixture, outer_with_root};
 
 pub const USER: &str = "uploader";
 pub const PASSWORD: &str = "secret";
@@ -102,7 +101,7 @@ pub async fn fixture_with(login: &str, password: &str, require_auth: bool) -> (F
         base: root,
         outer,
         request_count: Some(Box::new(move || count_log.lock().len())),
-        _server: Box::new(AbortOnDrop(task)),
+        server: Box::new(AbortOnDrop(task)),
     };
     (fixture, log)
 }

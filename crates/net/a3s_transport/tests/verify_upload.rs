@@ -1,20 +1,17 @@
 //! Adversarial verification of the upload side (exists / upload / mkdirs / delete and
-//! upload sessions) against the in-process test servers of `tests/transport/support`.
-
-#[allow(dead_code, unused_imports)]
-#[path = "transport/support/mod.rs"]
-mod support;
+//! upload sessions) against the in-process test servers of `a3s_test_servers`.
 
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
+use a3s_test_servers as support;
 use a3s_transport::{Error, RemoteKind, Throttle, TransferCtx, Transport, TransportOptions};
 use a3s_types::{Protocol, ProtocolType};
 use axum::http::StatusCode;
 use axum::response::IntoResponse as _;
 
-use support::ftp::AbortOnDrop;
+use support::AbortOnDrop;
 use support::{Fixture, random_bytes, snapshot};
 
 macro_rules! each_protocol {
