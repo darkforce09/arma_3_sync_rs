@@ -37,12 +37,17 @@ utf8_locale() {
             return
         fi
     done
-    echo C.UTF-8
+    return 1
 }
-LC_ALL="$(utf8_locale)"
-LANG="$LC_ALL"
-export LC_ALL LANG
-unset LANGUAGE
+if UTF8_LOCALE="$(utf8_locale)"; then
+    LC_ALL="$UTF8_LOCALE"
+    LANG="$UTF8_LOCALE"
+    export LC_ALL LANG
+    unset LANGUAGE
+else
+    echo "java_fixture_harness: warning: neither C.UTF-8 nor en_US.UTF-8 is installed (locale -a);" \
+        "paths with non-ASCII characters will fail" >&2
+fi
 
 # B2: JDK 25 from scripts/java_env.sh (A3S_JAVA_HOME overrides the default location).
 # shellcheck source=../../scripts/java_env.sh
@@ -79,8 +84,9 @@ if [[ -z "$JAVA_SRC" || ! -d "$JAVA_SRC/fr/soe/a3s" ]]; then
 fi
 JAVA_SRC="$(cd "$JAVA_SRC" && pwd -P)"
 A3S="$JAVA_SRC/fr/soe/a3s"
-JAVA_CHECKOUT="$(cd "$JAVA_SRC/../../.." && pwd -P)"
-JAVA_COMMIT="$(git -C "$JAVA_CHECKOUT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+# The Arma3Sync checkout; may be a plain copy (no git), then the commit is "unknown".
+JAVA_CHECKOUT="$(cd "$JAVA_SRC/../../.." 2>/dev/null && pwd -P)" || JAVA_CHECKOUT="$JAVA_SRC"
+JAVA_COMMIT="$(git -C "$JAVA_CHECKOUT" rev-parse --short HEAD 2>/dev/null)" || JAVA_COMMIT=unknown
 
 RBP_REL="fr/soe/a3s/dao/repository/RepositoryBuildProcessor.java"
 
@@ -100,20 +106,16 @@ if [[ $CLEAN -eq 1 ]]; then
     find "$BUILD" -mindepth 1 -maxdepth 1 ! -name .lock -exec rm -rf {} + || die 3 "cannot clean $BUILD"
 fi
 
-# B7: the stamp covers every input of this script, including uncommitted Java changes (the
-# implicitly compiled closure is only covered by the commit otherwise).
+# B7: the stamp covers every input of this script. Every .java file of the source root is hashed
+# (names and contents, ~300 files): this covers the implicitly compiled closure, uncommitted and
+# untracked changes, and source roots that are not git checkouts.
 compute_stamp() {
     {
         (cd "$HARNESS" && find src stubs -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum)
         sha256sum "$HARNESS/build.sh" | awk '{print $1}'
-        (cd "$JAVA_SRC" && sha256sum "$RBP_REL")
-        for entry in "${VARIANTS[@]}"; do
-            (cd "$JAVA_SRC" && sha256sum "${entry#* }")
-        done
+        (cd "$JAVA_SRC" && find . -type f -name '*.java' -print0 | LC_ALL=C sort -z | xargs -0 sha256sum)
         echo "$javac_version"
         echo "$JAVA_COMMIT"
-        git -C "$JAVA_CHECKOUT" status --porcelain -- . 2>/dev/null
-        git -C "$JAVA_CHECKOUT" diff HEAD -- . 2>/dev/null
     } | sha256sum | awk '{print $1}'
 }
 STAMP="$(compute_stamp)" || die 3 "cannot compute the build stamp"

@@ -22,12 +22,17 @@ utf8_locale() {
             return
         fi
     done
-    echo C.UTF-8
+    return 1
 }
-LC_ALL="$(utf8_locale)"
-LANG="$LC_ALL"
-export LC_ALL LANG
-unset LANGUAGE
+if UTF8_LOCALE="$(utf8_locale)"; then
+    LC_ALL="$UTF8_LOCALE"
+    LANG="$UTF8_LOCALE"
+    export LC_ALL LANG
+    unset LANGUAGE
+else
+    echo "java_fixture_harness: warning: neither C.UTF-8 nor en_US.UTF-8 is installed (locale -a);" \
+        "paths with non-ASCII characters will fail" >&2
+fi
 
 # shellcheck source=../../scripts/java_env.sh
 if ! source "$REPO/scripts/java_env.sh" 2>/dev/null; then

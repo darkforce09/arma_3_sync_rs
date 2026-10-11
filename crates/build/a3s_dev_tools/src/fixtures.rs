@@ -79,19 +79,60 @@ pub fn install(generated: &Path, fixtures_dir: &Path) -> io::Result<()> {
     let staging = tempfile::Builder::new()
         .prefix(".a3s-fixtures-staging")
         .tempdir_in(fixtures_dir)?;
+    let result = stage_and_swap(generated, fixtures_dir, staging.path());
+    // On success the staging directory holds the replaced entries, on failure what was staged;
+    // either way it goes away.
+    let cleanup = staging.close();
+    result?;
+    cleanup
+}
+
+fn stage_and_swap(generated: &Path, fixtures_dir: &Path, staging: &Path) -> io::Result<()> {
     for entry in GENERATED_ENTRIES {
-        move_entry(&generated.join(entry), &staging.path().join(entry))?;
+        move_entry(&generated.join(entry), &staging.join(entry))?;
     }
-    let old = staging.path().join(".old");
+    let old = staging.join(".old");
     fs::create_dir(&old)?;
-    for entry in GENERATED_ENTRIES {
+    swap_entries(fixtures_dir, staging, &old, &GENERATED_ENTRIES)
+}
+
+/// Moves each `fixtures_dir/<entry>` to `old/<entry>` and `staged/<entry>` into its place. On
+/// any failure the entries already swapped are rolled back, so `fixtures_dir` is unchanged.
+fn swap_entries(
+    fixtures_dir: &Path,
+    staged: &Path,
+    old: &Path,
+    entries: &[&str],
+) -> io::Result<()> {
+    let mut swapped: Vec<(&str, bool)> = Vec::new();
+    for &entry in entries {
         let target = fixtures_dir.join(entry);
-        if fs::symlink_metadata(&target).is_ok() {
-            fs::rename(&target, old.join(entry))?;
+        let had_old = fs::symlink_metadata(&target).is_ok();
+        let step = (|| {
+            if had_old {
+                fs::rename(&target, old.join(entry))?;
+            }
+            if let Err(err) = fs::rename(staged.join(entry), &target) {
+                if had_old {
+                    // Best effort: the error below is the one to report.
+                    drop(fs::rename(old.join(entry), &target));
+                }
+                return Err(err);
+            }
+            Ok(())
+        })();
+        if let Err(err) = step {
+            for (done, had_old) in swapped.into_iter().rev() {
+                let target = fixtures_dir.join(done);
+                drop(remove_entry(&target));
+                if had_old {
+                    drop(fs::rename(old.join(done), &target));
+                }
+            }
+            return Err(err);
         }
-        fs::rename(staging.path().join(entry), &target)?;
+        swapped.push((entry, had_old));
     }
-    // Dropping `staging` deletes the replaced entries.
     Ok(())
 }
 
@@ -338,6 +379,67 @@ mod tests {
             fs::read_to_string(fixtures.join("java_local/file.txt")).unwrap(),
             "old"
         );
+    }
+
+    fn read_marker(root: &Path, entry: &str) -> String {
+        let file = if entry.ends_with(".txt") {
+            root.join(entry)
+        } else {
+            root.join(entry).join("file.txt")
+        };
+        fs::read_to_string(file).unwrap()
+    }
+
+    #[test]
+    fn a2_swap_rolls_back_on_failure() {
+        let tmp = tempfile::tempdir().unwrap();
+        let fixtures = tmp.path().join("fixtures");
+        fake_generated(&fixtures, "old");
+        let staged = tmp.path().join("staged");
+        fake_generated(&staged, "new");
+        // The fifth entry cannot be swapped in.
+        fs::remove_dir_all(staged.join("java_presets")).unwrap();
+        let old = tmp.path().join("old");
+        fs::create_dir(&old).unwrap();
+        assert!(super::swap_entries(&fixtures, &staged, &old, &GENERATED_ENTRIES).is_err());
+        for entry in GENERATED_ENTRIES {
+            assert_eq!(read_marker(&fixtures, entry), "old", "{entry}");
+        }
+        assert_eq!(fs::read_dir(&old).unwrap().count(), 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a2_install_failure_leaves_fixtures_and_no_staging_dir() {
+        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+
+        let tmp = tempfile::tempdir().unwrap();
+        if fs::metadata(tmp.path()).unwrap().uid() == 0 {
+            return; // root ignores directory permissions
+        }
+        let fixtures = tmp.path().join("fixtures");
+        fake_generated(&fixtures, "old");
+        write(&fixtures.join("README.md"), "readme");
+        let generated = tmp.path().join("generated");
+        fake_generated(&generated, "new");
+        // Moving a directory to another parent needs write access to it (its `..` changes).
+        let locked = fixtures.join("java_presets");
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o555)).unwrap();
+        let result = install(&generated, &fixtures);
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(result.is_err());
+        for entry in GENERATED_ENTRIES {
+            assert_eq!(read_marker(&fixtures, entry), "old", "{entry}");
+        }
+        let mut names: Vec<String> = fs::read_dir(&fixtures)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        let mut expected: Vec<String> = GENERATED_ENTRIES.iter().map(|e| (*e).to_owned()).collect();
+        expected.push("README.md".to_owned());
+        expected.sort();
+        assert_eq!(names, expected);
     }
 
     #[test]

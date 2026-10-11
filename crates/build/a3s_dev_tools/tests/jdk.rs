@@ -1140,4 +1140,85 @@ fn generate_refuses_nested_work_and_out() {
     assert_eq!(run(tmp.path()).status.code(), Some(2));
     assert_eq!(run(&out).status.code(), Some(2));
     assert!(!out.join("java_descriptors.txt").exists());
+
+    // Symbolic links are resolved: --work reaching --out through a link is nested too.
+    let link = tmp.path().join("link-to-out");
+    fs::create_dir_all(&out).unwrap();
+    std::os::unix::fs::symlink(&out, &link).unwrap();
+    assert_eq!(run(&link.join("work")).status.code(), Some(2));
+}
+
+/// B1/B7: a source root that is not a git checkout (e.g. an extracted tarball) builds with Java
+/// commit `unknown`, and a change to any of its `.java` files invalidates the stamp.
+#[test]
+#[ignore = "needs JDK 25: source scripts/java_env.sh"]
+fn build_from_a_non_git_copy_of_the_java_sources() {
+    let _guard = LOCK.lock();
+    let real = harness();
+    real.build().unwrap();
+    // The same resolution order as build.sh (B1).
+    let java_src = std::env::var_os("A3S_JAVA_SRC")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            real.repo_root()
+                .join("java_version/Arma3Sync/src/main/java")
+        })
+        .canonicalize()
+        .or_else(|_err| {
+            // Agent worktrees: the sources live next to the main checkout.
+            let common = Command::new("git")
+                .arg("-C")
+                .arg(real.repo_root())
+                .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
+                .output()
+                .unwrap();
+            let common = PathBuf::from(String::from_utf8(common.stdout).unwrap().trim());
+            common
+                .parent()
+                .unwrap()
+                .join("java_version/Arma3Sync/src/main/java")
+                .canonicalize()
+        })
+        .unwrap();
+
+    let tmp = tempfile::tempdir().unwrap();
+    let copy = tmp.path().join("Arma3Sync/src/main/java");
+    for rel in files(&java_src) {
+        let to = copy.join(&rel);
+        fs::create_dir_all(to.parent().unwrap()).unwrap();
+        fs::copy(java_src.join(&rel), &to).unwrap();
+    }
+    let h = harness().env("A3S_JAVA_SRC", &copy);
+    let output = h.build_output().unwrap();
+    assert!(output.contains("Java commit unknown"), "{output}");
+    let stamp_file = h.harness_dir().join("build/stamp");
+    let stamp = fs::read_to_string(&stamp_file).unwrap();
+    assert!(h.build_output().unwrap().contains("up to date"));
+
+    // Any .java file of the root is part of the stamp, also one nothing compiles explicitly.
+    let changed = copy.join("fr/soe/a3s/jazsync/MD4.java");
+    let mut text = fs::read_to_string(&changed).unwrap();
+    text.push_str("\n// harness stamp test\n");
+    fs::write(&changed, text).unwrap();
+    let output = h.build_output().unwrap();
+    assert!(!output.contains("up to date"), "{output}");
+    assert_ne!(fs::read_to_string(&stamp_file).unwrap(), stamp);
+
+    let (_gen, out) = {
+        let gen_tmp = tempfile::tempdir().unwrap();
+        let out = gen_tmp.path().join("out");
+        h.generate(&out, &[Part::Descriptors]).unwrap();
+        (gen_tmp, out)
+    };
+    let descriptors = fs::read_to_string(out.join("java_descriptors.txt")).unwrap();
+    assert!(
+        descriptors
+            .lines()
+            .next()
+            .unwrap()
+            .ends_with("; Java commit unknown")
+    );
+
+    // Back to the real sources for the other tests.
+    real.build().unwrap();
 }

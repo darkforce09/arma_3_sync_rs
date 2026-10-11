@@ -82,7 +82,12 @@ addon keys, `Boolean.TRUE`/`FALSE`, enum constants) come from Arma3Sync code.
 recognised inside a `.a3s` directory), instead of silently skipping everything.
 
 `run.sh` and `build.sh` export `LC_ALL=C.UTF-8` (or `en_US.UTF-8`): the JDK takes the file-name
-encoding from the locale and ignores `-Dsun.jnu.encoding`, so non-ASCII paths need it.
+encoding from the locale and ignores `-Dsun.jnu.encoding`, so non-ASCII paths need it. When
+neither locale is installed they print a warning and keep the host locale.
+
+The build stamp hashes every `.java` file of the source root (names and contents), so
+uncommitted, untracked and non-git sources (an extracted tarball via `A3S_JAVA_SRC`, Java commit
+`unknown`) are all covered.
 
 ## Harness-only changes (not Java behaviour)
 

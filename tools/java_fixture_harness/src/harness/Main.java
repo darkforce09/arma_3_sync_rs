@@ -152,14 +152,14 @@ public final class Main {
 		if (out == null) {
 			throw new UsageException("generate requires --out <dir>");
 		}
-		if (work != null && (work.startsWith(out) || out.startsWith(work))) {
+		if (work != null && nested(work, out)) {
 			throw new UsageException("--work and --out must not contain each other: " + work + ", " + out);
 		}
 		requireEmptyOrMissing(out, "--out");
 		Files.createDirectories(out);
 		if (work == null) {
 			work = Files.createTempDirectory("a3s-harness").toAbsolutePath().normalize();
-			if (work.startsWith(out)) {
+			if (nested(work, out)) {
 				Files.delete(work);
 				throw new UsageException("the temporary work directory " + work + " is inside --out " + out);
 			}
@@ -194,6 +194,26 @@ public final class Main {
 			}
 		}
 		return EXIT_OK;
+	}
+
+	/** True when one directory is (or will be) inside the other, symbolic links resolved. */
+	private static boolean nested(Path a, Path b) throws IOException {
+		Path realA = realPath(a);
+		Path realB = realPath(b);
+		return realA.startsWith(realB) || realB.startsWith(realA);
+	}
+
+	/** {@code toRealPath} of the nearest existing ancestor, with the missing components appended. */
+	private static Path realPath(Path path) throws IOException {
+		Path absolute = path.toAbsolutePath().normalize();
+		Path existing = absolute;
+		while (existing != null && !Files.exists(existing)) {
+			existing = existing.getParent();
+		}
+		if (existing == null) {
+			return absolute;
+		}
+		return existing.toRealPath().resolve(existing.relativize(absolute)).normalize();
 	}
 
 	static String value(List<String> args, int index, String option) throws UsageException {
