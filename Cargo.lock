@@ -163,8 +163,10 @@ dependencies = [
  "rcgen",
  "russh",
  "russh-sftp",
+ "rustls",
  "tempfile",
  "tokio",
+ "tokio-rustls",
  "unftp-sbe-fs",
 ]
 

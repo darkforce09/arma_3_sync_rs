@@ -9,12 +9,13 @@ use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 use std::time::Duration;
 
 use a3s_types::{Protocol, ProtocolType, ssl_policy};
 use rustls::pki_types::ServerName;
 use suppaftp::list::{File as ListEntry, ListParser};
-use suppaftp::tokio::{AsyncRustlsConnector, AsyncRustlsFtpStream};
+use suppaftp::tokio::{AsyncRustlsFtpStream, AsyncRustlsStream, AsyncTlsConnector};
 use suppaftp::types::{FileType, Response};
 use suppaftp::{FtpError, FtpResult, Mode, Status};
 use tokio::io::{AsyncRead, AsyncReadExt as _};
@@ -46,6 +47,9 @@ pub struct FtpTransport {
     /// TLS settings for data connections opened by hand (FTPS).
     data_tls: Option<(TlsConnector, ServerName<'static>)>,
 
+    /// Set by the FTPS connector when a data connection's TLS handshake failed.
+    data_handshake_failed: Arc<AtomicBool>,
+
     /// Absolute working directory of the control connection; `None` while unknown.
     cwd: Option<String>,
     pub(crate) session: SessionState,
@@ -55,7 +59,7 @@ pub struct FtpTransport {
     poisoned: bool,
 }
 
-/// A passive data connection that could not be opened. suppaftp opens it after sending the
+/// A passive data connection that could not be dialled. suppaftp dials after sending the
 /// transfer command, so the reply to that command is still unread
 /// ([`FtpTransport::settle_data_command`]).
 #[derive(Debug, thiserror::Error)]
@@ -65,6 +69,55 @@ struct DataConnectFailed(#[source] std::io::Error);
 fn is_data_connect_failure(err: &std::io::Error) -> bool {
     err.get_ref()
         .is_some_and(|inner| inner.is::<DataConnectFailed>())
+}
+
+/// TLS for FTPS. The first handshake secures the control connection (`AUTH TLS`); every later
+/// one is a data connection. suppaftp turns any handshake error into a
+/// [`FtpError::SecureError`] string, so a failed data handshake is flagged in
+/// `data_handshake_failed` for [`FtpTransport::settle_data_command`].
+struct FtpsConnector {
+    connector: TlsConnector,
+    server_name: ServerName<'static>,
+    control_secured: AtomicBool,
+    data_handshake_failed: Arc<AtomicBool>,
+}
+
+impl std::fmt::Debug for FtpsConnector {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FtpsConnector")
+            .field("server_name", &self.server_name)
+            .finish_non_exhaustive()
+    }
+}
+
+impl AsyncTlsConnector for FtpsConnector {
+    type Stream = AsyncRustlsStream;
+
+    fn connect<'life0, 'life1, 'async_trait>(
+        &'life0 self,
+        _domain: &'life1 str,
+        stream: tokio::net::TcpStream,
+    ) -> Pin<Box<dyn Future<Output = FtpResult<Self::Stream>> + Send + 'async_trait>>
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        Self: 'async_trait,
+    {
+        Box::pin(async move {
+            let secured = self
+                .connector
+                .connect(self.server_name.clone(), stream)
+                .await;
+            let is_data = self.control_secured.swap(true, AtomicOrdering::Relaxed);
+            if is_data && secured.is_err() {
+                self.data_handshake_failed
+                    .store(true, AtomicOrdering::Relaxed);
+            }
+            secured
+                .map(AsyncRustlsStream::from)
+                .map_err(|err| FtpError::SecureError(err.to_string()))
+        })
+    }
 }
 
 fn reply_code(err: &FtpError) -> Option<u32> {
@@ -298,6 +351,7 @@ impl FtpTransport {
             });
 
         let mut data_tls = None;
+        let data_handshake_failed = Arc::new(AtomicBool::new(false));
         if protocol.protocol_type == ProtocolType::Ftps {
             let validate = protocol.validate_ssl_certificate;
             if !validate && !ssl_policy::is_allowed_for(&host, options.allow_insecure_tls) {
@@ -308,9 +362,13 @@ impl FtpTransport {
                 .map_err(|e| Error::Tls(format!("invalid server name '{host}': {e}")))?;
             let connector = TlsConnector::from(Arc::clone(&config));
             // AUTH TLS, then PBSZ 0 + PROT P (FtpDAO.java:148-154).
-            stream = stream
-                .into_secure(AsyncRustlsConnector::from(connector.clone()), &host)
-                .await?;
+            let ftps = FtpsConnector {
+                connector: connector.clone(),
+                server_name: server_name.clone(),
+                control_secured: AtomicBool::new(false),
+                data_handshake_failed: Arc::clone(&data_handshake_failed),
+            };
+            stream = stream.into_secure(ftps, &host).await?;
             data_tls = Some((connector, server_name));
         }
 
@@ -345,6 +403,7 @@ impl FtpTransport {
             server_ip: addr.ip(),
             dialer,
             data_tls,
+            data_handshake_failed,
             cwd: None,
             session: SessionState::default(),
             poisoned: false,
@@ -393,19 +452,25 @@ impl FtpTransport {
         }
     }
 
-    /// Settles a data command (`RETR`, `LIST`, `STOR`) whose passive data connection failed.
+    /// Settles a data command (`RETR`, `LIST`, `STOR`) whose passive data connection failed,
+    /// at the dial or, for FTPS, at the TLS handshake.
     ///
     /// suppaftp sends the command before it connects, unlike commons-net, which connects
     /// first (`FTPClient._openDataConnection_`). A server that refuses the command (550) may
     /// close its passive port before the connection attempt arrives, so the attempt is refused
     /// while the real answer waits on the control connection. That reply is read here: a
     /// refusal becomes the command's result; a preliminary reply means the server waits for
-    /// the lost data connection, so its final reply is drained and the connection error
-    /// stands. Without a reply the transport is poisoned. Bounded, and ignores cancellation
-    /// like [`Self::resync`].
+    /// the lost data connection, so its final reply is drained and the failure stands.
+    /// Without a reply the transport is poisoned. Bounded, and ignores cancellation like [`Self::resync`].
     async fn settle_data_command<T>(&mut self, result: FtpResult<T>) -> FtpResult<T> {
+        let handshake_failed = self
+            .data_handshake_failed
+            .swap(false, AtomicOrdering::Relaxed);
         let err = match result {
-            Err(FtpError::ConnectionError(err)) if is_data_connect_failure(&err) => err,
+            Err(FtpError::ConnectionError(err)) if is_data_connect_failure(&err) => {
+                FtpError::ConnectionError(err)
+            }
+            Err(err @ FtpError::SecureError(_)) if handshake_failed => err,
             other => return other,
         };
         let reply = tokio::time::timeout(
@@ -419,7 +484,7 @@ impl FtpTransport {
             Ok(Ok(_)) => self.drain_manual_reply().await,
             Ok(Err(_)) | Err(_) => self.poisoned = true,
         }
-        Err(FtpError::ConnectionError(err))
+        Err(err)
     }
 
     /// Reads the final reply of a data transfer opened by hand; poisons the transport when

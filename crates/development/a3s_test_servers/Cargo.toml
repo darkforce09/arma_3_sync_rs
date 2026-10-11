@@ -28,6 +28,8 @@ parking_lot.workspace = true
 rcgen.workspace = true
 russh.workspace = true
 russh-sftp.workspace = true
+rustls.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["full"] }
+tokio-rustls.workspace = true
 unftp-sbe-fs.workspace = true

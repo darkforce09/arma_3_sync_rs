@@ -2,15 +2,18 @@
 //!
 //! The restart marker set by `REST` is cleared by any command other than the transfer command
 //! that follows it (like the WOG repository server). Serves one in-memory file and logs every
-//! command.
+//! command. It can also secure the control connection (FTPS) while data connections stay plain.
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use a3s_types::{Protocol, ProtocolType};
 use parking_lot::Mutex;
-use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+use rustls::ServerConfig;
+use rustls::pki_types::{PrivateKeyDer, PrivatePkcs8KeyDer};
+use tokio::io::{AsyncBufReadExt as _, AsyncRead, AsyncWrite, AsyncWriteExt as _, BufReader};
 use tokio::net::{TcpListener, TcpStream};
+use tokio_rustls::TlsAcceptor;
 
 use crate::AbortOnDrop;
 
@@ -33,6 +36,10 @@ pub struct Behaviour {
     /// while `RETR` of a missing file is still answered with 550.
     pub close_passive: bool,
 
+    /// Speak FTPS: secure the control connection on `AUTH TLS`, but keep data connections
+    /// plain, so every data handshake of the client fails.
+    pub ftps_plain_data: bool,
+
     /// Never send the completion reply (226) of a `RETR`.
     pub withhold_completion: bool,
 
@@ -54,17 +61,24 @@ pub async fn serve(path: &'static str, content: Vec<u8>, behaviour: Behaviour) -
     let commands: Arc<Mutex<Vec<String>>> = Arc::default();
     let log = Arc::clone(&commands);
     let content = Arc::new(content);
+    let tls = behaviour.ftps_plain_data.then(tls_acceptor);
     let task = tokio::spawn(async move {
         while let Ok((stream, _)) = listener.accept().await {
             let log = Arc::clone(&log);
             let content = Arc::clone(&content);
+            let tls = tls.clone();
             tokio::spawn(async move {
-                let _ignored = session(stream, path, &content, behaviour, &log).await;
+                let _ignored = session(stream, tls, path, &content, behaviour, &log).await;
             });
         }
     });
+    let protocol_type = if behaviour.ftps_plain_data {
+        ProtocolType::Ftps
+    } else {
+        ProtocolType::Ftp
+    };
     let protocol = Protocol::new(
-        ProtocolType::Ftp,
+        protocol_type,
         "127.0.0.1",
         port.to_string(),
         "anonymous",
@@ -78,16 +92,63 @@ pub async fn serve(path: &'static str, content: Vec<u8>, behaviour: Behaviour) -
     }
 }
 
+/// TLS acceptor with a self-signed certificate for `127.0.0.1`.
+fn tls_acceptor() -> TlsAcceptor {
+    let certified = crate::self_signed();
+    let key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(
+        certified.signing_key.serialize_der(),
+    ));
+    let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+    let config = ServerConfig::builder_with_provider(provider)
+        .with_safe_default_protocol_versions()
+        .expect("TLS versions")
+        .with_no_client_auth()
+        .with_single_cert(vec![certified.cert.der().clone()], key)
+        .expect("TLS certificate");
+    TlsAcceptor::from(Arc::new(config))
+}
+
 async fn session(
-    stream: TcpStream,
+    mut stream: TcpStream,
+    tls: Option<TlsAcceptor>,
     path: &str,
     content: &[u8],
     behaviour: Behaviour,
     log: &Mutex<Vec<String>>,
 ) -> std::io::Result<()> {
-    let (read, mut write) = stream.into_split();
+    stream.write_all(b"220 strict stub\r\n").await?;
+    let Some(acceptor) = tls else {
+        let (read, write) = stream.into_split();
+        return commands(read, write, path, content, behaviour, log).await;
+    };
+    // The client waits for the reply to `AUTH TLS` before its handshake: nothing else is
+    // buffered behind that line.
+    let mut reader = BufReader::new(stream);
+    let mut auth = String::new();
+    reader.read_line(&mut auth).await?;
+    log.lock().push(auth.trim_end().to_owned());
+    let mut stream = reader.into_inner();
+    if !auth.trim_end().eq_ignore_ascii_case("AUTH TLS") {
+        stream.write_all(b"530 AUTH TLS first\r\n").await?;
+        return Ok(());
+    }
+    stream
+        .write_all(b"234 securing the control connection\r\n")
+        .await?;
+    let secured = acceptor.accept(stream).await?;
+    let (read, write) = tokio::io::split(secured);
+    commands(read, write, path, content, behaviour, log).await
+}
+
+async fn commands(
+    read: impl AsyncRead + Unpin,
+    mut write: impl AsyncWrite + Unpin,
+    path: &str,
+    content: &[u8],
+    behaviour: Behaviour,
+    log: &Mutex<Vec<String>>,
+) -> std::io::Result<()> {
     let mut lines = BufReader::new(read).lines();
-    write.write_all(b"220 strict stub\r\n").await?;
     let mut restart: u64 = 0;
     let mut passive: Option<TcpListener> = None;
     let mut pasv_count = 0;
@@ -107,7 +168,7 @@ async fn session(
             "PASS" => "230 logged in".to_owned(),
             "TYPE" => "200 type set".to_owned(),
             "PWD" => "257 \"/\" is the current directory".to_owned(),
-            "NOOP" => "200 ok".to_owned(),
+            "NOOP" | "PBSZ" | "PROT" => "200 ok".to_owned(),
             "SIZE" if behaviour.size && arg == path => format!("213 {}", content.len()),
             "SIZE" if behaviour.size => "550 no such file".to_owned(),
             "MLST" if behaviour.mlst && arg == path => format!(

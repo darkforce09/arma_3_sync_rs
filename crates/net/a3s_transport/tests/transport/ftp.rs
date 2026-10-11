@@ -318,6 +318,31 @@ async fn ftp_refused_data_connection_reads_the_reply() {
     );
 }
 
+/// An FTPS data connection whose TLS handshake fails (the server answers in plain text) is
+/// a TLS error, and the transfer's own reply is read: the next command gets its own answer.
+#[tokio::test]
+async fn ftps_failed_data_handshake_reads_the_reply() {
+    let stub = strict_ftp::serve(
+        STUB_PATH,
+        random_bytes(10, 1),
+        Behaviour {
+            ftps_plain_data: true,
+            ..Behaviour::default()
+        },
+    )
+    .await;
+    let options = TransportOptions::from_protocol(&stub.protocol);
+    let mut t = Transport::connect(&stub.protocol, &options).await.unwrap();
+    let ctx = TransferCtx::new();
+    let failed = t.fetch("f.pbo", &ctx).await;
+    assert!(
+        matches!(&failed, Err(Error::Ftp(suppaftp::FtpError::SecureError(_)))),
+        "{failed:?}"
+    );
+    let missing = t.fetch("other.pbo", &ctx).await;
+    assert!(matches!(missing, Err(Error::NotFound(_))), "{missing:?}");
+}
+
 /// A completion reply that never arrives times out and poisons the transport.
 #[tokio::test]
 async fn a_ftp_missing_completion_reply_poisons() {
