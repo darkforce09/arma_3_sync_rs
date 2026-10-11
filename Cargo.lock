@@ -61,6 +61,7 @@ dependencies = [
 name = "a3s_foundation"
 version = "0.1.0-alpha.1"
 dependencies = [
+ "base64 0.22.1",
  "chrono",
  "parking_lot",
  "tempfile",

@@ -8,11 +8,12 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use a3s_foundation::command_line::quote_windows_arg;
 use a3s_foundation::paths::{Os, PlatformEnv};
 
 use crate::fs_write::{remove_if_exists, write_atomic};
 use crate::registry::{Hive, RegQuery, RegistryRead, RegistryWrite};
-use crate::shortcut::{desktop_escape_value, desktop_exec, quote_windows_arg};
+use crate::shortcut::{desktop_escape_value, desktop_exec};
 use crate::{Error, Result};
 
 /// Name of the `Run` value and of the XDG autostart file (`<name>.desktop`).

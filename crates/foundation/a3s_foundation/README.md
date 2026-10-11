@@ -2,6 +2,8 @@
 
 The base every other crate builds on, one module per concern:
 
+- `command_line`: Windows command-line (`CommandLineToArgvW`) and PowerShell quoting, and
+  PowerShell `-EncodedCommand` encoding.
 - `error`: the shared error taxonomy (`ErrorKind`, `UserFacing`), error-chain formatting and the
   error report shown for unexpected failures.
 - `format`: sizes, speeds, durations and dates for display (the size/speed/duration rules follow

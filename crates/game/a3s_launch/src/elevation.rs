@@ -1,28 +1,11 @@
 //! Starting the game elevated (UAC) on Windows through PowerShell's `Start-Process -Verb RunAs`,
 //! without elevating Arma3Sync itself.
 
-use base64::Engine as _;
-use base64::engine::general_purpose::STANDARD;
-
-pub use a3s_platform::shortcut::quote_windows_arg;
+use a3s_foundation::command_line::{
+    encode_powershell_command, quote_powershell, quote_windows_arg,
+};
 
 use crate::command::CommandSpec;
-
-/// A PowerShell single-quoted string literal. Every single-quote character PowerShell accepts
-/// (`'` and the curly `‘ ’ ‚ ‛`) is doubled, so no argument can end the literal.
-// Mirrors dao/LauncherDAO.java:451-453
-pub fn quote_powershell(s: &str) -> String {
-    let mut quoted = String::with_capacity(s.len() + 2);
-    quoted.push('\'');
-    for c in s.chars() {
-        if matches!(c, '\'' | '\u{2018}'..='\u{201B}') {
-            quoted.push(c);
-        }
-        quoted.push(c);
-    }
-    quoted.push('\'');
-    quoted
-}
 
 /// The PowerShell script that starts `exe` elevated, waits for it and exits with its exit code
 /// (`1` if starting fails, for example when the UAC prompt is refused).
@@ -50,13 +33,6 @@ pub fn elevation_script(exe: &str, working_dir: Option<&str>, args: &[String]) -
     }
     script.push_str(" -Verb RunAs -Wait -PassThru; exit $process.ExitCode } catch { exit 1 }");
     script
-}
-
-/// `script` as PowerShell's `-EncodedCommand` wants it: UTF-16LE, then Base64 with padding.
-// Mirrors dao/LauncherDAO.java:444
-pub fn encode_powershell_command(script: &str) -> String {
-    let bytes: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
-    STANDARD.encode(bytes)
 }
 
 /// The hidden PowerShell command that runs [`elevation_script`].

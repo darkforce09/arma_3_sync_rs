@@ -10,7 +10,7 @@ Operating-system integration of the client, one module per concern:
 - `folders`: Documents, Desktop and home, the Arma 3 user folder and the log-export folder.
 - `process`: "is Arma 3 / TeamSpeak / Steam running" (`tasklist` on Windows, `/proc` on Linux).
 - `autostart`: start with the OS (per-user `Run` value, XDG autostart entry, macOS LaunchAgent).
-- `shortcut`: desktop shortcuts (`.lnk` on Windows, `.desktop` on Linux) and command-line quoting.
+- `shortcut`: desktop shortcuts (`.lnk` on Windows, `.desktop` on Linux).
 - `single_instance`: one client per configuration folder; a second start asks the first to come to
   the front (`acquire`; the caller exits with `EXIT_CODE_ALREADY_RUNNING`).
 

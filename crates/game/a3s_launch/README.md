@@ -23,9 +23,9 @@ errors (no executable, an executable this OS cannot run, no Steam) come back bef
 starts; everything after the spawn arrives as events.
 
 Boundaries: depends on `a3s_types` (profile and configuration), `a3s_addons` (the addon registry),
-`a3s_platform` (process probe, Steam app id, Windows argument quoting) and `a3s_foundation`
-(`Os`, `PlatformEnv`). The caller supplies the profile, the registry, the Arma 3 user folder and
-the Steam command; no UI, no persistence. Tests never start the game: planning is checked as
+`a3s_platform` (process probe, Steam app id) and `a3s_foundation` (`Os`, `PlatformEnv`, Windows
+argument and PowerShell quoting). The caller supplies the profile, the registry, the Arma 3 user
+folder and the Steam command; no UI, no persistence. Tests never start the game: planning is checked as
 argument vectors, and process tests run small shell scripts.
 
 ## Manual checks

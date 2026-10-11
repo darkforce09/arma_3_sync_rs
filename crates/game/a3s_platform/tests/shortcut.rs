@@ -1,4 +1,4 @@
-//! Desktop shortcuts: Exec and Windows command-line quoting, `.desktop` and `.lnk` writers.
+//! Desktop shortcuts: Exec quoting, `.desktop` and `.lnk` writers.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -8,7 +8,7 @@ use a3s_platform::Error;
 use a3s_platform::folders::MemoryFolders;
 use a3s_platform::shortcut::{
     ShortcutSpec, create_desktop_shortcut, desktop_escape_value, desktop_exec,
-    render_desktop_entry, validate_shortcut_name, windows_args, write_lnk,
+    render_desktop_entry, validate_shortcut_name, write_lnk,
 };
 
 fn strings(args: &[&str]) -> Vec<String> {
@@ -109,19 +109,6 @@ fn shortcut_names_must_be_file_names() {
             "{name:?}"
         );
     }
-}
-
-#[test]
-fn windows_args_join_quoted_arguments() {
-    assert_eq!(
-        windows_args(&strings(&["-mod=@CBA_A3;@ace", "-noSplash"])),
-        "-mod=@CBA_A3;@ace -noSplash"
-    );
-    assert_eq!(
-        windows_args(&strings(&["-mod=C:\\My Mods\\@ace\\", "x\"y"])),
-        r#""-mod=C:\My Mods\@ace\\" "x\"y""#
-    );
-    assert_eq!(windows_args(&[]), "");
 }
 
 #[test]

@@ -1,9 +1,10 @@
 //! Desktop shortcuts that start the game with a profile: Windows `.lnk` files and Linux
-//! `.desktop` launchers, plus the command-line quoting both need.
+//! `.desktop` launchers.
 
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
+use a3s_foundation::command_line::windows_args;
 use a3s_foundation::paths::{Os, PlatformEnv};
 
 use crate::folders::SpecialFolders;
@@ -84,46 +85,6 @@ pub fn validate_shortcut_name(name: &str) -> Result<()> {
         return Err(Error::InvalidShortcutName(name.to_owned()));
     }
     Ok(())
-}
-
-/// Quotes one argument for a Windows command line so `CommandLineToArgvW` (and the MSVC runtime)
-/// splits it back into the same string.
-pub fn quote_windows_arg(arg: &str) -> String {
-    if !arg.is_empty() && !arg.contains([' ', '\t', '\n', '\u{0B}', '"']) {
-        return arg.to_owned();
-    }
-    let mut quoted = String::with_capacity(arg.len() + 2);
-    quoted.push('"');
-    let mut backslashes = 0;
-    for c in arg.chars() {
-        match c {
-            '\\' => backslashes += 1,
-            '"' => {
-                // Backslashes before a quote are doubled, and the quote itself is escaped.
-                quoted.extend(std::iter::repeat_n('\\', backslashes * 2 + 1));
-                quoted.push('"');
-                backslashes = 0;
-            }
-            _ => {
-                quoted.extend(std::iter::repeat_n('\\', backslashes));
-                quoted.push(c);
-                backslashes = 0;
-            }
-        }
-    }
-    // Backslashes before the closing quote are doubled.
-    quoted.extend(std::iter::repeat_n('\\', backslashes * 2));
-    quoted.push('"');
-    quoted
-}
-
-/// The arguments of a Windows command line: each quoted with [`quote_windows_arg`], joined by
-/// single spaces.
-pub fn windows_args(args: &[String]) -> String {
-    args.iter()
-        .map(|arg| quote_windows_arg(arg))
-        .collect::<Vec<_>>()
-        .join(" ")
 }
 
 /// The `Exec` command of a desktop entry, before [`desktop_escape_value`]: the program and its

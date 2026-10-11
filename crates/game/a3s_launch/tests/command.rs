@@ -5,15 +5,13 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use a3s_addons::AddonRegistry;
+use a3s_foundation::command_line::encode_powershell_command;
 use a3s_foundation::paths::Os;
 use a3s_launch::command::{
     CommandSpec, LaunchMethod, LinuxLaunchMode, arma3_method, command_line, log_line, plan_arma3,
     plan_external,
 };
-use a3s_launch::elevation::{
-    elevated_command, elevation_script, encode_powershell_command, quote_powershell,
-    quote_windows_arg,
-};
+use a3s_launch::elevation::{elevated_command, elevation_script};
 use a3s_launch::steam::{FLATPAK_STEAM_APP, SteamCommand};
 use a3s_launch::{Arma3LaunchRequest, LaunchError, launch_arma3};
 use a3s_platform::process::FixedProcessProbe;
@@ -78,23 +76,7 @@ fn elevation_script_matches_java() {
 }
 
 #[test]
-fn elevation_quoting() {
-    assert_eq!(quote_powershell("O'Neil"), "'O''Neil'");
-    assert_eq!(quote_powershell("a\u{2019}b"), "'a\u{2019}\u{2019}b'");
-    assert_eq!(
-        quote_powershell("\u{2018}\u{201A}\u{201B}"),
-        "'\u{2018}\u{2018}\u{201A}\u{201A}\u{201B}\u{201B}'"
-    );
-
-    assert_eq!(quote_windows_arg("-x"), "-x");
-    assert_eq!(
-        quote_windows_arg(r"-mod=C:\My Mods\@ace;"),
-        r#""-mod=C:\My Mods\@ace;""#
-    );
-    assert_eq!(quote_windows_arg(r#"a"b"#), r#""a\"b""#);
-    assert_eq!(quote_windows_arg(r"C:\x y\"), r#""C:\x y\\""#);
-    assert_eq!(quote_windows_arg(""), r#""""#);
-
+fn elevation_script_arguments() {
     let script = elevation_script(r"C:\A\arma3.exe", None, &[]);
     assert!(script.contains("$arguments=@();"));
     assert!(!script.contains("-ArgumentList"));
