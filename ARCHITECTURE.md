@@ -119,6 +119,13 @@ Wire compatibility is the requirement; these differences are deliberate.
   separator, and every write and delete stays inside the destination. The extra-file scan never
   follows a symbolic link (it is one file node); deletions remove the link, never its target.
   Downloads do follow links the user created inside the destination. Java has none of these checks.
+* **Autoconfig export and import** (`export.a3s.autoconfig`): an export that Java's own reader
+  would reject (a profile tree nested deeper than about 47 groups, or over the reference or size
+  limits) is refused instead of written. On import, a profile or repository element that is
+  invalid (null name, missing protocol, wrong class) is skipped with a warning; Java fails part
+  way through the import.
+* **Insecure TLS override** is the environment variable `A3S_ALLOW_INSECURE_SSL=1` instead of
+  Java's `-Da3s.allowInsecureSsl=true`.
 * **Local-only fixes** (no wire effect) are allowed where Java has a bug or a security hole, for
   example control characters rejected in local file names, and UI tokens adjusted for readability
   in the dark theme. UI and error text need not match Java.

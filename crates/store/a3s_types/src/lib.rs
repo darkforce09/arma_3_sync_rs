@@ -8,6 +8,7 @@
 //! files.
 
 mod auto_config;
+pub mod autoconfig_url;
 mod changelog;
 pub mod constants;
 mod error;
@@ -17,6 +18,7 @@ pub mod java_string;
 pub mod local;
 mod protocol;
 mod server_info;
+pub mod ssl_policy;
 mod sync_tree;
 pub mod wire;
 

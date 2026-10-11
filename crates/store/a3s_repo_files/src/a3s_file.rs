@@ -58,6 +58,11 @@ impl A3sFile {
 
 /// Decodes gzip-compressed Java serialization bytes (e.g. a downloaded `.a3s` file).
 pub fn decode_a3s<T: JavaCodec>(compressed: &[u8]) -> Result<T> {
+    Ok(a3s_types::decode_stream(&gunzip(compressed)?)?)
+}
+
+/// Decompresses gzip bytes, refusing more than [`MAX_DECOMPRESSED_SIZE`] bytes of output.
+pub(crate) fn gunzip(compressed: &[u8]) -> Result<Vec<u8>> {
     let mut raw = Vec::new();
     GzDecoder::new(compressed)
         .take(MAX_DECOMPRESSED_SIZE + 1)
@@ -66,17 +71,21 @@ pub fn decode_a3s<T: JavaCodec>(compressed: &[u8]) -> Result<T> {
     if raw.len() as u64 > MAX_DECOMPRESSED_SIZE {
         return Err(Error::TooLarge(MAX_DECOMPRESSED_SIZE));
     }
-    Ok(a3s_types::decode_stream(&raw)?)
+    Ok(raw)
 }
 
 /// Encodes `value` as gzip-compressed Java serialization bytes.
 pub fn encode_a3s<T: JavaCodec>(value: &T) -> Result<Vec<u8>> {
-    let raw = a3s_types::encode_stream(value)?;
+    gzip(&a3s_types::encode_stream(value)?)
+}
+
+/// Compresses `raw` like Java's `GZIPOutputStream`.
+pub(crate) fn gzip(raw: &[u8]) -> Result<Vec<u8>> {
     // Header like Java's `GZIPOutputStream` (mtime 0, OS "unknown" since JDK 16).
     let mut encoder = flate2::GzBuilder::new()
         .operating_system(255)
         .write(Vec::with_capacity(raw.len() / 4), Compression::default());
-    encoder.write_all(&raw).map_err(Error::Gzip)?;
+    encoder.write_all(raw).map_err(Error::Gzip)?;
     encoder.finish().map_err(Error::Gzip)
 }
 

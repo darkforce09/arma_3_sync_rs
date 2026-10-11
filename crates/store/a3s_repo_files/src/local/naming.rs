@@ -21,10 +21,7 @@ pub fn name_hash(name: &str) -> String {
     crate::hash::to_hex(&digest[..HASH_PREFIX_BYTES])
 }
 
-/// Java `String.trim()`: strips every char `<= U+0020` at either end.
-pub(crate) fn java_trim(s: &str) -> &str {
-    s.trim_matches(|c: char| c <= '\u{20}')
-}
+pub(crate) use a3s_types::java_string::java_trim;
 
 /// Java `Character.isWhitespace`.
 fn java_is_whitespace(c: char) -> bool {

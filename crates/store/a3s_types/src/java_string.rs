@@ -1,6 +1,12 @@
-//! Java `String` semantics that affect on-disk ordering.
+//! Java `String` semantics that affect on-disk ordering and parsing.
 
 use std::cmp::Ordering;
+
+/// `java.lang.String.trim`: strips every char `<= U+0020` at either end (not Unicode
+/// whitespace).
+pub fn java_trim(s: &str) -> &str {
+    s.trim_matches(|c: char| c <= '\u{20}')
+}
 
 /// `java.lang.String.compareToIgnoreCase`.
 ///

@@ -56,6 +56,7 @@ dependencies = [
 name = "a3s_repo_files"
 version = "0.1.0-alpha.1"
 dependencies = [
+ "a3s_dev_tools",
  "a3s_foundation",
  "a3s_jserial",
  "a3s_types",

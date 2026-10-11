@@ -9,6 +9,7 @@
 //! (including the AES-sealed `*.a3s.repository`) and imports them once into that store.
 
 mod a3s_file;
+pub mod autoconfig_export;
 mod error;
 pub mod hash;
 pub mod layout;
