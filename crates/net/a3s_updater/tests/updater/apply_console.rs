@@ -6,7 +6,6 @@ use std::time::{Duration, Instant};
 use a3s_foundation::paths::Os;
 use a3s_updater::apply::console::{
     EXIT_FAILURE, EXIT_NO_UPDATE, EXIT_OK, run_check_only, run_console_update,
-    run_legacy_update_command,
 };
 use a3s_updater::apply::text;
 use a3s_updater::{
@@ -115,42 +114,6 @@ async fn check_only_exit_codes() {
     assert!(out.is_empty());
     assert!(text_of(&err).starts_with(&text::check_failed(&"")));
     assert_eq!(fixture.downloads(), 0);
-}
-
-#[tokio::test]
-async fn legacy_update_command_always_exits_zero_and_writes_to_out() {
-    let fixture = Fixture::new(Os::Linux).await;
-    let cancel = CancellationToken::new();
-    let mut out = Vec::new();
-    assert_eq!(
-        run_legacy_update_command(&fixture.session(OLD_VERSION), &mut out, &cancel).await,
-        EXIT_OK
-    );
-    assert!(text_of(&out).ends_with(&format!("{}\n", text::success_message(NEW_VERSION))));
-
-    let mut out = Vec::new();
-    assert_eq!(
-        run_legacy_update_command(&fixture.session(NEW_VERSION), &mut out, &cancel).await,
-        EXIT_OK
-    );
-    assert_eq!(text_of(&out), format!("{}\n", text::NO_UPDATE));
-
-    fixture.server.route(MANIFEST_PATH, Reply::status(500));
-    let mut out = Vec::new();
-    assert_eq!(
-        run_legacy_update_command(&fixture.session(OLD_VERSION), &mut out, &cancel).await,
-        EXIT_OK
-    );
-    assert!(text_of(&out).starts_with(&text::check_failed(&"")));
-
-    let failing = Fixture::new(Os::Linux).await;
-    failing.serve(failing_archive(), &"0".repeat(64), 0);
-    let mut out = Vec::new();
-    assert_eq!(
-        run_legacy_update_command(&failing.session(OLD_VERSION), &mut out, &cancel).await,
-        EXIT_OK
-    );
-    assert!(text_of(&out).ends_with(&format!("{}\n", text::ABORTED)));
 }
 
 fn failing_archive() -> Vec<u8> {

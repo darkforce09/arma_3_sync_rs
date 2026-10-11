@@ -39,7 +39,7 @@ A crate may depend on crates from its own group or a group listed above it in th
 | **viewer** | | |
 | `a3s_ui` | Theme tokens (port of `ui/theme`), Geist fonts, SVG icons, widgets. | `ui/theme`, `ui/icon`, `ui/components` |
 | **application** | | |
-| `arma3sync` | The `arma3sync` binary and its build information. | `main/ArmA3Sync`, `version.properties` |
+| `arma3sync` | The `arma3sync` binary: command line, interactive console, build information. | `main/ArmA3Sync`, `console/*`, `version.properties` |
 | **development** | | |
 | `a3s_dev_tools` | Java fixture harness wrapper: fixture regeneration, Java cross-checks. Dev-dependency only. | – |
 
@@ -274,6 +274,16 @@ Wire compatibility is the requirement; these differences are deliberate.
   with a warning (Java aborts). The HTML patterns' case-insensitive keywords also accept the
   Unicode case variants `ſ` and `K` (Kelvin sign). Java's `launcher-preset-export.log` is replaced by
   `tracing` debug events in the application log.
+* **Command line:** failures exit with 1 and invalid arguments with 2 (Java always exits 0,
+  `-update` included; `update` returns the updater's 0/1/2), and messages about failures go to
+  stderr. The console reads its input to the end (Java fails at the end of the input), does
+  not print passwords, offers every download protocol, and fixes two Java slips: answering
+  "no" to the SSL question turns the validation off (Java turned it on either way), and the
+  "exclude extra local content when sync" folders become excluded sync folders (Java added them
+  to the files excluded from the build). Connections use the configured proxy (Java's console
+  ignores it), and a synchronization resumes at most 10 times after a lost connection (Java
+  retries forever). Update leftovers are cleaned at every start; command-line modes never take
+  the single-instance lock, as in Java.
 * **Local-only fixes** (no wire effect) are allowed where Java has a bug or a security hole, for
   example control characters rejected in local file names, and UI tokens adjusted for readability
   in the dark theme. UI and error text need not match Java.

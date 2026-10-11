@@ -22,15 +22,14 @@ pub const EXIT_NO_UPDATE: i32 = 2;
 /// fresh line.
 struct Printer<'a> {
     out: &'a mut (dyn Write + Send),
-    /// `None`: errors go to `out` too.
-    err: Option<&'a mut (dyn Write + Send)>,
+    err: &'a mut (dyn Write + Send),
     progress_open: bool,
     last_percent: Option<u64>,
     installing: bool,
 }
 
 impl<'a> Printer<'a> {
-    fn new(out: &'a mut (dyn Write + Send), err: Option<&'a mut (dyn Write + Send)>) -> Self {
+    fn new(out: &'a mut (dyn Write + Send), err: &'a mut (dyn Write + Send)) -> Self {
         Self {
             out,
             err,
@@ -54,12 +53,8 @@ impl<'a> Printer<'a> {
 
     fn err(&mut self, line: &str) {
         self.close_progress();
-        let writer: &mut (dyn Write + Send) = match self.err.as_deref_mut() {
-            Some(err) => err,
-            None => &mut *self.out,
-        };
-        let _ignored: std::io::Result<()> = writeln!(writer, "{line}");
-        let _ignored: std::io::Result<()> = writer.flush();
+        let _ignored: std::io::Result<()> = writeln!(self.err, "{line}");
+        let _ignored: std::io::Result<()> = self.err.flush();
     }
 
     // Mirrors a3sUpdater/console/Console.java:43-49,101-105
@@ -105,7 +100,7 @@ pub async fn run_console_update(
         "Console update started: source={:?}, dev={}",
         ctx.source, ctx.dev
     ));
-    let printer = Mutex::new(Printer::new(out, Some(err)));
+    let printer = Mutex::new(Printer::new(out, err));
     match session.check(cancel).await {
         Ok(CheckOutcome::Available { release, .. }) => {
             apply_and_report(session, &release, &printer, cancel).await
@@ -171,7 +166,7 @@ pub async fn run_check_only(
     err: &mut (dyn Write + Send),
     cancel: &CancellationToken,
 ) -> i32 {
-    let mut printer = Printer::new(out, Some(err));
+    let mut printer = Printer::new(out, err);
     match session.check(cancel).await {
         Ok(CheckOutcome::Available { release, .. }) => {
             printer.out(&text::update_available(&release.version));
@@ -186,25 +181,6 @@ pub async fn run_check_only(
             EXIT_FAILURE
         }
     }
-}
-
-/// The main application's legacy update command: everything goes to `out`, and the result is
-/// always [`EXIT_OK`] (scripts calling `-update` rely on it).
-// Mirrors console/CommandGeneral.java:567-589
-pub async fn run_legacy_update_command(
-    session: &UpdateSession,
-    out: &mut (dyn Write + Send),
-    cancel: &CancellationToken,
-) -> i32 {
-    let printer = Mutex::new(Printer::new(out, None));
-    match session.check(cancel).await {
-        Ok(CheckOutcome::Available { release, .. }) => {
-            apply_and_report(session, &release, &printer, cancel).await;
-        }
-        Ok(CheckOutcome::UpToDate { .. }) => printer.lock().out(text::NO_UPDATE),
-        Err(error) => printer.lock().out(&text::check_failed(&error)),
-    }
-    EXIT_OK
 }
 
 /// What the updater flags ask for.

@@ -582,7 +582,21 @@ dependencies = [
 name = "arma3sync"
 version = "0.1.0-alpha.1"
 dependencies = [
+ "a3s_admin",
+ "a3s_foundation",
+ "a3s_repo_files",
+ "a3s_sync",
+ "a3s_tools",
+ "a3s_transport",
+ "a3s_types",
+ "a3s_updater",
+ "axum",
  "chrono",
+ "clap",
+ "parking_lot",
+ "tempfile",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

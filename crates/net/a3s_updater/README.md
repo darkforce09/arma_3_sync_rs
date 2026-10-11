@@ -7,8 +7,7 @@ binary and asking for UAC on Windows when the directory needs administrator righ
 How to use: build an `UpdateContext::for_current_process`, wrap it in an `UpdateSession`, call
 `check` (cached per session), then `apply` with an event callback (`Preparing`, `Downloading`,
 `WaitingForElevation`, `ElevatedInstallStarted`, `Installing`, `Done`) and a cancellation token.
-`apply::console` runs the console flows (`run_console_update`, `run_check_only`,
-`run_legacy_update_command`) and parses the updater flags; `apply::text` holds every text a GUI
+`apply::console` runs the console flows (`run_console_update`, `run_check_only`) and parses the updater flags; `apply::text` holds every text a GUI
 shows and `ApplyError::dialog` maps an error to a dialog; `apply::relaunch` starts the updated
 application after the caller released its single-instance lock. The binary must dispatch
 `argv[1] == ELEVATED_SUBCOMMAND` to `run_elevated_install` (with its own version) before any
