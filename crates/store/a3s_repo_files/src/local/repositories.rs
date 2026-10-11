@@ -7,7 +7,7 @@ use a3s_types::local::Repository;
 
 use super::profiles::{ignored_warning, replaced_warning, summary};
 use super::toml_file::{self, file_name, modified_millis};
-use super::{CacheKind, Error, LocalStore, TOML_EXTENSION};
+use super::{CacheKind, Error, LocalStore};
 
 /// A repository and the file it was loaded from.
 #[derive(Clone, Debug, PartialEq)]
@@ -29,6 +29,11 @@ pub struct RepositoriesLoad {
 
     /// One line per duplicate repository name.
     pub duplicate_warnings: Vec<String>,
+
+    /// The repository name of each file that failed to decode but still names its repository (e.g. a
+    /// file of a newer store format), by file name. Such a name is taken: writing it would
+    /// duplicate or overwrite that file.
+    pub unreadable_names: BTreeMap<String, String>,
 }
 
 impl RepositoriesLoad {
@@ -100,6 +105,9 @@ impl LocalStore {
             let repository: Repository = match toml_file::decode(&path, &text, "repository") {
                 Ok(repository) => repository,
                 Err(err) => {
+                    if let Some(name) = toml_file::peek_name(&text, "repository") {
+                        load.unreadable_names.insert(file.clone(), name);
+                    }
                     load.failures.insert(file, err);
                     continue;
                 }
@@ -140,28 +148,17 @@ impl LocalStore {
         let _guard = self.write_lock.lock();
         let target = self.repository_path(&repository.name);
         toml_file::write(&target, "repository", repository)?;
-        if let Some(previous) = previous.filter(|p| !same_file(p, &target)) {
-            if !self.is_repository_file(previous) {
-                tracing::warn!(
-                    "Not deleting {}: not a repository file of this store.",
-                    previous.display()
-                );
-                return Ok(());
-            }
-            match std::fs::remove_file(previous) {
-                Ok(()) => tracing::info!(
-                    "Migrated repository file \"{}\" to \"{}\".",
-                    file_name(previous),
-                    file_name(&target)
-                ),
-                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
-                Err(err) => tracing::warn!(
-                    "Failed to delete previous repository file {}: {err}",
-                    previous.display()
-                ),
-            }
+        if let Some(previous) = previous {
+            Self::delete_previous(&self.dirs.repositories, previous, &target);
         }
         Ok(())
+    }
+
+    /// Deletes a repository file outside the canonical name, e.g. the file a repository was
+    /// loaded from. Only a `.toml` file directly inside the repositories directory is deleted;
+    /// whether a file was removed.
+    pub fn delete_repository_file(&self, path: &Path) -> Result<bool, Error> {
+        self.delete_file_in(&self.dirs.repositories, path)
     }
 
     /// Deletes the repository's file and both of its SHA-1 caches; whether any file was removed.
@@ -177,29 +174,5 @@ impl LocalStore {
             deleted |= Self::delete_file(&path)?;
         }
         Ok(deleted)
-    }
-}
-
-impl LocalStore {
-    /// Whether `path` is a `.toml` file whose canonical parent is the repositories directory.
-    fn is_repository_file(&self, path: &Path) -> bool {
-        let is_toml = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .is_some_and(|n| n.ends_with(TOML_EXTENSION));
-        let parent = path.parent().and_then(|p| std::fs::canonicalize(p).ok());
-        let repositories = std::fs::canonicalize(&self.dirs.repositories).ok();
-        is_toml && parent.is_some() && parent == repositories
-    }
-}
-
-/// Whether `a` and `b` name the same file (canonically if both exist).
-fn same_file(a: &Path, b: &Path) -> bool {
-    if a == b {
-        return true;
-    }
-    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
-        (Ok(a), Ok(b)) => a == b,
-        _ => false,
     }
 }

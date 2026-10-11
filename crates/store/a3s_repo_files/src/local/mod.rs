@@ -219,4 +219,64 @@ impl LocalStore {
             }),
         }
     }
+
+    /// Deletes `path` when it is a `.toml` file directly inside `dir`; anything else is logged
+    /// and kept (`Ok(false)`). Whether a file was removed.
+    fn delete_file_in(&self, dir: &Path, path: &Path) -> Result<bool, Error> {
+        if !is_file_in(dir, path) {
+            tracing::warn!("Not deleting {}: not a file of this store.", path.display());
+            return Ok(false);
+        }
+        let _guard = self.write_lock.lock();
+        Self::delete_file(path)
+    }
+
+    /// After `target` was written: deletes `previous` (best effort) when it is another `.toml`
+    /// file directly inside `dir`. The caller holds the write lock.
+    fn delete_previous(dir: &Path, previous: &Path, target: &Path) {
+        if same_file(previous, target) {
+            return;
+        }
+        if !is_file_in(dir, previous) {
+            tracing::warn!(
+                "Not deleting {}: not a file of this store.",
+                previous.display()
+            );
+            return;
+        }
+        match std::fs::remove_file(previous) {
+            Ok(()) => tracing::info!(
+                "Replaced file \"{}\" with \"{}\".",
+                toml_file::file_name(previous),
+                toml_file::file_name(target)
+            ),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => tracing::warn!(
+                "Failed to delete previous file {}: {err}",
+                previous.display()
+            ),
+        }
+    }
+}
+
+/// Whether `path` is a `.toml` file whose canonical parent is `dir`.
+fn is_file_in(dir: &Path, path: &Path) -> bool {
+    let is_toml = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n.ends_with(TOML_EXTENSION));
+    let parent = path.parent().and_then(|p| std::fs::canonicalize(p).ok());
+    let dir = std::fs::canonicalize(dir).ok();
+    is_toml && parent.is_some() && parent == dir
+}
+
+/// Whether `a` and `b` name the same file (canonically if both exist).
+fn same_file(a: &Path, b: &Path) -> bool {
+    if a == b {
+        return true;
+    }
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    }
 }

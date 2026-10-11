@@ -646,6 +646,7 @@ fn unknown_active_profile_falls_back_to_default() {
          \"Default\" (created) because the active profile \"Ghost\" does not exist."
     );
     assert!(!store.profile_path("Ghost").exists());
+    assert_eq!(store.read_configuration().unwrap().profile_name, "Default");
     let profiles = store.load_profiles().unwrap();
     assert_eq!(
         profiles.profiles["Default"].addon_search_directories.len(),
@@ -663,6 +664,59 @@ fn unknown_active_profile_falls_back_to_default() {
             .unwrap()
             .value;
     assert_eq!(profiles.profiles["Event Night"], java_night);
+}
+
+#[test]
+fn unreadable_rust_files_still_block_their_names() {
+    let tmp = tempfile::tempdir().unwrap();
+    let java = java_per_user(tmp.path(), "Default");
+    let rust = tmp.path().join("rust");
+    let store = store(&rust);
+    // Files of a newer store format under non-canonical names, and one that is not TOML.
+    let profiles = rust.join("config/profiles");
+    let repositories = rust.join("data/repositories");
+    std::fs::create_dir_all(&profiles).unwrap();
+    std::fs::create_dir_all(&repositories).unwrap();
+    std::fs::write(
+        profiles.join("newer.toml"),
+        "format = 2\n[profile]\nname = \"Event Night\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        repositories.join("newer.toml"),
+        "format = 2\n[repository]\nname = \"Sample HTTP\"\n",
+    )
+    .unwrap();
+    std::fs::write(profiles.join("broken.toml"), "[[").unwrap();
+
+    let report = import(
+        &store,
+        &per_user_sources(&java, &[]),
+        &ImportOptions::default(),
+    )
+    .unwrap();
+    let source = &report.sources[0];
+    assert!(
+        source
+            .profiles
+            .iter()
+            .any(|o| o.file == "Event Night.a3s.profile"
+                && o.outcome == ItemOutcome::SkippedExisting)
+    );
+    assert!(
+        source
+            .repositories
+            .iter()
+            .any(|o| o.file == HTTP_FILE && o.outcome == ItemOutcome::SkippedExisting)
+    );
+    assert!(!store.profile_path("Event Night").exists());
+    assert!(!store.repository_path("Sample HTTP").exists());
+    // The file whose name cannot be read is reported.
+    assert!(
+        report.warnings.iter().any(|w| w.contains("broken.toml")),
+        "{:?}",
+        report.warnings
+    );
 }
 
 #[test]

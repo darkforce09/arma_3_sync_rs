@@ -107,6 +107,13 @@ fn redact(message: &str) -> String {
     first.to_owned()
 }
 
+/// The `name` string of the `[<key>]` table, when `text` is TOML at all: identifies a file that
+/// failed to decode (wrong structure or a newer `format`).
+pub(crate) fn peek_name(text: &str, key: &str) -> Option<String> {
+    let table: toml::Table = toml::from_str(text).ok()?;
+    table.get(key)?.get("name")?.as_str().map(str::to_owned)
+}
+
 /// Reads and decodes `path`; `Ok(None)` when it does not exist.
 pub(crate) fn read<T: DeserializeOwned>(path: &Path, key: &str) -> Result<Option<T>, Error> {
     match std::fs::read_to_string(path) {

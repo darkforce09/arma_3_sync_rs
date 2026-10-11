@@ -280,10 +280,10 @@ struct Candidate<T> {
 struct Importer<'a> {
     store: &'a LocalStore,
 
-    /// Profile names with a file in the store before the run.
+    /// Profile names with a file in the store before the run, readable or not.
     existing_profiles: BTreeSet<String>,
 
-    /// Repository names in the store before the run.
+    /// Repository names in the store before the run, readable or not.
     existing_repositories: BTreeSet<String>,
 
     /// Profiles written in this run, the targets of the configuration migration.
@@ -298,15 +298,45 @@ impl<'a> Importer<'a> {
     fn new(store: &'a LocalStore) -> Result<Self, ImportError> {
         let profiles = store.load_profiles()?;
         let repositories = store.load_repositories()?;
+        let mut report = ImportReport::default();
+        // A store file that cannot be decoded still blocks its name when the name is readable;
+        // otherwise only its canonical path does, which the user is told about.
+        for (failures, named, kind) in [
+            (
+                profiles.failures.keys(),
+                &profiles.unreadable_names,
+                "profile",
+            ),
+            (
+                repositories.failures.keys(),
+                &repositories.unreadable_names,
+                "repository",
+            ),
+        ] {
+            for file in failures.filter(|file| !named.contains_key(*file)) {
+                report.warnings.push(format!(
+                    "The Rust {kind} file \"{file}\" cannot be read: an imported {kind} \
+                     with the same name may duplicate it."
+                ));
+            }
+        }
         Ok(Self {
             store,
-            existing_profiles: profiles.sources.into_keys().collect(),
-            existing_repositories: repositories.repositories.into_keys().collect(),
+            existing_profiles: profiles
+                .sources
+                .into_keys()
+                .chain(profiles.unreadable_names.into_values())
+                .collect(),
+            existing_repositories: repositories
+                .repositories
+                .into_keys()
+                .chain(repositories.unreadable_names.into_values())
+                .collect(),
             imported_profiles: HashMap::new(),
             imported_repositories: BTreeSet::new(),
             configuration_done: store.configuration_path().exists(),
             preferences_done: store.preferences_path().exists(),
-            report: ImportReport::default(),
+            report,
         })
     }
 
@@ -553,39 +583,47 @@ impl<'a> Importer<'a> {
         if self.configuration_done {
             return Ok((ItemOutcome::SkippedExisting, None));
         }
-        let legacy = match read_configuration_file(path) {
+        let mut legacy = match read_configuration_file(path) {
             Ok(legacy) => legacy,
             Err(err) => return Ok((ItemOutcome::Failed(err.to_string()), None)),
         };
-        self.report.warnings.extend(legacy.warnings);
+        self.report.warnings.append(&mut legacy.warnings);
+        let configured = legacy.value.configuration.profile_name.clone();
+        // Java resets an unknown active profile to "Default" and writes the configuration
+        // before migrating (ui/main/MainPanel.java:481-490).
+        if configured != DEFAULT_PROFILE_NAME
+            && !self.imported_profiles.contains_key(&configured)
+            && !self.exists_in_store(&configured)
+        {
+            DEFAULT_PROFILE_NAME.clone_into(&mut legacy.value.configuration.profile_name);
+        }
         self.store
             .write_configuration(&legacy.value.configuration)?;
         self.configuration_done = true;
-        let migration = self.migrate(&legacy.value)?;
+        let migration = self.migrate(&legacy.value, &configured)?;
         Ok((ItemOutcome::Imported, migration))
     }
 
-    /// Moves the deprecated `a3s.cfg` fields into the active profile imported in this run.
+    /// Whether the store held a profile named `name` before the run.
+    fn exists_in_store(&self, name: &str) -> bool {
+        self.existing_profiles.contains(name) || self.store.profile_path(name).exists()
+    }
+
+    /// Moves the deprecated `a3s.cfg` fields into the active profile: `legacy`'s, already reset
+    /// to `"Default"` when `configured` does not exist.
     // Mirrors ui/main/MainPanel.java:538-569
-    fn migrate(&mut self, legacy: &LegacyConfiguration) -> Result<Option<String>, ImportError> {
+    fn migrate(
+        &mut self,
+        legacy: &LegacyConfiguration,
+        configured: &str,
+    ) -> Result<Option<String>, ImportError> {
         if legacy.addon_search_directory_paths.is_none() && legacy.launcher_options.is_none() {
             return Ok(None);
         }
-        let configured = &legacy.configuration.profile_name;
-        let exists_in_store = |name: &str| {
-            self.existing_profiles.contains(name) || self.store.profile_path(name).exists()
-        };
-        // Java resets an unknown active profile to "Default" before migrating
-        // (ui/main/MainPanel.java:481-490).
-        let active =
-            if self.imported_profiles.contains_key(configured) || exists_in_store(configured) {
-                configured.clone()
-            } else {
-                DEFAULT_PROFILE_NAME.to_owned()
-            };
+        let active = legacy.configuration.profile_name.clone();
         let (mut profile, created) = if let Some(profile) = self.imported_profiles.get(&active) {
             (profile.clone(), false)
-        } else if active == DEFAULT_PROFILE_NAME && !exists_in_store(DEFAULT_PROFILE_NAME) {
+        } else if active == DEFAULT_PROFILE_NAME && !self.exists_in_store(DEFAULT_PROFILE_NAME) {
             // Java's in-memory default profile (dao/ProfileDAO.java:44-48).
             (Profile::new(DEFAULT_PROFILE_NAME), true)
         } else {
@@ -631,7 +669,7 @@ impl<'a> Importer<'a> {
         self.store.write_profile(&profile)?;
         self.imported_profiles.insert(active.clone(), profile);
         let created = if created { " (created)" } else { "" };
-        let fallback = if &active == configured {
+        let fallback = if active == configured {
             String::new()
         } else {
             format!(" because the active profile \"{configured}\" does not exist")

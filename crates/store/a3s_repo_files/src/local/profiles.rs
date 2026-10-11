@@ -1,7 +1,7 @@
 //! Profiles (`dao/ProfileDAO.java`).
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use a3s_types::constants::DEFAULT_PROFILE_NAME;
 use a3s_types::local::Profile;
@@ -23,6 +23,11 @@ pub struct ProfilesLoad {
 
     /// Duplicate profile names, in the repository warning format.
     pub warnings: Vec<String>,
+
+    /// The profile name of each file that failed to decode but still names its profile (e.g. a
+    /// file of a newer store format), by file name. Such a name is taken: writing it would
+    /// duplicate or overwrite that file.
+    pub unreadable_names: BTreeMap<String, String>,
 }
 
 impl ProfilesLoad {
@@ -82,6 +87,9 @@ impl LocalStore {
                 Ok(text) => match toml_file::decode(&path, &text, "profile") {
                     Ok(profile) => profile,
                     Err(err) => {
+                        if let Some(name) = toml_file::peek_name(&text, "profile") {
+                            load.unreadable_names.insert(file.clone(), name);
+                        }
                         load.failures.insert(file, err);
                         continue;
                     }
@@ -125,13 +133,36 @@ impl LocalStore {
     /// Writes `profiles/<file_stem(name)>.toml` atomically (no `.backup` file is made).
     // Mirrors dao/ProfileDAO.java:67-98
     pub fn write_profile(&self, profile: &Profile) -> Result<(), Error> {
+        self.write_profile_replacing(profile, None)
+    }
+
+    /// Like [`Self::write_profile`], then deletes `previous` (best effort) when it is another
+    /// file, e.g. the file of a renamed profile or the file it was loaded from.
+    ///
+    /// `previous` is only deleted when it is a `.toml` file directly inside the profiles
+    /// directory; anything else is logged and kept.
+    pub fn write_profile_replacing(
+        &self,
+        profile: &Profile,
+        previous: Option<&Path>,
+    ) -> Result<(), Error> {
         let _guard = self.write_lock.lock();
-        toml_file::write(&self.profile_path(&profile.name), "profile", profile).map_err(|err| {
-            match err {
-                Error::Write { path, source } => Error::WriteProfile { path, source },
-                other => other,
-            }
-        })
+        let target = self.profile_path(&profile.name);
+        toml_file::write(&target, "profile", profile).map_err(|err| match err {
+            Error::Write { path, source } => Error::WriteProfile { path, source },
+            other => other,
+        })?;
+        if let Some(previous) = previous {
+            Self::delete_previous(&self.dirs.profiles, previous, &target);
+        }
+        Ok(())
+    }
+
+    /// Deletes a profile file outside the canonical name, e.g. the file a profile was loaded
+    /// from. Only a `.toml` file directly inside the profiles directory is deleted; whether a
+    /// file was removed.
+    pub fn delete_profile_file(&self, path: &Path) -> Result<bool, Error> {
+        self.delete_file_in(&self.dirs.profiles, path)
     }
 
     /// Deletes the profile's file; whether a file was removed.
