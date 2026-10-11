@@ -25,15 +25,19 @@ a3s_repo_files.workspace = true
 a3s_transport.workspace = true
 a3s_types.workspace = true
 a3s_zsync.workspace = true
+fs4.workspace = true
 futures.workspace = true
 parking_lot.workspace = true
+reqwest.workspace = true
 suppaftp.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["macros", "rt", "sync"] }
+tokio = { workspace = true, features = ["fs", "macros", "rt", "sync", "time"] }
 tracing.workspace = true
 
 [dev-dependencies]
 axum.workspace = true
+libunftp.workspace = true
 parking_lot.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["full"] }
+unftp-sbe-fs.workspace = true

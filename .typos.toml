@@ -5,6 +5,10 @@
 [files]
 extend-exclude = ["java_version/", "target/", "tests/fixtures/", "docs/specs/", "*.svg", "*.ttf"]
 
+[default]
+# Hex agent/worktree ids and commit hashes in docs/PROGRESS.md.
+extend-ignore-re = ["agent-[0-9a-f]{8,}", "\\b[0-9a-f]{7,40}\\b"]
+
 [default.extend-words]
 # Names that are part of the Java wire format and must stay misspelled.
 configration = "configration"

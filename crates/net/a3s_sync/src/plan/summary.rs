@@ -137,7 +137,7 @@ pub fn resumed_size(tasks: &[DownloadTask]) -> u64 {
         .iter()
         .filter(|t| is_file(t) && t.status == DownloadStatus::Done)
         .map(DownloadTask::download_size)
-        .sum()
+        .fold(0, u64::saturating_add)
 }
 
 /// The compressed files downloaded (`Done`): they still need uncompressing.
