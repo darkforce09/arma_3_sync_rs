@@ -95,11 +95,21 @@ version = "0.1.0-alpha.1"
 name = "a3s_repo_files"
 version = "0.1.0-alpha.1"
 dependencies = [
+ "a3s_error",
+ "a3s_hash",
  "a3s_jserial",
+ "a3s_paths",
  "a3s_types",
+ "aes",
+ "base64 0.22.1",
  "flate2",
+ "parking_lot",
+ "serde",
+ "sha1 0.11.0",
  "tempfile",
  "thiserror 2.0.21",
+ "toml",
+ "tracing",
 ]
 
 [[package]]
