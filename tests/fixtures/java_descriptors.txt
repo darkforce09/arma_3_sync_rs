@@ -1,0 +1,527 @@
+# java_fixture_harness descriptors; JDK 25.0.4.1+1-LTS; Java commit b7753ce
+
+class [B
+  uid -5984413125824719648 computed
+  flags 0x02 SC_SERIALIZABLE
+  super -
+
+class fr.soe.a3s.constant.CheckRepositoriesFrequency
+  uid 0 computed
+  flags 0x12 SC_SERIALIZABLE|SC_ENUM
+  super java.lang.Enum
+  enum DISABLED,FREQ1,FREQ2,FREQ3
+
+class fr.soe.a3s.constant.ConsoleCommands
+  uid 0 computed
+  flags 0x12 SC_SERIALIZABLE|SC_ENUM
+  super java.lang.Enum
+  enum NEW,BUILD,UPDATE,CHECK,LIST,DELETE,HELP,VERSION,QUIT,COMMANDS,SYNC,EXTRACT
+
+class fr.soe.a3s.constant.DefaultProfileName
+  uid 0 computed
+  flags 0x12 SC_SERIALIZABLE|SC_ENUM
+  super java.lang.Enum
+  enum DEFAULT
+
+class fr.soe.a3s.constant.DownloadStatus
+  uid 0 computed
+  flags 0x12 SC_SERIALIZABLE|SC_ENUM
+  super java.lang.Enum
+  enum PENDING,RUNNING,DONE
+
+class fr.soe.a3s.constant.EncryptionMode
+  uid 0 computed
+  flags 0x12 SC_SERIALIZABLE|SC_ENUM
+  super java.lang.Enum
+  enum NO_ENCRYPTION,EXPLICIT_SSL,IMPLICIT_SSL
+
+class fr.soe.a3s.constant.GameDLCs
+  uid 0 computed
+  flags 0x12 SC_SERIALIZABLE|SC_ENUM
+  super java.lang.Enum
+  enum Contact,GM,vn,CSLA,WS,SPE,EF,RF
+
+class fr.soe.a3s.constant.GameExecutables
+  uid 0 computed
+  flags 0x12 SC_SERIALIZABLE|SC_ENUM
+  super java.lang.Enum
+  enum GAME,GAME_x64,WIN_SERVER,WIN_SERVER_x64,LINUX_SERVER,STEAM,BATTLEYE
+
+class fr.soe.a3s.constant.GameSystemFolders
+  uid 0 computed
+  flags 0x12 SC_SERIALIZABLE|SC_ENUM
+  super java.lang.Enum
+  enum Addons,Curator,Kart,Heli,Mark,Expansion,Argo,Jets,Orange,Tank,Tacops,Enoch,AoW,Contact,GM,vn,CSLA,WS,SPE,EF,RF
+
+class fr.soe.a3s.constant.GameVersions
+  uid 0 computed
+  flags 0x12 SC_SERIALIZABLE|SC_ENUM
+  super java.lang.Enum
+  enum ARMA3
+
+class fr.soe.a3s.constant.IconResize
+  uid 0 computed
+  flags 0x12 SC_SERIALIZABLE|SC_ENUM
+  super java.lang.Enum
+  enum AUTO,SIZE1,SIZE2,SIZE3,SIZE4,NONE
+
+class fr.soe.a3s.constant.LookAndFeel
+  uid 0 computed
+  flags 0x12 SC_SERIALIZABLE|SC_ENUM
+  super java.lang.Enum
+  enum LAF_DEFAULT,LAF_ALUMINIUM,LAF_GRAPHITE,LAF_HIFI,LAF_NOIRE,LAF_METAL
+
+class fr.soe.a3s.constant.MaxMemoryValues
+  uid 0 computed
+  flags 0x12 SC_SERIALIZABLE|SC_ENUM
+  super java.lang.Enum
+  enum MIN,MAX32,MAX64
+
+class fr.soe.a3s.constant.MinimizationType
+  uid 0 computed
+  flags 0x12 SC_SERIALIZABLE|SC_ENUM
+  super java.lang.Enum
+  enum NOTHING,TASK_BAR,TRAY,CLOSE
+
+class fr.soe.a3s.constant.ModsetType
+  uid 0 computed
+  flags 0x12 SC_SERIALIZABLE|SC_ENUM
+  super java.lang.Enum
+  enum EVENT,REPOSITORY
+
+class fr.soe.a3s.constant.ProtocolType
+  uid 0 computed
+  flags 0x12 SC_SERIALIZABLE|SC_ENUM
+  super java.lang.Enum
+  enum FTP,FTPS,SFTP,HTTP,HTTPS,A3S,SOCKS4,SOCKS5,HTTP_WEBDAV,HTTPS_WEBDAV
+
+class fr.soe.a3s.constant.RepositoryStatus
+  uid 0 computed
+  flags 0x12 SC_SERIALIZABLE|SC_ENUM
+  super java.lang.Enum
+  enum UPDATED,OK,INDETERMINATED,ERROR
+
+class fr.soe.a3s.constant.StartWithOS
+  uid 0 computed
+  flags 0x12 SC_SERIALIZABLE|SC_ENUM
+  super java.lang.Enum
+  enum ENABLED,DISABLED
+
+class fr.soe.a3s.constant.TimeOutValues
+  uid 0 computed
+  flags 0x12 SC_SERIALIZABLE|SC_ENUM
+  super java.lang.Enum
+  enum CONNECTION_TIME_OUT,READ_TIME_OUT
+
+class fr.soe.a3s.domain.AbstractProtocole
+  uid -886357032287815203 declared
+  flags 0x02 SC_SERIALIZABLE
+  super -
+  field Z validateSSLCertificate
+  field L connectionTimeOut Ljava/lang/String;
+  field L encryptionMode Lfr/soe/a3s/constant/EncryptionMode;
+  field L login Ljava/lang/String;
+  field L password Ljava/lang/String;
+  field L port Ljava/lang/String;
+  field L protocolType Lfr/soe/a3s/constant/ProtocolType;
+  field L readTimeOut Ljava/lang/String;
+  field L url Ljava/lang/String;
+
+class fr.soe.a3s.domain.AutoConfig
+  uid 6424431620520340750 computed
+  flags 0x02 SC_SERIALIZABLE
+  super -
+  field L favoriteServers Ljava/util/List;
+  field L profiles Ljava/util/List;
+  field L repositories Ljava/util/List;
+
+class fr.soe.a3s.domain.Ftp
+  uid -1917448655850030044 declared
+  flags 0x02 SC_SERIALIZABLE
+  super fr.soe.a3s.domain.AbstractProtocole
+
+class fr.soe.a3s.domain.Http
+  uid -20 declared
+  flags 0x02 SC_SERIALIZABLE
+  super fr.soe.a3s.domain.AbstractProtocole
+
+class fr.soe.a3s.domain.Preferences
+  uid 7034433806261372240 declared
+  flags 0x02 SC_SERIALIZABLE
+  super -
+  field L checkRepositoriesFrequency Lfr/soe/a3s/constant/CheckRepositoriesFrequency;
+  field L iconResizeSize Lfr/soe/a3s/constant/IconResize;
+  field L launchPanelGameLaunch Lfr/soe/a3s/constant/MinimizationType;
+  field L launchPanelMinimized Lfr/soe/a3s/constant/MinimizationType;
+  field L lookAndFeel Lfr/soe/a3s/constant/LookAndFeel;
+  field L preferGitHubUpdates Ljava/lang/Boolean;
+  field L startWithOS Lfr/soe/a3s/constant/StartWithOS;
+
+class fr.soe.a3s.domain.Profile
+  uid -4395099790449721021 declared
+  flags 0x02 SC_SERIALIZABLE
+  super -
+  field L additionalParameters Ljava/lang/String;
+  field L addonNamesByPriority Ljava/util/List;
+  field L addonSearchDirectories Ljava/util/List;
+  field L lastAddedAddonSearchDirectory Ljava/lang/String;
+  field L launcherOptions Lfr/soe/a3s/domain/configration/LauncherOptions;
+  field L name Ljava/lang/String;
+  field L tree Lfr/soe/a3s/domain/TreeDirectory;
+
+class fr.soe.a3s.domain.Proxy
+  uid -50 declared
+  flags 0x02 SC_SERIALIZABLE
+  super -
+  field Z proxyEnabled
+  field L proxyProtocol Lfr/soe/a3s/domain/AbstractProtocole;
+
+class fr.soe.a3s.domain.Sftp
+  uid 1 declared
+  flags 0x02 SC_SERIALIZABLE
+  super fr.soe.a3s.domain.AbstractProtocole
+
+class fr.soe.a3s.domain.Socks
+  uid -40 declared
+  flags 0x02 SC_SERIALIZABLE
+  super fr.soe.a3s.domain.AbstractProtocole
+
+class fr.soe.a3s.domain.TreeDirectory
+  uid -3917102856123611985 declared
+  flags 0x02 SC_SERIALIZABLE
+  super -
+  field Z marked
+  field Z optional
+  field Z selected
+  field L list Ljava/util/List;
+  field L modsetRepositoryName Ljava/lang/String;
+  field L modsetType Lfr/soe/a3s/constant/ModsetType;
+  field L name Ljava/lang/String;
+  field L parent Lfr/soe/a3s/domain/TreeDirectory;
+  transient updated
+
+class fr.soe.a3s.domain.TreeLeaf
+  uid 8681722025933532378 declared
+  flags 0x02 SC_SERIALIZABLE
+  super -
+  field Z duplicate
+  field Z optional
+  field Z selected
+  field L dlcAppId Ljava/lang/String;
+  field L name Ljava/lang/String;
+  field L parent Lfr/soe/a3s/domain/TreeDirectory;
+  field L workshopId Ljava/lang/String;
+  transient missing
+
+class fr.soe.a3s.domain.Webdav
+  uid -30 declared
+  flags 0x02 SC_SERIALIZABLE
+  super fr.soe.a3s.domain.AbstractProtocole
+
+class fr.soe.a3s.domain.configration.Acre2Options
+  uid -8995842831822253145 declared
+  flags 0x02 SC_SERIALIZABLE
+  super -
+  field L acre2PluginPath Ljava/lang/String;
+  field L ts3Path Ljava/lang/String;
+
+class fr.soe.a3s.domain.configration.AcreOptions
+  uid -1596307340587244621 declared
+  flags 0x02 SC_SERIALIZABLE
+  super -
+  field L acrePluginPath Ljava/lang/String;
+  field L acreUserconfigPath Ljava/lang/String;
+  field L ts3Path Ljava/lang/String;
+
+class fr.soe.a3s.domain.configration.AiAOptions
+  uid -2248371007390169026 declared
+  flags 0x02 SC_SERIALIZABLE
+  super -
+  field L allinArmaPath Ljava/lang/String;
+  field L arma2OAPath Ljava/lang/String;
+  field L arma2Path Ljava/lang/String;
+  field L armaPath Ljava/lang/String;
+  field L tohPath Ljava/lang/String;
+
+class fr.soe.a3s.domain.configration.BikeyExtractOptions
+  uid 12345 declared
+  flags 0x02 SC_SERIALIZABLE
+  super -
+  field L sourceDirectoryPath Ljava/lang/String;
+  field L targetDirectoryPath Ljava/lang/String;
+
+class fr.soe.a3s.domain.configration.Configuration
+  uid -8310476744472497506 declared
+  flags 0x02 SC_SERIALIZABLE
+  super -
+  field I height
+  field Z viewModeTree
+  field I width
+  field L acre2Options Lfr/soe/a3s/domain/configration/Acre2Options;
+  field L acreOptions Lfr/soe/a3s/domain/configration/AcreOptions;
+  field L addonSearchDirectoryPaths Ljava/util/Set;
+  field L bikeyExtractOptions Lfr/soe/a3s/domain/configration/BikeyExtractOptions;
+  field L defaultModset Ljava/lang/String;
+  field L externalApplications Ljava/util/List;
+  field L favoriteServers Ljava/util/List;
+  field L gameVersion Ljava/lang/String;
+  field L launcherOptions Lfr/soe/a3s/domain/configration/LauncherOptions;
+  field L profileName Ljava/lang/String;
+  field L proxy Lfr/soe/a3s/domain/configration/Proxy;
+  field L rptOptions Lfr/soe/a3s/domain/configration/RptOptions;
+  field L serverName Ljava/lang/String;
+  field L tfarOptions Lfr/soe/a3s/domain/configration/TfarOptions;
+
+class fr.soe.a3s.domain.configration.ExternalApplication
+  uid 6695449091678057038 declared
+  flags 0x02 SC_SERIALIZABLE
+  super -
+  field Z enable
+  field L executablePath Ljava/lang/String;
+  field L name Ljava/lang/String;
+  field L parameters Ljava/lang/String;
+
+class fr.soe.a3s.domain.configration.FavoriteServer
+  uid 4613236292596702132 declared
+  flags 0x02 SC_SERIALIZABLE
+  super -
+  field I port
+  field Z selected
+  field L ipAddress Ljava/lang/String;
+  field L modsetName Ljava/lang/String;
+  field L name Ljava/lang/String;
+  field L password Ljava/lang/String;
+  field L repositoryName Ljava/lang/String;
+
+class fr.soe.a3s.domain.configration.LauncherOptions
+  uid 7112913210279158291 declared
+  flags 0x02 SC_SERIALIZABLE
+  super -
+  field Z autoRestart
+  field Z checkSignatures
+  field I cpuCountSelection
+  field Z defaultWorld
+  field Z enableHT
+  field Z filePatching
+  field Z hugePages
+  field Z launchArma3AsAdministrator
+  field Z missionFile
+  field Z noFilePatching
+  field Z noPause
+  field Z noSplashScreen
+  field Z nologs
+  field Z runBeta
+  field Z showScriptErrors
+  field Z windowMode
+  field Z xpCompatibilityMode
+  field L arma3ExePath Ljava/lang/String;
+  field L exThreadsSelection Ljava/lang/String;
+  field L gameProfile Ljava/lang/String;
+  field L mallocSelection Ljava/lang/String;
+  field L maxMemorySelection Ljava/lang/String;
+  field L missionFilePath Ljava/lang/String;
+  field L steamExePath Ljava/lang/String;
+
+class fr.soe.a3s.domain.configration.Proxy
+  uid -6891013124542313138 computed
+  flags 0x02 SC_SERIALIZABLE
+  super -
+  field Z enableProxy
+  field L proxyProtocol Lfr/soe/a3s/domain/AbstractProtocole;
+
+class fr.soe.a3s.domain.configration.RptOptions
+  uid 7740252023809740200 declared
+  flags 0x02 SC_SERIALIZABLE
+  super -
+  field L rptPath Ljava/lang/String;
+
+class fr.soe.a3s.domain.configration.TfarOptions
+  uid -9099384809608223793 declared
+  flags 0x02 SC_SERIALIZABLE
+  super -
+  field L tfarPluginPath Ljava/lang/String;
+  field L tfarUserconfigPath Ljava/lang/String;
+  field L ts3Path Ljava/lang/String;
+
+class fr.soe.a3s.domain.repository.AutoConfig
+  uid 2706280725619197755 declared
+  flags 0x02 SC_SERIALIZABLE
+  super -
+  field L favoriteServers Ljava/util/List;
+  field L protocole Lfr/soe/a3s/domain/AbstractProtocole;
+  field L repositoryName Ljava/lang/String;
+
+class fr.soe.a3s.domain.repository.Changelog
+  uid 749128678979864247 declared
+  flags 0x02 SC_SERIALIZABLE
+  super -
+  field Z contentUpdated
+  field I revision
+  field L addons Ljava/util/List;
+  field L buildDate Ljava/util/Date;
+  field L deletedAddons Ljava/util/List;
+  field L newAddons Ljava/util/List;
+  field L updatedAddons Ljava/util/List;
+
+class fr.soe.a3s.domain.repository.Changelogs
+  uid 7332983755625818660 declared
+  flags 0x02 SC_SERIALIZABLE
+  super -
+  field L list Ljava/util/List;
+
+class fr.soe.a3s.domain.repository.Event
+  uid 7456226002765813117 declared
+  flags 0x02 SC_SERIALIZABLE
+  super -
+  field L addonNames Ljava/util/Map;
+  field L description Ljava/lang/String;
+  field L dlcNames Ljava/util/Map;
+  field L name Ljava/lang/String;
+  field L userconfigFolderNames Ljava/util/Map;
+
+class fr.soe.a3s.domain.repository.Events
+  uid -5141643688299352462 declared
+  flags 0x02 SC_SERIALIZABLE
+  super -
+  field L list Ljava/util/List;
+
+class fr.soe.a3s.domain.repository.FileAttributes
+  uid -2500913557576506383 computed
+  flags 0x02 SC_SERIALIZABLE
+  super -
+  field J lastModified
+  field L sha1 Ljava/lang/String;
+
+class fr.soe.a3s.domain.repository.Repository
+  uid -8142021113361619970 declared
+  flags 0x02 SC_SERIALIZABLE
+  super -
+  field Z auto
+  field Z compressed
+  field Z exactMatch
+  field D maximumClientDownloadSpeed
+  field Z noAutoDiscover
+  field Z noPartialFileTransfer
+  field Z notify
+  field I numberOfClientConnections
+  field I numberOfConnections
+  field I numberOfRepositoryCheckConnections
+  field Z outOfSynk
+  field I parallelUploadConnections
+  field I revision
+  field Z uploadCompressedPboFilesOnly
+  field L autoConfigURL Ljava/lang/String;
+  field L bitTorrentProtocole Lfr/soe/a3s/domain/AbstractProtocole;
+  field L defaultDownloadLocation Ljava/lang/String;
+  field L excludedFilesFromBuild Ljava/util/Set;
+  field L excludedFoldersFromSync Ljava/util/Set;
+  field L favoriteServersSetToAutoconfig Ljava/util/List;
+  field L hidddenFolderPaths Ljava/util/Set;
+  field L mapEventsDownloadLocation Ljava/util/Map;
+  field L mapFilesForBuild Ljava/util/Map;
+  field L mapFilesForSync Ljava/util/Map;
+  field L name Ljava/lang/String;
+  field L path Ljava/lang/String;
+  field L protocole Lfr/soe/a3s/domain/AbstractProtocole;
+  field L uploadProtocole Lfr/soe/a3s/domain/AbstractProtocole;
+  transient autoConfig,changelogs,downloadReport,events,lastIndexFileTransfered,localAutoConfig,localChangelogs,localEvents,localServerInfo,localSync,repositorySyncStatus,serverInfo,sync
+
+class fr.soe.a3s.domain.repository.ServerInfo
+  uid 7697232677958952953 declared
+  flags 0x02 SC_SERIALIZABLE
+  super -
+  field Z compressedPboFilesOnly
+  field Z noPartialFileTransfer
+  field I numberOfConnections
+  field J numberOfFiles
+  field Z repositoryContentUpdated
+  field I revision
+  field J totalFilesSize
+  field L buildDate Ljava/util/Date;
+  field L hiddenFolderPaths Ljava/util/Set;
+
+class fr.soe.a3s.domain.repository.Sync
+  uid -6921574658374719514 declared
+  flags 0x02 SC_SERIALIZABLE
+  super -
+  field L mapSync Ljava/util/Map;
+
+class fr.soe.a3s.domain.repository.SyncTreeDirectory
+  uid -2855304993780573704 declared
+  flags 0x02 SC_SERIALIZABLE
+  super -
+  field Z deleted
+  field Z hidden
+  field Z markAsAddon
+  field Z updated
+  field L list Ljava/util/List;
+  field L name Ljava/lang/String;
+  field L parent Lfr/soe/a3s/domain/repository/SyncTreeDirectory;
+  transient destinationPath,optional
+
+class fr.soe.a3s.domain.repository.SyncTreeLeaf
+  uid 8849248143660225239 declared
+  flags 0x02 SC_SERIALIZABLE
+  super -
+  field Z compressed
+  field J compressedSize
+  field Z deleted
+  field J size
+  field Z updated
+  field L name Ljava/lang/String;
+  field L parent Lfr/soe/a3s/domain/repository/SyncTreeDirectory;
+  field L sha1 Ljava/lang/String;
+  transient complete,destinationPath,localSHA1,optional
+
+class java.lang.Boolean
+  uid -3665804199014368530 declared
+  flags 0x02 SC_SERIALIZABLE
+  super -
+  field Z value
+
+class java.lang.Enum
+  uid 0 computed
+  flags 0x12 SC_SERIALIZABLE|SC_ENUM
+  super -
+
+class java.util.ArrayList
+  uid 8683452581122892189 declared
+  flags 0x03 SC_WRITE_METHOD|SC_SERIALIZABLE
+  super -
+  field I size
+  transient elementData
+
+class java.util.Date
+  uid 7523967970034938905 declared
+  flags 0x03 SC_WRITE_METHOD|SC_SERIALIZABLE
+  super -
+  transient cdate,fastTime
+
+class java.util.HashMap
+  uid 362498820763181265 declared
+  flags 0x03 SC_WRITE_METHOD|SC_SERIALIZABLE
+  super -
+  field F loadFactor
+  field I threshold
+  transient entrySet,modCount,size,table
+
+class java.util.HashSet
+  uid -5024744406713321676 declared
+  flags 0x03 SC_WRITE_METHOD|SC_SERIALIZABLE
+  super -
+  transient map
+
+class java.util.TreeSet
+  uid -2479143000061671589 declared
+  flags 0x03 SC_WRITE_METHOD|SC_SERIALIZABLE
+  super -
+  transient m
+
+class javax.crypto.SealedObject
+  uid 4482838265551344752 declared
+  flags 0x02 SC_SERIALIZABLE
+  super -
+  field [ encodedParams [B
+  field [ encryptedContent [B
+  field L paramsAlg Ljava/lang/String;
+  field L sealAlg Ljava/lang/String;

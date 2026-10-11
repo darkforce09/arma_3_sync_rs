@@ -1,0 +1,3 @@
+valid=true
+workshop=1
+dlc=1

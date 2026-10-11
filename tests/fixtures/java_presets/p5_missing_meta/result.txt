@@ -1,0 +1,5 @@
+valid=false
+workshop=0
+dlc=0
+error: The selected modset contains no selected Workshop mods or CDLCs.
+issue: @no_meta|@no_meta|meta.cpp is missing|null|@no_meta

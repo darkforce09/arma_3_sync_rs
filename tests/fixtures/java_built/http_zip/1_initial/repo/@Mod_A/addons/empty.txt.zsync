@@ -1,0 +1,9 @@
+zsync: jazsync
+Filename: empty.txt
+MTime: Sun, 31 Dec 2023 12:00:00 +0000
+Blocksize: 8192
+Length: 0
+Hash-Lengths: 1,2,3
+URL: http://repo.example.org/arma3/@Mod_A/addons/empty.txt
+SHA-1: 0
+
