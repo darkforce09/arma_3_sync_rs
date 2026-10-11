@@ -12,7 +12,7 @@ Blockers: none
 | 2026-10-11 | a3s_sync (WP09 branch) | a17_live_wog_download (≤3 files, ≤1 MB) | PASS |
 | 2026-10-11 | a3s_sync (WP07 branch) | a19_live_wog_check, import_autoconfig WOG | PASS |
 | WP09 | a3s_sync download | FIX round 1 (BLOCKER cancel spin, deadline, D-16, overflow; live PASS) | 1 | impl=ab815ed7 ver=ae84c937 rev=a6ecc9b9 | 1 | worktree-agent-ab815ed72afe7c2df | .claude/worktrees/agent-ab815ed72afe7c2df | 02619c7 | 2026-10-11 |
-| WP04 | a3s_repo_files local/legacy | VERIFY ∥ REVIEW | 0 | impl=a20b9ae5 ver=aab7bf75 rev=a18f8f57 | 2 | worktree-agent-a20b9ae5ecc809758 | .claude/worktrees/agent-a20b9ae5ecc809758 | c7513a5 | 2026-10-11 |
+| WP04 | a3s_repo_files local/legacy | FIX round 1 (credentials in errors, import overwrite; Java seal cross-check PASS) | 1 | impl=a20b9ae5 ver=aab7bf75 rev=a18f8f57 | 2 | worktree-agent-a20b9ae5ecc809758 | .claude/worktrees/agent-a20b9ae5ecc809758 | c7513a5 | 2026-10-11 |
 | WP11 | a3s_admin build | VERIFY(+JDK) ∥ REVIEW — golden byte-identical vs Java builds | 0 | impl=a39b7a5c ver=aee386a7 rev=a4b331ee | 3 | worktree-agent-a39b7a5c85d46a5e2 | .claude/worktrees/agent-a39b7a5c85d46a5e2 | 504cd66 | 2026-10-11 |
 
 ## Done before orchestration
