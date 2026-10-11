@@ -21,9 +21,12 @@ pub struct ScanOptions {
     pub case_insensitive_paths: bool,
 }
 
-#[expect(
-    clippy::derivable_impls,
-    reason = "the default depends on the target platform"
+#[cfg_attr(
+    not(windows),
+    expect(
+        clippy::derivable_impls,
+        reason = "the default depends on the target platform"
+    )
 )]
 impl Default for ScanOptions {
     fn default() -> Self {
