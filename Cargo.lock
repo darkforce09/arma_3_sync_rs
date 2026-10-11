@@ -63,6 +63,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "a3s_launch"
+version = "0.1.0-alpha.1"
+dependencies = [
+ "a3s_addons",
+ "a3s_foundation",
+ "a3s_platform",
+ "a3s_types",
+ "base64 0.22.1",
+ "parking_lot",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tracing",
+]
+
+[[package]]
 name = "a3s_platform"
 version = "0.1.0-alpha.1"
 dependencies = [

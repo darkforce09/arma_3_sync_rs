@@ -36,6 +36,7 @@ a3s_sync = { path = "crates/net/a3s_sync", version = "=0.1.0-alpha.1", default-f
 a3s_transport = { path = "crates/net/a3s_transport", version = "=0.1.0-alpha.1", default-features = false }
 
 a3s_addons = { path = "crates/game/a3s_addons", version = "=0.1.0-alpha.1", default-features = false }
+a3s_launch = { path = "crates/game/a3s_launch", version = "=0.1.0-alpha.1", default-features = false }
 a3s_platform = { path = "crates/game/a3s_platform", version = "=0.1.0-alpha.1", default-features = false }
 a3s_tools = { path = "crates/game/a3s_tools", version = "=0.1.0-alpha.1", default-features = false }
 

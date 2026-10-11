@@ -78,6 +78,7 @@ const VARS: &[&str] = &[
     "ProgramFiles(x86)",
     "ProgramW6432",
     "APPIMAGE",
+    "PATH",
     CONFIG_DIR_VAR,
     DATA_DIR_VAR,
     CACHE_DIR_VAR,

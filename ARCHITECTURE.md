@@ -33,6 +33,7 @@ A crate may depend on crates from its own group or a group listed above it in th
 | **game** | | |
 | `a3s_addons` | Addon discovery and registry (mods and CDLCs under their symbolic keys), launch priorities, modset groups from repositories and events, missing/duplicate checks on addon groups. | `service/AddonService`, `dao/AddonDAO`, addon parts of `ProfileService`, `RepositoryService`, `ui/main/AddonsPanel` |
 | `a3s_platform` | OS integration: registry, Arma 3 / Steam / TeamSpeak 3 detection, special folders, process probe, autostart, desktop shortcuts, single instance. | `dao/ConfigurationDAO` (registry), `dao/WinRegistry`, `dao/PreferencesDAO` (Run key), `dao/LauncherDAO.isApplicationRunning`, JUnique and `JShellLink` use |
+| `a3s_launch` | Arma 3 run parameters, `Arma3.cfg` mod-list clean-up, the launch command for each OS (BattlEye, UAC elevation, `.bat`/`.sh`, Steam/Proton), the launch thread with auto-restart, external applications. The one place that spawns the game. | `service/LaunchService`, `dao/LauncherDAO` (launching), run-parameter parts of `ui/main/LauncherOptionsPanel` and `ui/main/MainPanel` |
 | `a3s_tools` | Bikey extraction, RPT log tailing, TFAR and ACRE 2 installer logic, Arma 3 Launcher preset import and export. | `dao/CommonDAO`, `ui/tools/*`, `service/Arma3LauncherPreset{Importer,Exporter}` |
 | **viewer** | | |
 | `a3s_ui` | Theme tokens (port of `ui/theme`), Geist fonts, SVG icons, widgets. | `ui/theme`, `ui/icon`, `ui/components` |
@@ -41,7 +42,7 @@ A crate may depend on crates from its own group or a group listed above it in th
 | **development** | | |
 | `a3s_dev_tools` | Java fixture harness wrapper: fixture regeneration, Java cross-checks. Dev-dependency only. | – |
 
-Planned parts (launch, the viewer application, the updater)
+Planned parts (the viewer application, the updater)
 get a crate when their ttm ticket starts, inside the group that fits.
 
 ## Repository wire format
@@ -177,6 +178,21 @@ Wire compatibility is the requirement; these differences are deliberate.
   `tasklist` (Java: substring of truncated names), and Linux scans `/proc`. Arma 3, its RPT and
   user folders are also found through Steam libraries and Proton prefixes. Single instance
   applies on every OS, per configuration folder (Java: Windows only).
+* **Game launch** (local only; the parameters Arma 3 receives are Java's): `.sh` scripts run as
+  `/bin/bash <script> <args…>` (Java's `bash -c` dropped the arguments); every enabled external
+  application starts (Java started only the first, then never launched the game); executable
+  kinds come from the real extension, ignoring case; `.bat` files start through
+  `cmd /C start ""`, so a quoted path is not taken as the window title. Elevated launches quote
+  each argument for the Windows command line, leave out an empty `-ArgumentList`, escape curly
+  single quotes, open no console and report "started" when PowerShell starts (Java: when the game
+  had exited). Auto-restart can be stopped and gives up after 3 runs in a row that each last
+  under 10 s. The child writes to Arma3Sync's own output instead of a pipe and runs in its
+  executable's folder; `-password=` values are hidden in the log; a favourite server or external
+  application with a missing name, address, password, path or parameters is skipped or treated
+  as empty instead of failing. `Arma3.cfg` keeps every byte outside the removed list and is
+  cleaned on every OS where its folder is known (Java: Windows only). On Linux a Windows `.exe`
+  starts through Steam (`steam -applaunch 107410 -noLauncher …`) with mod and mission paths in
+  Wine `Z:` form; auto-restart then follows the game in the process list.
 * **Insecure TLS override** is the environment variable `A3S_ALLOW_INSECURE_SSL=1` instead of
   Java's `-Da3s.allowInsecureSsl=true`.
 * **Game tools:** each bikey extraction has its own cancel token (Java's flag is never reset, so

@@ -39,7 +39,7 @@ The project is maintained by AI agents. Keep it small: every rule below states a
 
 | Folder | Holds |
 |---|---|
-| `crates/` | The Cargo workspace by group: `foundation`, `store` (Java serialization, domain types, repository files, zsync), `net` (transports, sync, repository admin), `game` (addons, game tools, OS integration), `viewer` (egui widgets), `application` (the `arma3sync` binary), `development` (Java harness wrapper). See `ARCHITECTURE.md` |
+| `crates/` | The Cargo workspace by group: `foundation`, `store` (Java serialization, domain types, repository files, zsync), `net` (transports, sync, repository admin), `game` (addons, game tools, OS integration, game launch), `viewer` (egui widgets), `application` (the `arma3sync` binary), `development` (Java harness wrapper). See `ARCHITECTURE.md` |
 | `tests/fixtures/` | Golden fixtures written by the Java implementation (data; see its README) |
 | `tools/java_fixture_harness/` | Java harness that runs the real Arma3Sync code to produce fixtures and verify Rust output |
 | `scripts/java_env.sh` | Sources the JDK for the harness |
