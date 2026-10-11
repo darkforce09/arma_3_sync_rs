@@ -19,6 +19,7 @@ use download_support::{
     BusySink, HttpServer, Rule, compressed_task, dir_task, drain, file_task, part_files,
     random_bytes, request, sha1, with_complete,
 };
+use parking_lot::Mutex;
 
 /// Runs `download` and returns the report and every event.
 async fn run(
@@ -42,6 +43,54 @@ fn no_finished(events: &[SyncEvent]) {
 
 fn file_failed(events: &[SyncEvent]) -> usize {
     count(events, |e| matches!(e, SyncEvent::FileFailed { .. }))
+}
+
+/// Runs `download` and cancels `cancel` as soon as a `Transfer` event reports at least
+/// `transferred` bytes. Returns the report, every event and the moment of the cancel.
+async fn run_cancelled_after(
+    request: &DownloadRequest,
+    tasks: &mut [DownloadTask],
+    cancel: &CancellationToken,
+    transferred: u64,
+) -> (DownloadReport, Vec<SyncEvent>, Instant) {
+    let events: Arc<Mutex<Vec<SyncEvent>>> = Arc::default();
+    let cancelled_at: Arc<Mutex<Option<Instant>>> = Arc::default();
+    let sender = {
+        let events = Arc::clone(&events);
+        let cancelled_at = Arc::clone(&cancelled_at);
+        let cancel = cancel.clone();
+        EventSender::from_fn(move |event| {
+            if let SyncEvent::Transfer(progress) = &event
+                && progress.transferred >= transferred
+            {
+                cancelled_at.lock().get_or_insert_with(|| {
+                    cancel.cancel();
+                    Instant::now()
+                });
+            }
+            events.lock().push(event);
+        })
+    };
+    let download = download(request, tasks, Arc::new(NoZipSink), cancel, &sender);
+    let report = tokio::time::timeout(Duration::from_secs(30), download)
+        .await
+        .expect("the transfer reached the expected bytes");
+    let cancelled_at = cancelled_at.lock().expect("cancelled");
+    let events = std::mem::take(&mut *events.lock());
+    (report, events, cancelled_at)
+}
+
+/// Waits until `path` has `len` bytes: writes of a cancelled download may still be landing.
+async fn wait_for_len(path: &Path, len: u64) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while std::fs::metadata(path).map(|m| m.len()).unwrap_or(0) != len {
+        assert!(
+            Instant::now() < deadline,
+            "{} never reached {len} bytes",
+            path.display()
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
 }
 
 fn cancel_after(token: &CancellationToken, delay: Duration) -> tokio::task::JoinHandle<Instant> {
@@ -276,23 +325,21 @@ async fn resume_within_a_session() {
     let part = dest.join("@a/big.pbo.part");
     let target = dest.join("@a/big.pbo");
 
-    // 1. Stalled transfer, cancelled.
+    // 1. Stalled transfer, cancelled once everything before the stall arrived.
     let cancel = CancellationToken::new();
-    let cancelled_at = cancel_after(&cancel, Duration::from_millis(300));
-    let (report, events) = run(
+    let (report, events, cancelled_at) = run_cancelled_after(
         &request(server.protocol(), 1),
         &mut tasks,
-        Arc::new(NoZipSink),
         &cancel,
+        100 * 1024,
     )
     .await;
     let returned = Instant::now();
-    let cancelled_at = cancelled_at.await.expect("cancel task");
     assert!(returned.duration_since(cancelled_at) < Duration::from_secs(1));
     assert!(matches!(report.end, DownloadEnd::Cancelled));
     assert_eq!(tasks[0].status, DownloadStatus::Running);
+    wait_for_len(&part, 100 * 1024).await;
     let part_len = std::fs::metadata(&part).expect("part kept").len();
-    assert!(part_len >= 64 * 1024, "part has {part_len} bytes");
     assert_eq!(file_failed(&events), 0);
     assert_eq!(report.outcome(vec![]), Some(Outcome::Cancelled));
 
@@ -664,17 +711,16 @@ async fn cancel_latency() {
         stall_after: Some(1024),
         ..Rule::default()
     });
+    // Cancelled once the three connections each received the bytes before their stall.
     let cancel = CancellationToken::new();
-    let cancelled_at = cancel_after(&cancel, Duration::from_millis(200));
-    let (report, events) = run(
+    let (report, events, cancelled_at) = run_cancelled_after(
         &request(server.protocol(), 3),
         &mut tasks,
-        Arc::new(NoZipSink),
         &cancel,
+        3 * 1024,
     )
     .await;
     let returned = Instant::now();
-    let cancelled_at = cancelled_at.await.expect("cancel task");
     assert!(returned.duration_since(cancelled_at) < Duration::from_secs(1));
     assert!(matches!(report.end, DownloadEnd::Cancelled));
     let running = tasks
