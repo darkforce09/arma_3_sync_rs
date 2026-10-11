@@ -11,6 +11,24 @@ HARNESS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO="$(cd "$HARNESS/../.." && pwd -P)"
 REQUIRED_MAJOR=25
 
+# The JDK derives sun.jnu.encoding (file names) from the locale and ignores -Dsun.jnu.encoding,
+# so non-ASCII paths need a UTF-8 locale whatever the host's LANG is.
+utf8_locale() {
+    local available candidate
+    available="$(locale -a 2>/dev/null | tr '[:upper:]' '[:lower:]' | tr -d '-')"
+    for candidate in C.UTF-8 en_US.UTF-8; do
+        if grep -qxF "$(tr '[:upper:]' '[:lower:]' <<<"$candidate" | tr -d '-')" <<<"$available"; then
+            echo "$candidate"
+            return
+        fi
+    done
+    echo C.UTF-8
+}
+LC_ALL="$(utf8_locale)"
+LANG="$LC_ALL"
+export LC_ALL LANG
+unset LANGUAGE
+
 # shellcheck source=../../scripts/java_env.sh
 if ! source "$REPO/scripts/java_env.sh" 2>/dev/null; then
     echo "java_fixture_harness: no JDK $REQUIRED_MAJOR at ${A3S_JAVA_HOME:-the java_env.sh default} (set A3S_JAVA_HOME)" >&2

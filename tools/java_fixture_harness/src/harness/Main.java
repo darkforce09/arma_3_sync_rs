@@ -152,10 +152,17 @@ public final class Main {
 		if (out == null) {
 			throw new UsageException("generate requires --out <dir>");
 		}
+		if (work != null && (work.startsWith(out) || out.startsWith(work))) {
+			throw new UsageException("--work and --out must not contain each other: " + work + ", " + out);
+		}
 		requireEmptyOrMissing(out, "--out");
 		Files.createDirectories(out);
 		if (work == null) {
 			work = Files.createTempDirectory("a3s-harness").toAbsolutePath().normalize();
+			if (work.startsWith(out)) {
+				Files.delete(work);
+				throw new UsageException("the temporary work directory " + work + " is inside --out " + out);
+			}
 		} else {
 			requireEmptyOrMissing(work, "--work");
 			Files.createDirectories(work);

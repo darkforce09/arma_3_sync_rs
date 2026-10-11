@@ -164,6 +164,7 @@ public final class Verify {
 				fail++;
 				continue;
 			}
+			int readable = 0;
 			for (String rel : rels) {
 				Path file = rel.isEmpty() ? root : root.resolve(rel);
 				String dumpRel = rel.isEmpty() ? root.getFileName().toString() : rel;
@@ -173,6 +174,7 @@ public final class Verify {
 					skip++;
 					continue;
 				}
+				readable++;
 				try {
 					String detail = verifyFile(file, kind, dumpDir == null ? null : dumpDir.resolve(dumpRel + ".json"),
 							semantic);
@@ -182,6 +184,13 @@ public final class Verify {
 					Main.emit("FAIL\t" + file + "\t" + describe(t) + "\n");
 					fail++;
 				}
+			}
+			if (readable == 0) {
+				// Silent all-SKIP results hide mistakes such as verifying an `uploaded/` copy whose
+				// files are not inside a `.a3s` directory.
+				Main.emit("FAIL\t" + root + "\tno file Arma3Sync reads below this path (sync, serverinfo, changelogs,"
+						+ " autoconfig and events are only recognised inside a .a3s directory)\n");
+				fail++;
 			}
 		}
 		Main.emit("SUMMARY\tok=" + ok + "\tfail=" + fail + "\tskip=" + skip + "\n");

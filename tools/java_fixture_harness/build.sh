@@ -27,6 +27,23 @@ for arg in "$@"; do
     esac
 done
 
+# javac reads source paths through sun.jnu.encoding, which follows the locale only.
+utf8_locale() {
+    local available candidate
+    available="$(locale -a 2>/dev/null | tr '[:upper:]' '[:lower:]' | tr -d '-')"
+    for candidate in C.UTF-8 en_US.UTF-8; do
+        if grep -qxF "$(tr '[:upper:]' '[:lower:]' <<<"$candidate" | tr -d '-')" <<<"$available"; then
+            echo "$candidate"
+            return
+        fi
+    done
+    echo C.UTF-8
+}
+LC_ALL="$(utf8_locale)"
+LANG="$LC_ALL"
+export LC_ALL LANG
+unset LANGUAGE
+
 # B2: JDK 25 from scripts/java_env.sh (A3S_JAVA_HOME overrides the default location).
 # shellcheck source=../../scripts/java_env.sh
 if ! source "$REPO/scripts/java_env.sh" 2>/dev/null; then
@@ -62,7 +79,8 @@ if [[ -z "$JAVA_SRC" || ! -d "$JAVA_SRC/fr/soe/a3s" ]]; then
 fi
 JAVA_SRC="$(cd "$JAVA_SRC" && pwd -P)"
 A3S="$JAVA_SRC/fr/soe/a3s"
-JAVA_COMMIT="$(git -C "$JAVA_SRC/../../.." rev-parse --short HEAD 2>/dev/null || echo unknown)"
+JAVA_CHECKOUT="$(cd "$JAVA_SRC/../../.." && pwd -P)"
+JAVA_COMMIT="$(git -C "$JAVA_CHECKOUT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
 
 RBP_REL="fr/soe/a3s/dao/repository/RepositoryBuildProcessor.java"
 
@@ -74,15 +92,16 @@ VARIANTS=(
     "treeleaf_pre_workshop fr/soe/a3s/domain/TreeLeaf.java"
 )
 
-mkdir -p "$BUILD"
-exec 9>"$BUILD/.lock"
-flock 9
+mkdir -p "$BUILD" || die 3 "cannot create $BUILD"
+exec 9>"$BUILD/.lock" || die 3 "cannot open $BUILD/.lock"
+flock 9 || die 3 "cannot lock $BUILD/.lock"
 
 if [[ $CLEAN -eq 1 ]]; then
-    find "$BUILD" -mindepth 1 -maxdepth 1 ! -name .lock -exec rm -rf {} +
+    find "$BUILD" -mindepth 1 -maxdepth 1 ! -name .lock -exec rm -rf {} + || die 3 "cannot clean $BUILD"
 fi
 
-# B7: the stamp covers every input of this script.
+# B7: the stamp covers every input of this script, including uncommitted Java changes (the
+# implicitly compiled closure is only covered by the commit otherwise).
 compute_stamp() {
     {
         (cd "$HARNESS" && find src stubs -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum)
@@ -93,14 +112,16 @@ compute_stamp() {
         done
         echo "$javac_version"
         echo "$JAVA_COMMIT"
+        git -C "$JAVA_CHECKOUT" status --porcelain -- . 2>/dev/null
+        git -C "$JAVA_CHECKOUT" diff HEAD -- . 2>/dev/null
     } | sha256sum | awk '{print $1}'
 }
-STAMP="$(compute_stamp)"
+STAMP="$(compute_stamp)" || die 3 "cannot compute the build stamp"
 if [[ -f "$BUILD/stamp" && "$(cat "$BUILD/stamp")" == "$STAMP" && -d "$BUILD/classes" ]]; then
     echo "up to date"
     exit 0
 fi
-rm -f "$BUILD/stamp"
+rm -f "$BUILD/stamp" || die 3 "cannot remove the old stamp"
 
 # apply_edit <file> <label> <expected count> <perl pattern> <perl replacement expression>
 apply_edit() {
@@ -113,10 +134,11 @@ apply_edit() {
 }
 
 # B4: patched copy of RepositoryBuildProcessor (P1 pinned clock, P2 sorted listFiles).
-rm -rf "$BUILD/patched-src" "$BUILD/variant-src" "$BUILD/classes.tmp" "$BUILD/variants.tmp"
-mkdir -p "$BUILD/patched-src/$(dirname "$RBP_REL")"
+rm -rf "$BUILD/patched-src" "$BUILD/variant-src" "$BUILD/classes.tmp" "$BUILD/variants.tmp" ||
+    die 3 "cannot remove old build directories"
+mkdir -p "$BUILD/patched-src/$(dirname "$RBP_REL")" || die 3 "cannot create patched-src"
 PATCHED="$BUILD/patched-src/$RBP_REL"
-cp "$JAVA_SRC/$RBP_REL" "$PATCHED"
+cp "$JAVA_SRC/$RBP_REL" "$PATCHED" || die 3 "cannot copy $RBP_REL"
 apply_edit "$PATCHED" "patch P1" 3 'new Date\(\)' '"harness.HarnessClock.now()"'
 apply_edit "$PATCHED" "patch P2" 2 '\b([A-Za-z_][A-Za-z0-9_]*)\.listFiles\(\)' '"harness.HarnessFs.sorted($1.listFiles())"'
 
@@ -125,8 +147,8 @@ ARGS="$BUILD/javac.args"
 {
     find "$HARNESS/src/harness" -name '*.java'
     find "$A3S/domain" "$A3S/constant" -name '*.java'
-} | LC_ALL=C sort >"$ARGS"
-mkdir -p "$BUILD/classes.tmp"
+} | LC_ALL=C sort >"$ARGS" || die 3 "cannot write $ARGS"
+mkdir -p "$BUILD/classes.tmp" || die 3 "cannot create classes.tmp"
 echo "compiling the harness against $JAVA_SRC (Java commit $JAVA_COMMIT)"
 if ! javac --release 25 -encoding UTF-8 -proc:none -implicit:class -nowarn -Xlint:none \
     -sourcepath "$BUILD/patched-src:$JAVA_SRC:$HARNESS/stubs:$HARNESS/src" \
@@ -135,13 +157,13 @@ if ! javac --release 25 -encoding UTF-8 -proc:none -implicit:class -nowarn -Xlin
 fi
 
 # B6: variant classes, each compiled alone against the main classes.
-mkdir -p "$BUILD/variants.tmp"
+mkdir -p "$BUILD/variants.tmp" || die 3 "cannot create variants.tmp"
 for entry in "${VARIANTS[@]}"; do
     name="${entry%% *}"
     rel="${entry#* }"
     src="$BUILD/variant-src/$name/$rel"
-    mkdir -p "$(dirname "$src")"
-    cp "$JAVA_SRC/$rel" "$src"
+    mkdir -p "$(dirname "$src")" || die 3 "cannot create the variant-src of $name"
+    cp "$JAVA_SRC/$rel" "$src" || die 3 "cannot copy $rel"
     case "$name" in
         repository_pre_connections)
             apply_edit "$src" "variant $name" 2 \
@@ -163,7 +185,7 @@ for entry in "${VARIANTS[@]}"; do
             ;;
     esac
     out="$BUILD/variants.tmp/$name"
-    mkdir -p "$out"
+    mkdir -p "$out" || die 3 "cannot create $out"
     if ! javac --release 25 -encoding UTF-8 -proc:none -implicit:none -nowarn -Xlint:none \
         -cp "$BUILD/classes.tmp" -sourcepath "$BUILD/variant-src/$name" -d "$out" "$src" >&2; then
         die 3 "javac failed for variant $name"
@@ -177,9 +199,10 @@ for entry in "${VARIANTS[@]}"; do
     done < <(cd "$out" && find . -type f | sed 's|^\./||')
 done
 
-rm -rf "$BUILD/classes" "$BUILD/variants"
-mv "$BUILD/classes.tmp" "$BUILD/classes"
-mv "$BUILD/variants.tmp" "$BUILD/variants"
-echo "$JAVA_COMMIT" >"$BUILD/java_commit"
-echo "$STAMP" >"$BUILD/stamp"
+rm -rf "$BUILD/classes" "$BUILD/variants" || die 3 "cannot remove the old classes"
+mv "$BUILD/classes.tmp" "$BUILD/classes" || die 3 "cannot install the classes"
+mv "$BUILD/variants.tmp" "$BUILD/variants" || die 3 "cannot install the variants"
+echo "$JAVA_COMMIT" >"$BUILD/java_commit" || die 3 "cannot write java_commit"
+# The stamp is written last, so a failed build never looks up to date.
+echo "$STAMP" >"$BUILD/stamp" || die 3 "cannot write the stamp"
 echo "built $(find "$BUILD/classes" -name '*.class' | wc -l) classes into $BUILD/classes"

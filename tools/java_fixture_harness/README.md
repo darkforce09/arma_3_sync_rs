@@ -35,7 +35,7 @@ stdout carries only protocol lines and JSON; every other message (javac, Arma3Sy
 | Command | Output |
 | --- | --- |
 | `descriptors` | Descriptor dump of every serializable `domain`/`constant` class plus the JDK classes found in streams |
-| `generate --out <dir> [--only descriptors,local,built,presets,roundtrip] [--work <dir>] [--keep-work]` | The fixture tree (below); `<dir>` must be empty or missing |
+| `generate --out <dir> [--only descriptors,local,built,presets,roundtrip] [--work <dir>] [--keep-work]` | The fixture tree (below); `<dir>` must be empty or missing; `--work` and `--out` must not contain each other |
 | `verify [--dump-dir <dir>] [--semantic] <path>...` | One `OK`/`FAIL`/`SKIP` line per file, then `SUMMARY ok=… fail=… skip=…` (tab separated); exit 1 on failures |
 | `dump [--semantic] <file>` | Canonical JSON of the object graph |
 | `roundtrip <in> <out>` | `A3SFilesAccessor.read` then the upload serialization (`FtpDAO.java:584-588`) |
@@ -54,7 +54,7 @@ with jazsyncmake from the sibling source and the file's `URL:` line and compared
 | --- | --- |
 | `java_descriptors.txt` | UID (`declared`/`computed`), wire flags, super class, fields in wire order, enum constants, transient fields |
 | `java_local/` | Per-user and portable layouts written by the real DAOs, plain repository copies, 4 historical variants, the autoconfig export, identity dumps in `dumps/` |
-| `java_built/<variant>/` | `http_plain`, `http_zip`, `ftp_plain`, `ftp_zip`: steps `1_initial`, `2_rebuild_nochange` (same JVM), `3_modified` (new JVM), each with `repo/`, `uploaded/` and `dumps/`; `scenario.json` |
+| `java_built/<variant>/` | `http_plain`, `http_zip`, `ftp_plain`, `ftp_zip`: steps `1_initial`, `2_rebuild_nochange` (same JVM), `3_modified` (new JVM), each with `repo/`, `uploaded/` and `dumps/`; `scenario.json`, `generated_files.json` |
 | `java_built/events_session/` | The GUI event calls (`s01`…`s07`), `session.json`, dumps |
 | `java_presets/` | Arma 3 Launcher preset export cases (`preset.html`, `result.txt`, `case.json`) |
 | `java_roundtrip/` | `HashSet`/`HashMap` capacities after fresh writes and round trips; `capacities.txt` |
@@ -65,8 +65,24 @@ visits as `{"ref":N}`, so shared instances in the Java streams are visible. Sema
 (`--semantic`) drop identities and sort sets and maps.
 
 Empty directories (`emptydir`, `Collection` after step 3) cannot be committed; `scenario.json`
-lists them under `dirs`, and lists every source file with size, mtime and SHA-1. File mtimes do
-not survive git either: consumers restore them from `scenario.json` before re-verifying `.zsync`.
+lists them under `dirs`, and lists every source file with size, mtime and SHA-1.
+`generated_files.json` lists the other snapshot files outside `.a3s/` (`.zsync`, `.pbo.zip`,
+`.ebo.zip`) with size, pinned mtime (`null` for `.zsync` files, whose own mtime nothing reads) and
+`sync_leaf` (Java's exclusion rule: the generated `.ebo.zip` is hashed by the next build). File
+mtimes do not survive git: consumers restore them from both files before re-verifying `.zsync`
+(the `MTime:` header is the source file's mtime).
+
+String sharing in the streams is Arma3Sync's own: every value that stands for a separate user
+input is a separate `String` object in the harness (`LocalData.typed`), because Java string
+literals are interned and would otherwise show up as back-references a real client does not
+write. Shared strings that remain (the `"0"` SHA-1, the autoconfig `repositoryName`, lower-cased
+addon keys, `Boolean.TRUE`/`FALSE`, enum constants) come from Arma3Sync code.
+
+`verify` reports a `FAIL` line for an argument below which no file is readable (a3s files are only
+recognised inside a `.a3s` directory), instead of silently skipping everything.
+
+`run.sh` and `build.sh` export `LC_ALL=C.UTF-8` (or `en_US.UTF-8`): the JDK takes the file-name
+encoding from the locale and ignores `-Dsun.jnu.encoding`, so non-ASCII paths need it.
 
 ## Harness-only changes (not Java behaviour)
 

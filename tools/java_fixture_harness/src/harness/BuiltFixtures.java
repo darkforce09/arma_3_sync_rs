@@ -15,6 +15,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
+import static harness.LocalData.typed;
+
 import fr.soe.a3s.constant.ProtocolType;
 import fr.soe.a3s.dao.ConfigurationDAO;
 import fr.soe.a3s.dao.FileAccessMethods;
@@ -65,17 +67,17 @@ public final class BuiltFixtures {
 	/** The two configuration favorite servers, in the order {@code Configuration.getFavoriteServers()} sorts them. */
 	static List<FavoriteServer> favoriteServers() {
 		FavoriteServer alpha = new FavoriteServer();
-		alpha.setDescription("Alpha Server");
-		alpha.setIpAddress("192.0.2.10");
+		alpha.setDescription(typed("Alpha Server"));
+		alpha.setIpAddress(typed("192.0.2.10"));
 		alpha.setPort(2302);
-		alpha.setPassword("alpha-pass");
+		alpha.setPassword(typed("alpha-pass"));
 		alpha.setSelected(true);
-		alpha.setModsetName("Night Op");
+		alpha.setModsetName(typed("Night Op"));
 		FavoriteServer bravo = new FavoriteServer();
-		bravo.setDescription("Bravo Server");
-		bravo.setIpAddress("192.0.2.20");
+		bravo.setDescription(typed("Bravo Server"));
+		bravo.setIpAddress(typed("192.0.2.20"));
 		bravo.setPort(2402);
-		bravo.setModsetName("Training");
+		bravo.setModsetName(typed("Training"));
 		return List.of(alpha, bravo);
 	}
 
@@ -95,6 +97,7 @@ public final class BuiltFixtures {
 				dumpStep(variantOut.resolve(step));
 			}
 			Io.writeString(variantOut.resolve("scenario.json"), scenario(variant, variantOut));
+			Io.writeString(variantOut.resolve("generated_files.json"), generatedFiles(variant, variantOut));
 		}
 		EventsSession.generate(built.resolve("events_session"), work.resolve("events_session"));
 	}
@@ -150,6 +153,35 @@ public final class BuiltFixtures {
 				.put("hidden_folders", Json.list("docs/hidden_a", "docs/hidden_b")).put("favorite_servers", favorites)
 				.put("scan_order", "sorted-by-name").put("steps", steps);
 		return Json.document(scenario);
+	}
+
+	/**
+	 * {@code generated_files.json}: every snapshot file outside {@code .a3s/} that is not a source
+	 * file ({@code .zsync}, {@code .pbo.zip}, {@code .ebo.zip}) with its size and (pinned) mtime, so a
+	 * checkout can restore the mtimes that {@code .zsync} headers and the next build depend on.
+	 * {@code sync_leaf} applies Java's own exclusion rule ({@code RepositoryBuildProcessor.java:487-489}):
+	 * a generated {@code .ebo.zip} is hashed by the next build.
+	 */
+	private static String generatedFiles(String variant, Path variantOut) throws IOException {
+		List<Object> steps = new ArrayList<Object>();
+		for (String step : STEPS) {
+			Path repo = variantOut.resolve(step).resolve("repo");
+			List<String> sources = sourceFiles(repo);
+			List<Object> files = new ArrayList<Object>();
+			for (String rel : Io.files(repo)) {
+				if (rel.startsWith(".a3s/") || sources.contains(rel)) {
+					continue;
+				}
+				String name = repo.resolve(rel).getFileName().toString();
+				boolean leaf = !name.contains(".zsync") && !name.contains(".pbo.zip") && !name.contains(".a3s");
+				// A .zsync file's own mtime is the wall clock and nothing reads it: null.
+				Long mtime = name.endsWith(".zsync") ? null : Files.getLastModifiedTime(repo.resolve(rel)).toMillis();
+				files.add(Json.obj().put("path", rel).put("size", Files.size(repo.resolve(rel))).put("mtime_ms", mtime)
+						.put("sync_leaf", leaf));
+			}
+			steps.add(Json.obj().put("name", step).put("files", files));
+		}
+		return Json.document(Json.obj().put("variant", variant).put("steps", steps));
 	}
 
 	/** Source files of a snapshot: no {@code .a3s/} content, no {@code .zsync}, no generated {@code .zip}. */
@@ -250,9 +282,9 @@ public final class BuiltFixtures {
 		configured.clear();
 		configured.addAll(favoriteServers());
 		if (isHttp(variant)) {
-			service.createRepository(name, "repo.example.org/arma3", "80", "anonymous", "", ProtocolType.HTTP, false);
+			service.createRepository(name, typed("repo.example.org/arma3"), typed("80"), typed("anonymous"), typed(""), ProtocolType.HTTP, false);
 		} else {
-			service.createRepository(name, "ftp.example.org/arma3", "21", "anonymous", "", ProtocolType.FTP, false);
+			service.createRepository(name, typed("ftp.example.org/arma3"), typed("21"), typed("anonymous"), typed(""), ProtocolType.FTP, false);
 		}
 		if (isZip(variant)) {
 			service.setCompressed(name, true);
@@ -388,28 +420,28 @@ public final class BuiltFixtures {
 	/** B31 step 3 events through the GUI flow: addEvent then saveEvent per event, then writeEvents. */
 	private static void writeStep3Events(RepositoryService service, String name) throws Exception {
 		EventDTO night = new EventDTO();
-		night.setName("Night Op");
-		night.setDescription("Night operation");
-		night.getAddonNames().put("@Mod_A", true);
-		night.getAddonNames().put("@mod_b", false);
-		night.getAddonNames().put("@Gone", true);
-		night.getDlcNames().put("WS", true);
-		night.getDlcNames().put("GM", false);
-		night.getUserconfigFolderNames().put("@Mod_A", true);
+		night.setName(typed("Night Op"));
+		night.setDescription(typed("Night operation"));
+		night.getAddonNames().put(typed("@Mod_A"), true);
+		night.getAddonNames().put(typed("@mod_b"), false);
+		night.getAddonNames().put(typed("@Gone"), true);
+		night.getDlcNames().put(typed("WS"), true);
+		night.getDlcNames().put(typed("GM"), false);
+		night.getUserconfigFolderNames().put(typed("@Mod_A"), true);
 
 		EventDTO training = new EventDTO();
-		training.setName("Training");
-		training.setDescription("Weekly training");
+		training.setName(typed("Training"));
+		training.setDescription(typed("Weekly training"));
 		Map<String, Boolean> addons = new HashMap<String, Boolean>();
-		addons.put("@Mod_A", true);
-		addons.put("@mod_b", true);
-		addons.put("@Mod_D", false);
+		addons.put(typed("@Mod_A"), true);
+		addons.put(typed("@mod_b"), true);
+		addons.put(typed("@Mod_D"), false);
 		for (int i = 1; i <= 9; i++) {
-			addons.put(String.format("@Unknown%02d", i), i % 2 == 0);
+			addons.put(String.format(typed("@Unknown%02d"), i), i % 2 == 0);
 		}
 		training.getAddonNames().putAll(addons);
-		for (String key : List.of("@Mod_A", "@mod_b", "@Mod_D", "@Cfg04", "@Cfg05", "@Cfg06")) {
-			training.getUserconfigFolderNames().put(key, !key.equals("@Cfg05"));
+		for (String key : List.of(typed("@Mod_A"), typed("@mod_b"), typed("@Mod_D"), typed("@Cfg04"), typed("@Cfg05"), typed("@Cfg06"))) {
+			training.getUserconfigFolderNames().put(key, !key.equals(typed("@Cfg05")));
 		}
 
 		for (EventDTO event : List.of(night, training)) {

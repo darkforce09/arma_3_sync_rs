@@ -8,6 +8,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import static harness.LocalData.typed;
+
 import fr.soe.a3s.dao.A3SFilesAccessor;
 import fr.soe.a3s.dto.EventDTO;
 import fr.soe.a3s.service.RepositoryService;
@@ -78,7 +80,7 @@ public final class EventsSession {
 		record(steps, service, name, repo, out, "s04_duplicate", "duplicateEvent",
 				Json.obj().put("event_name", "Night Op"));
 
-		service.renameEvent(name, "Night Op - duplicate", "Day Op", "desc");
+		service.renameEvent(name, "Night Op - duplicate", typed("Day Op"), typed("desc"));
 		record(steps, service, name, repo, out, "s05_rename", "renameEvent", Json.obj()
 				.put("event_name", "Night Op - duplicate").put("new_event_name", "Day Op").put("new_description", "desc"));
 
@@ -103,16 +105,16 @@ public final class EventsSession {
 	private static EventDTO event(String name, String description, String[] addons, boolean[] addonValues,
 			String[] dlcs, boolean[] dlcValues, String[] userconfig, boolean[] userconfigValues) {
 		EventDTO dto = new EventDTO();
-		dto.setName(name);
-		dto.setDescription(description);
+		dto.setName(typed(name));
+		dto.setDescription(typed(description));
 		for (int i = 0; i < addons.length; i++) {
-			dto.getAddonNames().put(addons[i], addonValues[i]);
+			dto.getAddonNames().put(typed(addons[i]), addonValues[i]);
 		}
 		for (int i = 0; i < dlcs.length; i++) {
-			dto.getDlcNames().put(dlcs[i], dlcValues[i]);
+			dto.getDlcNames().put(typed(dlcs[i]), dlcValues[i]);
 		}
 		for (int i = 0; i < userconfig.length; i++) {
-			dto.getUserconfigFolderNames().put(userconfig[i], userconfigValues[i]);
+			dto.getUserconfigFolderNames().put(typed(userconfig[i]), userconfigValues[i]);
 		}
 		return dto;
 	}
