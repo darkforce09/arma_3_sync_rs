@@ -665,7 +665,7 @@ fn java_references(n: usize) -> u64 {
 fn java_filter_boundary_matches_java() {
     let limit = a3s_jserial::JavaFilterLimits::JAVA_A3S.max_references;
     // References grow by a constant per leaf.
-    let per_leaf = java_references(2000) - java_references(1000);
+    let per_leaf = (java_references(2000) - java_references(1000)) / 1000;
     let base = java_references(1000) - 1000 * per_leaf;
     let mut n = usize::try_from((limit - base) / per_leaf).unwrap();
     while java_references(n + 1) <= limit {

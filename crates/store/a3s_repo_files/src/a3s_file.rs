@@ -6,6 +6,7 @@ use flate2::Compression;
 use flate2::read::GzDecoder;
 
 use crate::error::IoContext as _;
+use crate::temp_file::{TempFileMode, temp_file_next_to};
 use crate::{Error, Result};
 
 /// Maximum decompressed size accepted, matching the Java reader's stream limit.
@@ -101,10 +102,16 @@ pub fn write_a3s<T: JavaCodec>(path: &Path, value: &T) -> Result<()> {
     write_atomic(path, &bytes)
 }
 
+/// Writes an already encoded Java serialization stream as an `.a3s` file (gzip, temporary
+/// file, then rename), so the bytes on disk are exactly the bytes the caller validated.
+pub fn write_a3s_stream(path: &Path, raw: &[u8]) -> Result<()> {
+    write_atomic(path, &gzip(raw)?)
+}
+
 pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
     std::fs::create_dir_all(dir).with_path(dir)?;
-    let mut tmp = tempfile::NamedTempFile::new_in(dir).with_path(dir)?;
+    let mut tmp = temp_file_next_to(path, TempFileMode::Private).with_path(dir)?;
     tmp.write_all(bytes).with_path(tmp.path())?;
     tmp.as_file().sync_all().with_path(tmp.path())?;
     tmp.persist(path).map_err(|err| Error::Io {

@@ -4,7 +4,7 @@ use std::path::Path;
 
 use a3s_jserial::jdk::Builder;
 use a3s_jserial::{ClassData, Graph, JavaFilterLimits, NodeId, Value};
-use a3s_repo_files::{A3sFile, write_a3s};
+use a3s_repo_files::{A3sFile, write_a3s_stream};
 use a3s_types::{JavaCodec, SYNC_ROOT_NAME, SyncTreeDirectory, SyncTreeLeaf, SyncTreeNode, wire};
 
 use super::BuildError;
@@ -173,16 +173,8 @@ pub(crate) fn create_a3s_folder(folder: &Path) -> Result<(), BuildError> {
     Ok(())
 }
 
-/// Writes one `.a3s` file atomically.
-///
-/// `write_a3s` encodes `value` again. Encoding is a pure function of the value (no clock, no
-/// randomness, no hash-map iteration), so the written stream is the one [`encode_checked`]
-/// validated (`outcome_equals_written_files` checks the decoded files against it).
-pub(crate) fn write<T: JavaCodec>(
-    folder: &Path,
-    file: A3sFile,
-    value: &T,
-) -> Result<(), BuildError> {
-    write_a3s(&folder.join(file.file_name()), value)
+/// Writes one `.a3s` file atomically from the stream [`encode_checked`] validated.
+pub(crate) fn write(folder: &Path, file: A3sFile, raw: &[u8]) -> Result<(), BuildError> {
+    write_a3s_stream(&folder.join(file.file_name()), raw)
         .map_err(|source| BuildError::Write { file, source })
 }

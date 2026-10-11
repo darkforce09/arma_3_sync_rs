@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use a3s_repo_files::layout::ZSYNC_EXTENSION;
+use a3s_repo_files::{TempFileMode, temp_file_next_to};
 use a3s_types::Protocol;
 use a3s_zsync::{ControlFile, format_mtime};
 use parking_lot::Mutex;
@@ -84,8 +85,8 @@ fn generate(job: &ZsyncJob) -> io::Result<()> {
         other => io::Error::other(other),
     })?;
     let target = zsync_path(&job.file);
-    let dir = target.parent().unwrap_or_else(|| Path::new("."));
-    let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
+    // `FileWriter` permissions; a name the scan skips if the process dies.
+    let mut tmp = temp_file_next_to(&target, TempFileMode::Umask)?;
     tmp.write_all(&control.to_bytes())?;
     tmp.persist(&target).map_err(|err| err.error)?;
     Ok(())
@@ -93,7 +94,7 @@ fn generate(job: &ZsyncJob) -> io::Result<()> {
 
 /// Generates the `.zsync` files in parallel. On the first error the remaining files are skipped
 /// and that error is returned.
-// Mirrors dao/repository/RepositoryZsyncProcessor.java:51-305
+// Mirrors dao/repository/RepositoryZsyncProcessor.java:41-95
 pub(crate) fn run(
     jobs: &[ZsyncJob],
     cancel: &AtomicBool,

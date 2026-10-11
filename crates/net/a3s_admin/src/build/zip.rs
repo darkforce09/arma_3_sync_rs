@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use a3s_repo_files::layout::{ZIP_EXTENSION, is_compressible};
+use a3s_repo_files::{TempFileMode, temp_file_next_to};
 use parking_lot::Mutex;
 use rayon::prelude::*;
 use zip::write::SimpleFileOptions;
@@ -14,8 +15,24 @@ use zip::{CompressionMethod, DateTime, ZipWriter};
 use super::scan::LeafRef;
 use super::{BuildError, BuildEvent, Progress, worker_pool};
 
-/// Sources of at least 4 GiB need ZIP64.
+/// Largest size or offset a zip without ZIP64 records can hold.
 const ZIP64_THRESHOLD: u64 = 0xFFFF_FFFF;
+
+/// Whether the zip of a `len`-byte source named `name` needs ZIP64.
+///
+/// DEFLATE expands incompressible data, so a source just under 4 GiB can produce an entry that
+/// crosses the limit, and the zip writer then fails the entry. The margin is zlib's
+/// `deflateBound` for raw DEFLATE (an upper bound for every backend `zip` uses) plus the local
+/// header with its ZIP64 extra field.
+pub fn needs_zip64(len: u64, name: &str) -> bool {
+    let deflate_bound = len
+        .saturating_add(len >> 12)
+        .saturating_add(len >> 14)
+        .saturating_add(len >> 25)
+        .saturating_add(13);
+    let local_header = 30 + 20 + name.len() as u64;
+    deflate_bound.saturating_add(local_header) >= ZIP64_THRESHOLD
+}
 
 /// `<file>.zip`.
 pub(crate) fn zip_path(file: &Path) -> PathBuf {
@@ -84,14 +101,14 @@ pub(crate) fn zip_file(file: &Path, cancel: &AtomicBool) -> Result<u64, BuildErr
     let mut source = BufReader::new(fs::File::open(file).map_err(err)?);
     let len = fs::metadata(file).map_err(err)?.len();
     let target = zip_path(file);
-    let dir = target.parent().unwrap_or_else(|| Path::new("."));
-    let tmp = tempfile::NamedTempFile::new_in(dir).map_err(err)?;
+    // `FileOutputStream` permissions; a name the scan skips if the process dies.
+    let tmp = temp_file_next_to(&target, TempFileMode::Umask).map_err(err)?;
     let mut writer = ZipWriter::new(tmp);
     let options = SimpleFileOptions::default()
         .compression_method(CompressionMethod::Deflated)
         .compression_level(Some(9))
         .last_modified_time(DateTime::DEFAULT)
-        .large_file(len >= ZIP64_THRESHOLD);
+        .large_file(needs_zip64(len, &name));
     writer.start_file(name, options).map_err(zip_err)?;
     let mut buf = vec![0u8; 64 * 1024];
     loop {
@@ -159,11 +176,13 @@ pub(crate) fn run(
 }
 
 /// Uncompressed repositories: deletes the `.zip` of every compressible leaf that has one; the
-/// caller clears `compressed` on every compressible leaf. Returns the number of zips.
+/// caller clears `compressed` on every compressible leaf. Returns the number of zips. Once
+/// `cancel` is set the remaining zips are kept.
 // Mirrors dao/zip/DeleteZipBatchProcessor.java:54-105
 pub(crate) fn delete(
     leaves: &[LeafRef],
     names: &[String],
+    cancel: &AtomicBool,
     on_event: &(dyn Fn(BuildEvent) + Sync),
 ) -> usize {
     let targets: Vec<PathBuf> = leaves
@@ -176,6 +195,9 @@ pub(crate) fn delete(
     let progress = Mutex::new(Progress::new(targets.len()));
     let work = || {
         targets.par_iter().for_each(|zip| {
+            if cancel.load(Ordering::Relaxed) {
+                return;
+            }
             super::delete_file(zip, on_event);
             let value = progress.lock().increment();
             on_event(BuildEvent::Progress(value));

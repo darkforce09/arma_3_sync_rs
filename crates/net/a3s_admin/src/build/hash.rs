@@ -3,7 +3,9 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use a3s_repo_files::hash::{EMPTY_FILE_SHA1, Sha1Cache, hash_files, modified_millis};
+use a3s_repo_files::hash::{
+    EMPTY_FILE_SHA1, FileAttributes, Sha1Cache, hash_files, modified_millis,
+};
 use parking_lot::Mutex;
 
 use super::scan::LeafRef;
@@ -26,12 +28,23 @@ pub(crate) enum Sha1Source {
 pub(crate) struct Hashes {
     pub sha1: Vec<Option<String>>,
     pub source: Vec<Sha1Source>,
+
+    /// Cache entries of re-hashed files whose `.zsync` or `.zip` is regenerated (or the `.zip`
+    /// deleted) for the new content. They enter the cache only once those stages succeed: a
+    /// cached SHA-1 makes the next build reuse the existing `.zsync`/`.zip`, which a cancelled
+    /// or failed build may have left from the old content.
+    pub pending: Vec<(PathBuf, FileAttributes)>,
 }
 
 /// Fills the SHA-1 of every leaf, from the cache when the file's mtime is unchanged.
+///
+/// `has_outputs[i]`: the `.zsync` or `.zip` stage acts on leaf `i` in this build. Its new cache entry goes
+/// to [`Hashes::pending`]; the entries of other re-hashed files enter `cache` at once, even
+/// when the stage fails or is cancelled.
 // Mirrors dao/repository/RepositorySHA1Processor.java:53-167
 pub(crate) fn hash_leaves(
     leaves: &[LeafRef],
+    has_outputs: &[bool],
     cache: &mut Sha1Cache,
     cancel: &AtomicBool,
     on_event: &(dyn Fn(BuildEvent) + Sync),
@@ -42,6 +55,7 @@ pub(crate) fn hash_leaves(
     let mut hashes = Hashes {
         sha1: vec![None; leaves.len()],
         source: vec![Sha1Source::Missing; leaves.len()],
+        pending: Vec::new(),
     };
     let mut misses: Vec<(usize, PathBuf)> = Vec::new();
     for (i, leaf) in leaves.iter().enumerate() {
@@ -66,11 +80,21 @@ pub(crate) fn hash_leaves(
 
     let paths: Vec<PathBuf> = misses.iter().map(|(_, p)| p.clone()).collect();
     let progress = Mutex::new(Progress::new(paths.len()));
-    let results = hash_files(&paths, cache, cancel, &|_| {
+    let mut computed = Sha1Cache::default();
+    let results = hash_files(&paths, &mut computed, cancel, &|_| {
         if let Some(value) = progress.lock().increment_changed() {
             on_event(BuildEvent::Progress(value));
         }
     });
+    for (i, path) in &misses {
+        if let Some(attributes) = computed.entries.remove(path) {
+            if has_outputs[*i] {
+                hashes.pending.push((path.clone(), attributes));
+            } else {
+                cache.entries.insert(path.clone(), attributes);
+            }
+        }
+    }
     if cancel.load(Ordering::Relaxed) {
         return Err(BuildError::Cancelled);
     }

@@ -300,8 +300,10 @@ fn now_millis() -> JavaDate {
 
 /// Builds the repository at `repository.path` and writes its `.a3s` files.
 ///
-/// `cache` is the repository's SHA-1 cache (`mapFilesForBuild`); it keeps the hashes computed so
-/// far even when the build fails. The caller persists the cache and the repository afterwards
+/// `cache` is the repository's SHA-1 cache (`mapFilesForBuild`). It keeps the hashes computed so
+/// far even when the build fails, except for re-hashed files with a `.zsync` or `.zip`: those
+/// enter the cache once the zip stage completes, so the next build redoes a `.zsync`/`.zip`
+/// that a failed or cancelled build left from the old content. The caller persists the cache and the repository afterwards
 /// (see [`BuildOutcome::apply_to`]). `cancel` is checked between stages and before each file;
 /// `on_event` may be called from worker threads.
 // Mirrors dao/repository/RepositoryBuildProcessor.java:76-345
@@ -352,8 +354,15 @@ pub fn build_repository(
     check_cancel(cancel)?;
 
     // SHA-1.
+    let is_http = repository.protocol.protocol_type.is_http();
+    // `.zsync` files, and `.zip` files that are regenerated or (uncompressed repository) deleted.
+    let has_outputs: Vec<bool> = names
+        .iter()
+        .map(|name| is_http || is_compressible(name))
+        .collect();
     on_event(BuildEvent::Stage(STAGE_SHA1));
-    let hashes = hash::hash_leaves(&leaves, cache, cancel, on_event)?;
+    let mut hashes = hash::hash_leaves(&leaves, &has_outputs, cache, cancel, on_event)?;
+    let pending_cache_entries = std::mem::take(&mut hashes.pending);
     scan::for_each_leaf_mut(&mut sync, &mut |i, leaf| {
         leaf.sha1.clone_from(&hashes.sha1[i]);
     });
@@ -424,7 +433,7 @@ pub fn build_repository(
     check_cancel(cancel)?;
 
     // zsync.
-    let zsync_generated = if repository.protocol.protocol_type.is_http() {
+    let zsync_generated = if is_http {
         on_event(BuildEvent::Stage(STAGE_ZSYNC));
         let jobs = zsync::plan(
             &leaves,
@@ -464,7 +473,7 @@ pub fn build_repository(
         (zipped, 0)
     } else {
         on_event(BuildEvent::Stage(STAGE_DELETE_ZIP));
-        let deleted = zip::delete(&leaves, &names, on_event);
+        let deleted = zip::delete(&leaves, &names, cancel, on_event);
         scan::for_each_leaf_mut(&mut sync, &mut |_, leaf| {
             if is_compressible(&leaf.name) {
                 leaf.compressed = false;
@@ -473,6 +482,8 @@ pub fn build_repository(
         (0, deleted)
     };
     check_cancel(cancel)?;
+    // Every `.zsync` and `.zip` now matches its file's new SHA-1 (or is deleted).
+    cache.entries.extend(pending_cache_entries);
 
     // Encode everything before writing anything.
     let sync_emit = write::SyncEmit::new(&sync, &cached_zero);
@@ -502,15 +513,16 @@ pub fn build_repository(
 
     // Write, in Java's order.
     write::create_a3s_folder(&a3s)?;
-    write::write(&a3s, A3sFile::Sync, &sync_emit)?;
-    write::write(&a3s, A3sFile::ServerInfo, &server_info)?;
-    write::write(&a3s, A3sFile::Changelogs, &changelogs)?;
-    write::write(&a3s, A3sFile::AutoConfig, &auto_config)?;
-    write::write(&a3s, A3sFile::Events, &events)?;
+    write::write(&a3s, A3sFile::Sync, &raw_sync)?;
+    write::write(&a3s, A3sFile::ServerInfo, &raw_server_info)?;
+    write::write(&a3s, A3sFile::Changelogs, &raw_changelogs)?;
+    write::write(&a3s, A3sFile::AutoConfig, &raw_auto_config)?;
+    write::write(&a3s, A3sFile::Events, &raw_events)?;
     Ok(outcome)
 }
 
-/// Stage functions and wire helpers, exposed for this crate's tests.
+/// Stage functions and wire helpers, exposed for this crate's tests only. Not a stable API:
+/// other crates use [`build_repository`] and must not depend on anything here.
 #[doc(hidden)]
 pub mod testing {
     pub use super::carry::RawGraph;
@@ -520,4 +532,5 @@ pub mod testing {
     pub use super::metadata::{AutoConfigEmit, hidden_folder_path};
     pub use super::scan::is_excluded_name;
     pub use super::write::SyncEmit;
+    pub use super::zip::needs_zip64;
 }

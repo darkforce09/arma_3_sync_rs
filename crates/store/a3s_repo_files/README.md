@@ -1,6 +1,7 @@
 # a3s_repo_files
 
-Files on disk: the gzip-wrapped `.a3s` repository metadata files (size limits, atomic writes), the
+Files on disk: the gzip-wrapped `.a3s` repository metadata files (size limits, atomic writes
+through `<name>.<random>.a3s.tmp` temporary files, which repository builds never scan), the
 Rust client's own TOML store (configuration, preferences, profiles, repositories, SHA-1 caches,
 Workshop metadata), the one-time importer of the Java client's files (including the AES-sealed
 `*.a3s.repository`), the `export.a3s.autoconfig` file exchanged between clients

@@ -12,6 +12,10 @@ pub const ZIP_EXTENSION: &str = ".zip";
 /// Temporary file used while patching with zsync.
 pub const PART_EXTENSION: &str = ".part";
 
+/// Suffix of the temporary files renamed over their target once complete
+/// (`<name>.<random>.a3s.tmp`).
+pub const TEMP_SUFFIX: &str = ".a3s.tmp";
+
 /// Local client file holding an (encrypted) repository configuration.
 pub const REPOSITORY_EXTENSION: &str = ".a3s.repository";
 

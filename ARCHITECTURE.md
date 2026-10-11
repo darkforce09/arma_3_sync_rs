@@ -114,7 +114,11 @@ Wire compatibility is the requirement; these differences are deliberate.
 * **Repository build:** the compression stage's own outputs (`<name>.zip` for any compressible
   file, so also `.ebo.zip`) are never sync leaves (Java turns its `.ebo.zip` into a leaf on the
   next build); a repository whose path is a symbolic link reports the real `totalFilesSize` of the
-  linked folder (Java reports 0).
+  linked folder (Java reports 0). `.zip` and `.zsync` files are written to
+  `<name>.<random>.a3s.tmp` (umask permissions, a name every builder skips) and renamed, where
+  Java writes them in place. A cancelled build stops and writes no `.a3s` file (Java writes
+  partial metadata), and a re-hashed file enters the SHA-1 cache only once its `.zip`/`.zsync`
+  is regenerated or deleted, so the next build never reuses stale ones.
 * **Sync safety:** the plan rejects remote names that are empty, `.`, `..`, absolute or contain a
   separator, and every write and delete stays inside the destination. The extra-file scan never
   follows a symbolic link (it is one file node); deletions remove the link, never its target.

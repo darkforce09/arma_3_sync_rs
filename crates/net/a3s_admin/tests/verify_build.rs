@@ -1,6 +1,7 @@
 //! Adversarial verification of the repository build: limits at Java's reader boundaries,
-//! cancellation followed by a rebuild, file permissions of generated files, symbolic links,
-//! Unicode / case-colliding names and rebuild idempotence. The `#[ignore]`d tests need JDK 25
+//! cancellation followed by a rebuild, file permissions and leftover temporary files of
+//! generated files, the ZIP64 margin, symbolic links, nested `racine` folders, Unicode /
+//! case-colliding names and rebuild idempotence. The `#[ignore]`d tests need JDK 25
 //! (`source scripts/java_env.sh`) and check that Java reads what Rust wrote.
 
 use std::collections::BTreeMap;
@@ -258,7 +259,6 @@ fn verify_depth_boundary_48_ok_49_fails() {
 /// re-hashed files in the same build (`RepositoryBuildProcessor.java:283-317`, `cancel()` at
 /// :619-636 only reaches processors that already exist).
 #[test]
-#[ignore = "SHA-1 cache committed before zip/zsync, cancelled build leaves a stale zip: ttm a3sync repository-builder-fix-round"]
 fn verify_cancel_after_hash_then_rebuild_has_fresh_zip_and_zsync() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().join("repo");
@@ -349,7 +349,6 @@ fn verify_cancel_mid_zip_and_mid_zsync_leaves_no_partial_files() {
 /// `FileOutputStream`) are created by Java with the process umask (typically 0644), so a web
 /// server running as another user can serve them. Temporary files from `tempfile` are 0600.
 #[test]
-#[ignore = "zip written 0600 instead of the umask mode: ttm a3sync repository-builder-fix-round"]
 fn verify_generated_files_have_umask_permissions() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().join("repo");
@@ -364,6 +363,78 @@ fn verify_generated_files_have_umask_permissions() {
         let mode = fs::metadata(root.join(rel)).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, expected, "{rel}: {mode:o} vs Java {expected:o}");
     }
+}
+
+/// A process killed while writing a `.zip` or `.zsync` leaves its temporary file next to the
+/// target. Its name contains `.a3s`, so the next build (Rust or Java) does not publish it.
+#[test]
+fn verify_leftover_temp_files_are_not_leaves() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("repo");
+    let pbo = write(&root, "@m/addons/a.pbo", &vec![1u8; 10_000]);
+    let mut repo = repository(&root, ProtocolType::Http);
+    repo.compressed = true;
+    let mut cache = Sha1Cache::default();
+    let first = build(&repo, &mut cache);
+    assert!(
+        all_files(&root).iter().all(|f| !f.ends_with(".tmp")),
+        "{:?}",
+        all_files(&root)
+    );
+
+    for extension in [".zip", ".zsync"] {
+        let target = PathBuf::from(format!("{}{extension}", pbo.display()));
+        let (_, leftover) =
+            a3s_repo_files::temp_file_next_to(&target, a3s_repo_files::TempFileMode::Umask)
+                .unwrap()
+                .keep()
+                .unwrap();
+        fs::write(&leftover, b"partial").unwrap();
+    }
+    let second = build(&repo, &mut cache);
+    assert_eq!(second.server_info.number_of_files, 1);
+    assert!(!second.content_updated);
+    assert_eq!(second.server_info.revision, first.server_info.revision);
+    assert_eq!(second.sync, first.sync);
+}
+
+/// A folder named `racine` below the root is an ordinary folder: its files survive pruning,
+/// keep their full relative path in the `.zsync` URL and the SHA-1 cache, and an unchanged
+/// rebuild keeps the revision.
+#[test]
+fn verify_nested_racine_folder_keeps_full_paths() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("repo");
+    let file = write(&root, "@m/racine/f.txt", b"nested racine");
+    let repo = repository(&root, ProtocolType::Http);
+    let mut cache = Sha1Cache::default();
+    let first = build(&repo, &mut cache);
+    let sha1 = leaf_sha1(&first.sync, "@m/racine/f.txt").unwrap();
+    assert_eq!(first.rehashed, ["@m/racine/f.txt"]);
+    assert_eq!(
+        fs::read(root.join("@m/racine/f.txt.zsync")).unwrap(),
+        expected_zsync(
+            &file,
+            "f.txt",
+            "http://example.org/repo/@m/racine/f.txt",
+            &sha1
+        )
+    );
+
+    let second = build(&repo, &mut cache);
+    assert!(second.rehashed.is_empty());
+    assert!(!second.content_updated);
+    assert_eq!(second.server_info.revision, first.server_info.revision);
+}
+
+/// DEFLATE expands incompressible data, so a source just under 4 GiB already needs ZIP64.
+#[test]
+fn verify_zip64_margin_below_4_gib() {
+    use a3s_admin::build::testing::needs_zip64;
+    assert!(!needs_zip64(1 << 30, "a.pbo"));
+    assert!(needs_zip64(0xFFFF_FFFF - (1 << 20), "a.pbo"));
+    assert!(needs_zip64(0xFFFF_FFFF, "a.pbo"));
+    assert!(needs_zip64(5 << 30, "a.pbo"));
 }
 
 /// A repository whose path is a symbolic link to a folder reports the real `totalFilesSize` of
