@@ -381,7 +381,9 @@ fn import_is_idempotent_and_marked() {
     assert_eq!(
         marker.sources,
         [java
-            .join("config/Arma3Sync/configuration")
+            .join("config")
+            .join("Arma3Sync")
+            .join("configuration")
             .display()
             .to_string()]
     );

@@ -79,7 +79,8 @@ pub fn random_bytes(len: usize, seed: u64) -> Vec<u8> {
         .collect()
 }
 
-/// Sorted list of `(relative path, contents)` below `dir`; directories have no contents.
+/// Sorted list of `(relative path, contents)` below `dir`, paths joined with `/` on every OS;
+/// directories have no contents.
 pub fn snapshot(dir: &Path) -> Vec<(String, Option<Vec<u8>>)> {
     fn walk(base: &Path, dir: &Path, out: &mut Vec<(String, Option<Vec<u8>>)>) {
         let mut entries: Vec<_> = std::fs::read_dir(dir)
@@ -91,8 +92,10 @@ pub fn snapshot(dir: &Path) -> Vec<(String, Option<Vec<u8>>)> {
             let rel = path
                 .strip_prefix(base)
                 .expect("below base")
-                .to_string_lossy()
-                .into_owned();
+                .components()
+                .map(|c| c.as_os_str().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/");
             if path.is_dir() {
                 out.push((rel, None));
                 walk(base, &path, out);

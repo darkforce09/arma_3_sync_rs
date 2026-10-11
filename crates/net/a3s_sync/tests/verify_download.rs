@@ -1419,17 +1419,22 @@ async fn v_directory_task_blocked_by_file() {
 // Names
 
 /// Unicode, spaces and URL-special characters survive the request path and the local name;
-/// names differing only in case are distinct files.
+/// names differing only in case are distinct files. `?` is part of a name only where the
+/// filesystem allows it (not on Windows).
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn v_unicode_and_special_names_http() {
     let server = HttpServer::start().await;
     let dest_dir = tempfile::tempdir().expect("tempdir");
     let dest = dest_dir.path();
-    let names = [
-        "@ünï/ädd ons/文件 #1%20?.pbo",
+    let mut names = vec![
+        "@ünï/ädd ons/文件 #1%20&+;=[].pbo",
         "@ünï/ädd ons/X.pbo",
         "@ünï/ädd ons/x.pbo",
     ];
+    if std::fs::write(dest.join("probe?"), b"").is_ok() {
+        std::fs::remove_file(dest.join("probe?")).expect("remove probe");
+        names.push("@ünï/ädd ons/query?a=1.pbo");
+    }
     let mut tasks = Vec::new();
     for (i, name) in names.iter().enumerate() {
         let content = random_bytes(1000 + i, 100 + i as u64);
