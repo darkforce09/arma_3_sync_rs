@@ -116,7 +116,8 @@ Wire compatibility is the requirement; these differences are deliberate.
   next build); a repository whose path is a symbolic link reports the real `totalFilesSize` of the
   linked folder (Java reports 0). `.zip` and `.zsync` files are written to
   `<name>.<random>.a3s.tmp` (umask permissions, a name every builder skips) and renamed, where
-  Java writes them in place. A cancelled build stops and writes no `.a3s` file (Java writes
+  Java writes them in place. The `.a3s` metadata files get umask permissions too (Java leaves
+  them `0600`, unreadable to a web server running as another user). A cancelled build stops and writes no `.a3s` file (Java writes
   partial metadata), and a re-hashed file enters the SHA-1 cache only once its `.zip`/`.zsync`
   is regenerated or deleted, so the next build never reuses stale ones.
 * **Sync safety:** the plan rejects remote names that are empty, `.`, `..`, absolute or contain a

@@ -141,12 +141,14 @@ pub(crate) fn write_bytes(path: &Path, bytes: &[u8]) -> Result<(), Error> {
     if let Some(dir) = dir {
         std::fs::create_dir_all(dir).map_err(write_error)?;
     }
-    crate::a3s_file::write_atomic(path, bytes).map_err(|err| {
-        write_error(match err {
-            crate::Error::Io { source, .. } => source,
-            other => io::Error::other(other.to_string()),
-        })
-    })?;
+    crate::a3s_file::write_atomic(path, bytes, crate::temp_file::TempFileMode::Private).map_err(
+        |err| {
+            write_error(match err {
+                crate::Error::Io { source, .. } => source,
+                other => io::Error::other(other.to_string()),
+            })
+        },
+    )?;
     #[cfg(unix)]
     if let Some(dir) = dir {
         // Makes the rename durable; the data itself was synced before it.

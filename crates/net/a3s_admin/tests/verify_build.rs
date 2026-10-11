@@ -345,9 +345,9 @@ fn verify_cancel_mid_zip_and_mid_zsync_leaves_no_partial_files() {
     }
 }
 
-/// `.zsync` (`MetaFileMaker`: `FileWriter`/`FileOutputStream`) and `.zip` (`ZipDAO`:
-/// `FileOutputStream`) are created by Java with the process umask (typically 0644), so a web
-/// server running as another user can serve them. Temporary files from `tempfile` are 0600.
+/// Every file a build publishes gets the process umask permissions (typically 0644), so a web
+/// server running as another user can serve it: `.zsync` and `.zip` like Java's
+/// `FileOutputStream`, and the `.a3s` metadata files too (Java leaves those 0600).
 #[test]
 fn verify_generated_files_have_umask_permissions() {
     let tmp = tempfile::tempdir().unwrap();
@@ -359,7 +359,14 @@ fn verify_generated_files_have_umask_permissions() {
     let probe = tmp.path().join("probe");
     fs::File::create(&probe).unwrap();
     let expected = fs::metadata(&probe).unwrap().permissions().mode() & 0o777;
-    for rel in ["@m/addons/a.pbo.zip", "@m/addons/a.pbo.zsync"] {
+    for rel in [
+        "@m/addons/a.pbo.zip",
+        "@m/addons/a.pbo.zsync",
+        ".a3s/sync",
+        ".a3s/serverinfo",
+        ".a3s/changelogs",
+        ".a3s/autoconfig",
+    ] {
         let mode = fs::metadata(root.join(rel)).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, expected, "{rel}: {mode:o} vs Java {expected:o}");
     }

@@ -10,6 +10,7 @@ use a3s_types::local::{AutoConfigExport, Legacy, decode_legacy_stream};
 
 use crate::a3s_file::{MAX_DECOMPRESSED_SIZE, gunzip, gzip, write_atomic};
 use crate::error::IoContext as _;
+use crate::temp_file::TempFileMode;
 use crate::{Error, Result};
 
 /// Name of the export file inside the chosen destination folder (`export` followed by
@@ -56,7 +57,7 @@ pub fn export_auto_config(export: &AutoConfigExport, destination_folder: &Path) 
         });
     }
     let path = destination_folder.join(AUTOCONFIG_EXPORT_FILE_NAME);
-    write_atomic(&path, &bytes)?;
+    write_atomic(&path, &bytes, TempFileMode::Private)?;
     Ok(path)
 }
 

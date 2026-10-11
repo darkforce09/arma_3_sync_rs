@@ -97,21 +97,27 @@ pub fn read_a3s<T: JavaCodec>(path: &Path) -> Result<T> {
 }
 
 /// Encodes and writes an `.a3s` file atomically (temporary file, then rename).
+///
+/// The file gets the umask permissions so a web server running as another user can serve the
+/// repository (Java's `Files.createTempFile` leaves it `0600`).
 pub fn write_a3s<T: JavaCodec>(path: &Path, value: &T) -> Result<()> {
     let bytes = encode_a3s(value)?;
-    write_atomic(path, &bytes)
+    write_atomic(path, &bytes, TempFileMode::Umask)
 }
 
 /// Writes an already encoded Java serialization stream as an `.a3s` file (gzip, temporary
 /// file, then rename), so the bytes on disk are exactly the bytes the caller validated.
+///
+/// Permissions as for [`write_a3s`].
 pub fn write_a3s_stream(path: &Path, raw: &[u8]) -> Result<()> {
-    write_atomic(path, &gzip(raw)?)
+    write_atomic(path, &gzip(raw)?, TempFileMode::Umask)
 }
 
-pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
+/// Writes `bytes` to `path` through a temporary file renamed over it.
+pub(crate) fn write_atomic(path: &Path, bytes: &[u8], mode: TempFileMode) -> Result<()> {
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
     std::fs::create_dir_all(dir).with_path(dir)?;
-    let mut tmp = temp_file_next_to(path, TempFileMode::Private).with_path(dir)?;
+    let mut tmp = temp_file_next_to(path, mode).with_path(dir)?;
     tmp.write_all(bytes).with_path(tmp.path())?;
     tmp.as_file().sync_all().with_path(tmp.path())?;
     tmp.persist(path).map_err(|err| Error::Io {
