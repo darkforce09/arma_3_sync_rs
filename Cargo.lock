@@ -110,8 +110,13 @@ dependencies = [
 name = "a3s_tools"
 version = "0.1.0-alpha.1"
 dependencies = [
+ "a3s_repo_files",
+ "a3s_types",
+ "regex",
+ "serde_json",
  "tempfile",
  "thiserror 2.0.21",
+ "tracing",
 ]
 
 [[package]]

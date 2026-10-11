@@ -1,8 +1,10 @@
-//! Game-side tools of the Java client's "Tools" menu, without any UI: the bikey extractor
+//! Game-side tools of the Java client, without any UI: the "Tools" menu's bikey extractor
 //! ([`bikey`]), the RPT log viewer's tailer ([`rpt`]) and the TFAR / ACRE 2 TS3 plugin
-//! installers ([`radio`]).
+//! installers ([`radio`]), and the addon groups' Arma 3 Launcher preset import and export
+//! ([`preset`]).
 
 pub mod bikey;
+pub mod preset;
 pub mod radio;
 pub mod rpt;
 

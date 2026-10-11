@@ -32,7 +32,7 @@ A crate may depend on crates from its own group or a group listed above it in th
 | `a3s_admin` | Repository build (check and upload to come). | `service/administration/*`, `dao/repository/RepositoryBuildProcessor` |
 | **game** | | |
 | `a3s_addons` | Addon discovery and registry (mods and CDLCs under their symbolic keys), launch priorities, modset groups from repositories and events, missing/duplicate checks on addon groups. | `service/AddonService`, `dao/AddonDAO`, addon parts of `ProfileService`, `RepositoryService`, `ui/main/AddonsPanel` |
-| `a3s_tools` | Bikey extraction, RPT log tailing, TFAR and ACRE 2 installer logic. | `dao/CommonDAO`, `ui/tools/*` |
+| `a3s_tools` | Bikey extraction, RPT log tailing, TFAR and ACRE 2 installer logic, Arma 3 Launcher preset import and export. | `dao/CommonDAO`, `ui/tools/*`, `service/Arma3LauncherPreset{Importer,Exporter}` |
 | **viewer** | | |
 | `a3s_ui` | Theme tokens (port of `ui/theme`), Geist fonts, SVG icons, widgets. | `ui/theme`, `ui/icon`, `ui/components` |
 | **application** | | |
@@ -162,6 +162,13 @@ Wire compatibility is the requirement; these differences are deliberate.
   key; a lookup that several addons match (a duplicate inside a download location, a Workshop id,
   a DLC) takes the first in scan order instead of Java's hash order; a symbolic-link loop is
   scanned once instead of recursing until the stack overflows.
+* **Arma 3 Launcher presets:** the exported HTML is byte-identical to Java's. On import, a numeric
+  entity decodes to its real code point (Java truncates it to 16 bits), two adjacent surrogate
+  entities form one character, a lone surrogate becomes U+FFFD, and an entity that is not a valid
+  number stays as text (Java aborts the import); an unreadable local `meta.cpp` skips that addon
+  with a warning (Java aborts). The HTML patterns' case-insensitive keywords also accept the
+  Unicode case variants `ſ` and `K` (Kelvin sign). Java's `launcher-preset-export.log` is replaced by
+  `tracing` debug events in the application log.
 * **Local-only fixes** (no wire effect) are allowed where Java has a bug or a security hole, for
   example control characters rejected in local file names, and UI tokens adjusted for readability
   in the dark theme. UI and error text need not match Java.

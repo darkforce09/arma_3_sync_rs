@@ -11,10 +11,19 @@ The logic behind the Java client's game tools, without any UI:
 - `radio`: the TFAR and ACRE 2 installer wizards: TeamSpeak 3 detection, the system
   specifications labels, first-page validation (`validate_tfar`, `validate_acre2`), the copy steps
   (`install_tfar`, `install_acre2`) and the wizard texts (`radio::strings`).
+- `preset`: Arma 3 Launcher HTML presets for the addon-groups panel. `compare` / `import_preset`
+  read a preset and match its Workshop mods and CDLCs against the local addons;
+  `add_imported_group` turns the result into a checked addon group. `generate` collects a
+  modset's selected addons (reading `meta.cpp`, falling back to the Workshop metadata store) and
+  renders the HTML byte-identical to Java's; `write` replaces the target file atomically. The
+  remaining helpers pick the modset to export, propose file names and check the metadata
+  dialog's input.
 
 Messages and labels keep the Java client's wording. Blocking calls; the caller picks the thread,
 except `RptTail`, which owns its own.
 
-Boundaries: depends only on external crates; no UI, no configuration storage. Platform lookups
+Boundaries: depends on `a3s_types` (addons, addon-group trees, CDLCs) and `a3s_repo_files`
+(the Workshop metadata store, read only); no UI, no configuration storage. Addons come in from
+the caller as plain values, so addon discovery stays outside. Platform lookups
 (the TeamSpeak 3 registry entry, the default RPT folder, the process list) come in as plain values
 or through the `Ts3ProcessProbe` trait.

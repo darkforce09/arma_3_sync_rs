@@ -1,6 +1,6 @@
 [package]
 name = "a3s_tools"
-description = "Game tools: bikey extraction, RPT log tailing, TFAR and ACRE 2 installer logic."
+description = "Game tools: bikey extraction, RPT log tailing, TFAR and ACRE 2 installer logic, Arma 3 Launcher presets."
 authors.workspace = true
 edition.workspace = true
 homepage.workspace = true
@@ -18,7 +18,13 @@ workspace = true
 all-features = true
 
 [dependencies]
+a3s_repo_files.workspace = true
+a3s_types.workspace = true
+regex.workspace = true
+tempfile.workspace = true
 thiserror.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
+serde_json.workspace = true
 tempfile.workspace = true
