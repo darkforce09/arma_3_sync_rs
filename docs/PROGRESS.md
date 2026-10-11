@@ -12,7 +12,6 @@ Blockers: none
 | 2026-10-11 | a3s_sync (WP07 branch) | a19_live_wog_check, import_autoconfig WOG | PASS |
 | WP09 | a3s_sync download | IMPL | 0 | impl=ab815ed7 | 1 | (worktree) | | | 2026-10-11 |
 | WP08 | a3s_sync plan | FIX round 1 (D-15 path safety, symlinks, overflow; verifier 7 fails; live PASS) | 1 | impl=a1349fd3 ver=a34e0b61 rev=aab55615 | 2 | worktree-agent-a1349fd36b09e8a4b | .claude/worktrees/agent-a1349fd36b09e8a4b | 68c648e | 2026-10-11 |
-| WP01 | java_fixture_harness | FIX round 2 (build stamp outside git; minors) | 2 | impl=ae232646 | 3 | worktree-agent-ae2326461a583e177 | .claude/worktrees/agent-ae2326461a583e177 | 022f896 | 2026-10-11 |
 
 ## Done before orchestration
 
@@ -34,7 +33,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 | 0 | infra | .claude, scripts, docs | — | MERGED | 14d51f0 | |
 | 0 | transport-commit | a3s_transport | — | MERGED | 7770850 | download side, live WOG test |
 | 0 | descriptor-lock | a3s_types tests | — | MERGED | 575c386 | |
-| 0 | WP01 | java_fixture_harness | — | FIX | | JDK 25 via scripts/java_env.sh; javac only, commons-io stub |
+| 0 | WP01 | java_fixture_harness | — | MERGED | | JDK 25 via scripts/java_env.sh; javac only, commons-io stub |
 | 0 | WP02 | utils crates | — | MERGED | (see git log) | |
 | 0 | WP03 | a3s_types local | — | MERGED | cea732e | wire-touching |
 | 0 | WP06 | a3s_transport upload | transport-commit | MERGED | 9dc241f | |
