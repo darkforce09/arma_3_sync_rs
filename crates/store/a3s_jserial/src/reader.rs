@@ -53,17 +53,150 @@ pub fn read_with_limits(bytes: &[u8], limits: Limits) -> Result<Graph> {
         graph: Graph::new(),
         limits,
         depth: 0,
+        java: None,
     };
-    let magic = reader.u16()?;
-    let version = reader.u16()?;
-    if magic != STREAM_MAGIC || version != STREAM_VERSION {
-        return Err(Error::BadHeader { magic, version });
-    }
-    while reader.pos < bytes.len() {
-        let content = reader.content()?;
-        reader.graph.roots.push(content);
-    }
+    reader.stream()?;
     Ok(reader.graph)
+}
+
+/// What Java's `ObjectInputFilter` sees while `ObjectInputStream` reads a stream.
+///
+/// Each field is the maximum over every point where the JDK calls the filter
+/// (`ObjectInputStream.filterCheck`): back-references, new class descriptors, arrays and the
+/// `checkArray` calls of `ArrayList`/`HashMap`/`HashSet.readObject`. A filter that limits depth,
+/// references or bytes rejects the stream exactly when one of these maxima exceeds its limit.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct JavaFilterStats {
+    /// `FilterInfo.depth()`: nesting of `readObject0` calls (plus one while a class
+    /// descriptor's super descriptor is read).
+    pub depth: usize,
+
+    /// `FilterInfo.references()`: `ObjectInputStream.totalObjectRefs`, incremented by every
+    /// `readObject0` call (new objects, strings, back-references and nulls alike) and once per
+    /// new class descriptor.
+    pub references: u64,
+
+    /// `FilterInfo.streamBytes()`: bytes read so far.
+    pub stream_bytes: u64,
+}
+
+/// Limits of a Java `ObjectInputFilter` on depth, references and stream bytes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct JavaFilterLimits {
+    /// Largest accepted `depth`.
+    pub max_depth: usize,
+
+    /// Largest accepted `references`.
+    pub max_references: u64,
+
+    /// Largest accepted `streamBytes`.
+    pub max_stream_bytes: u64,
+}
+
+impl JavaFilterLimits {
+    /// Arma3Sync's reader filter (`A3SFilesAccessor.LEGACY_OBJECT_FILTER`): rejected when
+    /// `depth > 100 || references > 250000 || streamBytes > 256 MB`.
+    pub const JAVA_A3S: Self = Self {
+        max_depth: 100,
+        max_references: 250_000,
+        max_stream_bytes: 256 * 1024 * 1024,
+    };
+}
+
+impl JavaFilterStats {
+    /// Fails like the Java filter would if any value exceeds `limits`.
+    pub fn check(&self, limits: JavaFilterLimits) -> Result<()> {
+        if self.depth > limits.max_depth {
+            Err(Error::LimitExceeded("Java filter: nesting depth"))
+        } else if self.references > limits.max_references {
+            Err(Error::LimitExceeded("Java filter: object references"))
+        } else if self.stream_bytes > limits.max_stream_bytes {
+            Err(Error::LimitExceeded("Java filter: stream bytes"))
+        } else {
+            Ok(())
+        }
+    }
+}
+
+/// Reads a stream like [`read`] and reports the values Java's serial filter would see
+/// (JDK 25 `ObjectInputStream`), see [`JavaFilterStats`].
+pub fn java_filter_stats(bytes: &[u8]) -> Result<JavaFilterStats> {
+    let mut reader = Reader {
+        bytes,
+        pos: 0,
+        graph: Graph::new(),
+        limits: Limits::default(),
+        depth: 0,
+        java: Some(JavaCounters::default()),
+    };
+    reader.stream()?;
+    Ok(reader.java.map(|j| j.stats).unwrap_or_default())
+}
+
+/// `ObjectInputStream`'s `depth` and `totalObjectRefs`, and the maxima seen at filter checks.
+#[derive(Default)]
+struct JavaCounters {
+    depth: usize,
+    references: u64,
+    stats: JavaFilterStats,
+}
+
+/// When `ArrayList`/`HashMap`/`HashSet.readObject` call `checkArray`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ArrayCheck {
+    None,
+
+    /// Before the first element (`size > 0` / `mappings > 0`).
+    BeforeFirstObject,
+
+    /// Always, after the header ints (`HashSet`).
+    Always,
+}
+
+impl Reader<'_> {
+    fn stream(&mut self) -> Result<()> {
+        let bytes = self.bytes;
+        let magic = self.u16()?;
+        let version = self.u16()?;
+        if magic != STREAM_MAGIC || version != STREAM_VERSION {
+            return Err(Error::BadHeader { magic, version });
+        }
+        while self.pos < bytes.len() {
+            let content = self.content()?;
+            self.graph.roots.push(content);
+        }
+        Ok(())
+    }
+
+    /// Records a Java `filterCheck` with the current counters.
+    // Mirrors java/io/ObjectInputStream.java:1311 (JDK 25)
+    fn java_check(&mut self) {
+        let pos = self.pos as u64;
+        if let Some(java) = &mut self.java {
+            java.stats.depth = java.stats.depth.max(java.depth);
+            java.stats.references = java.stats.references.max(java.references);
+            java.stats.stream_bytes = java.stats.stream_bytes.max(pos);
+        }
+    }
+
+    /// Runs `f` as one counted Java level: `depth++`, `totalObjectRefs++`.
+    // Mirrors java/io/ObjectInputStream.java:1576-1577 and 1925-1926 (JDK 25)
+    fn java_nested<T>(&mut self, f: impl FnOnce(&mut Self) -> Result<T>) -> Result<T> {
+        if let Some(java) = &mut self.java {
+            java.depth += 1;
+            java.references += 1;
+        }
+        let result = f(self);
+        if let Some(java) = &mut self.java {
+            java.depth -= 1;
+        }
+        result
+    }
+
+    /// An object read through `readObject0` (fields, writeObject data, array elements, roots).
+    fn counted_object(&mut self) -> Result<Value> {
+        self.java_nested(Self::object)
+    }
 }
 
 struct Reader<'a> {
@@ -72,6 +205,9 @@ struct Reader<'a> {
     graph: Graph,
     limits: Limits,
     depth: usize,
+
+    /// Java filter emulation ([`java_filter_stats`]); `None` for plain reads.
+    java: Option<JavaCounters>,
 }
 
 impl Reader<'_> {
@@ -163,7 +299,7 @@ impl Reader<'_> {
                 let len = usize::try_from(self.i32()?).map_err(|_err| Error::UnexpectedEof)?;
                 Ok(Content::BlockData(self.take(len)?.to_vec()))
             }
-            _ => Ok(Content::Value(self.object()?)),
+            _ => Ok(Content::Value(self.counted_object()?)),
         }
     }
 
@@ -182,7 +318,12 @@ impl Reader<'_> {
         let code = self.u8()?;
         let id = match code {
             tc::NULL => return Ok(Value::Null),
-            tc::REFERENCE => self.reference()?,
+            tc::REFERENCE => {
+                let id = self.reference()?;
+                // Mirrors java/io/ObjectInputStream.java:1744 (JDK 25)
+                self.java_check();
+                id
+            }
             tc::OBJECT => self.new_object()?,
             tc::STRING => {
                 let id = self.new_handle()?;
@@ -231,6 +372,7 @@ impl Reader<'_> {
             tc::REFERENCE => {
                 let id = self.reference()?;
                 self.graph.class_desc(id)?;
+                self.java_check();
                 Ok(Some(id))
             }
             tc::PROXYCLASSDESC => Err(Error::Unsupported("proxy class descriptors")),
@@ -262,8 +404,11 @@ impl Reader<'_> {
                 class_name,
             });
         }
+        // Mirrors java/io/ObjectInputStream.java:1920-1926 (JDK 25): filter check on the class,
+        // class annotations, then the super descriptor, one level deeper and counted.
+        self.java_check();
         let annotations = self.annotations()?;
-        let super_class = self.class_desc()?;
+        let super_class = self.java_nested(Self::class_desc)?;
         self.set(
             id,
             Node::ClassDesc(ClassDesc {
@@ -280,9 +425,22 @@ impl Reader<'_> {
 
     /// Reads contents up to and including `TC_ENDBLOCKDATA`.
     fn annotations(&mut self) -> Result<Vec<Content>> {
+        self.annotations_checked(ArrayCheck::None)
+    }
+
+    /// Like [`Self::annotations`], with the Java filter check of `checkArray`.
+    fn annotations_checked(&mut self, mut check: ArrayCheck) -> Result<Vec<Content>> {
         let mut out = Vec::new();
         loop {
-            if self.peek()? == tc::ENDBLOCKDATA {
+            let code = self.peek()?;
+            let is_object = !matches!(code, tc::ENDBLOCKDATA | tc::BLOCKDATA | tc::BLOCKDATALONG);
+            if (check == ArrayCheck::Always && code == tc::ENDBLOCKDATA)
+                || (check != ArrayCheck::None && is_object)
+            {
+                self.java_check();
+                check = ArrayCheck::None;
+            }
+            if code == tc::ENDBLOCKDATA {
                 self.pos += 1;
                 return Ok(out);
             }
@@ -320,7 +478,15 @@ impl Reader<'_> {
                     data.values.push(value);
                 }
                 if desc.has_write_method() {
-                    data.annotations = self.annotations()?;
+                    // `checkArray` in these classes' `readObject`.
+                    let check = match desc.name.as_str() {
+                        crate::jdk::ARRAY_LIST | crate::jdk::HASH_MAP => {
+                            ArrayCheck::BeforeFirstObject
+                        }
+                        crate::jdk::HASH_SET => ArrayCheck::Always,
+                        _ => ArrayCheck::None,
+                    };
+                    data.annotations = self.annotations_checked(check)?;
                 }
             }
             class_data.push(data);
@@ -341,7 +507,7 @@ impl Reader<'_> {
             FieldType::Long => Value::Long(self.i64()?),
             FieldType::Short => Value::Short(self.u16()? as i16),
             FieldType::Boolean => Value::Boolean(self.u8()? != 0),
-            FieldType::Array | FieldType::Object => self.object()?,
+            FieldType::Array | FieldType::Object => self.counted_object()?,
         })
     }
 
@@ -352,6 +518,8 @@ impl Reader<'_> {
         if len > self.limits.max_array_len {
             return Err(Error::LimitExceeded("array length"));
         }
+        // Mirrors java/io/ObjectInputStream.java:1993 (JDK 25)
+        self.java_check();
         let element = self
             .graph
             .class_desc(class)?
@@ -378,7 +546,7 @@ impl Reader<'_> {
             }
             FieldType::Boolean => ArrayData::Boolean(self.collect(len, cap, |r| Ok(r.u8()? != 0))?),
             FieldType::Array | FieldType::Object => {
-                ArrayData::Object(self.collect(len, cap, |r| r.object())?)
+                ArrayData::Object(self.collect(len, cap, |r| r.counted_object())?)
             }
         };
         self.set(id, Node::Array(Array { class, data }));
@@ -396,5 +564,50 @@ impl Reader<'_> {
             out.push(f(self)?);
         }
         Ok(out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{JavaFilterLimits, JavaFilterStats, java_filter_stats};
+    use crate::jdk::Builder;
+
+    fn stats(build: impl FnOnce(&mut Builder) -> crate::Value) -> JavaFilterStats {
+        let mut b = Builder::new();
+        let root = build(&mut b);
+        java_filter_stats(&crate::write(&b.finish(root)).unwrap()).unwrap()
+    }
+
+    /// Counted by hand from JDK 25 `ObjectInputStream`: the root `readObject0` (depth 1, refs 1)
+    /// meets the filter at its new class descriptor; the super descriptor (null) counts a
+    /// reference but is not checked; `checkArray` sees depth 1, refs 2; the string is read at
+    /// depth 2 (refs 3, unchecked) and the back-reference to it is checked at depth 2, refs 4.
+    #[test]
+    fn java_filter_counts_like_object_input_stream() {
+        let shared = stats(|b| {
+            let s = b.string("a");
+            b.array_list(vec![s, s])
+        });
+        assert_eq!((shared.depth, shared.references), (2, 4));
+        assert!(shared.check(JavaFilterLimits::JAVA_A3S).is_ok());
+
+        // An empty list: only the class descriptor is checked.
+        let empty = stats(|b| b.array_list(Vec::new()));
+        assert_eq!((empty.depth, empty.references), (1, 1));
+
+        // Two distinct strings: the strings themselves are never checked.
+        let distinct = stats(|b| {
+            let s = b.string("a");
+            let t = b.string("b");
+            b.array_list(vec![s, t])
+        });
+        assert_eq!((distinct.depth, distinct.references), (1, 2));
+
+        let limits = JavaFilterLimits {
+            max_references: 3,
+            ..JavaFilterLimits::JAVA_A3S
+        };
+        assert!(shared.check(limits).is_err());
+        assert!(distinct.check(limits).is_ok());
     }
 }

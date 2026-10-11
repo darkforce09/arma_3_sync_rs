@@ -3,15 +3,14 @@
 use std::path::Path;
 
 use a3s_jserial::jdk::Builder;
-use a3s_jserial::{ClassData, Graph, Limits, NodeId, Value};
+use a3s_jserial::{ClassData, Graph, JavaFilterLimits, NodeId, Value};
 use a3s_repo_files::{A3sFile, write_a3s};
 use a3s_types::{JavaCodec, SYNC_ROOT_NAME, SyncTreeDirectory, SyncTreeLeaf, SyncTreeNode, wire};
 
 use super::BuildError;
 use super::hash::is_empty_file_sha1;
 
-/// Largest stream Java's reader accepts (`A3SFilesAccessor.LEGACY_OBJECT_FILTER`, 256 MB).
-// Mirrors dao/A3SFilesAccessor.java:27-30
+/// Largest decompressed stream Rust's own `.a3s` reader accepts (`a3s_repo_files`, 256 MiB).
 const MAX_STREAM_BYTES: u64 = 256 * 1024 * 1024;
 
 /// The sync tree as a build writes it.
@@ -129,9 +128,14 @@ impl JavaCodec for SyncEmit<'_> {
     }
 }
 
-/// Encodes `value` and checks the stream against Java's reader limits (Q6).
+/// Encodes `value` and checks that both Java and Rust readers accept the stream (Q6).
+///
+/// Java's check is exact: [`a3s_jserial::java_filter_stats`] replays the JDK 25 serial filter
+/// counters (`depth`, `totalObjectRefs`, `streamBytes`) at every point `ObjectInputStream` calls
+/// the filter, and `A3SFilesAccessor`'s limits are applied to them.
 ///
 /// Returns the uncompressed stream.
+// Mirrors dao/A3SFilesAccessor.java:27-30
 pub(crate) fn encode_checked<T: JavaCodec>(
     file: A3sFile,
     value: &T,
@@ -144,7 +148,8 @@ pub(crate) fn encode_checked<T: JavaCodec>(
             source: a3s_jserial::Error::LimitExceeded("stream size"),
         });
     }
-    a3s_jserial::read_with_limits(&raw, Limits::JAVA_A3S)
+    a3s_jserial::java_filter_stats(&raw)
+        .and_then(|stats| stats.check(JavaFilterLimits::JAVA_A3S))
         .map_err(|source| BuildError::LimitExceeded { file, source })?;
     Ok(raw)
 }
@@ -169,6 +174,10 @@ pub(crate) fn create_a3s_folder(folder: &Path) -> Result<(), BuildError> {
 }
 
 /// Writes one `.a3s` file atomically.
+///
+/// `write_a3s` encodes `value` again. Encoding is a pure function of the value (no clock, no
+/// randomness, no hash-map iteration), so the written stream is the one [`encode_checked`]
+/// validated (`a14_outcome_equals_written_files` checks the decoded files against it).
 pub(crate) fn write<T: JavaCodec>(
     folder: &Path,
     file: A3sFile,

@@ -633,3 +633,63 @@ fn a18_java_reads_rust_builds() {
         assert!(report.ok.len() >= 15, "{name}: {report:?}");
     }
 }
+
+/// A flat sync tree of `n` empty-file leaves.
+fn flat_sync(n: usize) -> Vec<u8> {
+    let mut root = a3s_types::SyncTreeDirectory::new_root();
+    let mut dir = a3s_types::SyncTreeDirectory::new("@m");
+    dir.children = (0..n)
+        .map(|i| {
+            a3s_types::SyncTreeNode::Leaf(a3s_types::SyncTreeLeaf {
+                name: format!("f{i}"),
+                sha1: Some("0".to_owned()),
+                ..Default::default()
+            })
+        })
+        .collect();
+    root.children = vec![a3s_types::SyncTreeNode::Directory(dir)];
+    a3s_types::encode_stream(&root).unwrap()
+}
+
+fn java_references(n: usize) -> u64 {
+    a3s_jserial::java_filter_stats(&flat_sync(n))
+        .unwrap()
+        .references
+}
+
+/// A16/Q6: the Java filter emulation agrees with Java at the reference boundary: the largest
+/// flat tree within 250 000 references is read, one more leaf is rejected.
+#[test]
+#[ignore = "needs JDK 25: source scripts/java_env.sh"]
+fn a16_java_filter_boundary_matches_java() {
+    let limit = a3s_jserial::JavaFilterLimits::JAVA_A3S.max_references;
+    // References grow by a constant per leaf.
+    let per_leaf = java_references(2000) - java_references(1000);
+    let base = java_references(1000) - 1000 * per_leaf;
+    let mut n = usize::try_from((limit - base) / per_leaf).unwrap();
+    while java_references(n + 1) <= limit {
+        n += 1;
+    }
+    while java_references(n) > limit {
+        n -= 1;
+    }
+    let harness = a3s_dev_tools::Harness::locate().unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    for (leaves, accepted) in [(n, true), (n + 1, false)] {
+        let raw = flat_sync(leaves);
+        let accepted_by_rust = a3s_jserial::java_filter_stats(&raw)
+            .unwrap()
+            .check(a3s_jserial::JavaFilterLimits::JAVA_A3S)
+            .is_ok();
+        assert_eq!(accepted_by_rust, accepted, "{leaves} leaves");
+        let dir = tmp.path().join(format!("n{leaves}/.a3s"));
+        fs::create_dir_all(&dir).unwrap();
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        std::io::Write::write_all(&mut gz, &raw).unwrap();
+        fs::write(dir.join("sync"), gz.finish().unwrap()).unwrap();
+        let report = harness
+            .verify(&[dir.join("sync")], None, a3s_dev_tools::DumpMode::Identity)
+            .unwrap();
+        assert_eq!(report.is_success(), accepted, "{leaves} leaves: {report:?}");
+    }
+}
