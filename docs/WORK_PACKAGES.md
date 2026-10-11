@@ -98,3 +98,4 @@ Followed by an end-to-end parity pass (CLI + GUI vs. Java behaviour).
 ## Orchestrator amendments
 
 - 2026-10-10 (from WP09 Q5): unzip must accept both `.pbo.zip` and `.ebo.zip` (Java only extracted `.pbo.zip`, a bug).
+- 2026-10-11 (from WP08/D-15): DeleteTask entries must be deleted WITHOUT following links (remove_file on a symlink; on Windows a link to a directory needs remove_dir). WP08 emits a symlinked folder as a single file node. WP10 also re-checks that every delete path stays inside its destination root.

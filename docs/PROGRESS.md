@@ -12,7 +12,7 @@ Blockers: none
 | 2026-10-11 | a3s_sync (WP07 branch) | a19_live_wog_check, import_autoconfig WOG | PASS |
 | WP09 | a3s_sync download | IMPL | 0 | impl=ab815ed7 | 1 | (worktree) | | | 2026-10-11 |
 | WP11 | a3s_admin build | IMPL | 0 | impl=a39b7a5c | 3 | (worktree) | | | 2026-10-11 |
-| WP08 | a3s_sync plan | FIX round 1 (D-15 path safety, symlinks, overflow; verifier 7 fails; live PASS) | 1 | impl=a1349fd3 ver=a34e0b61 rev=aab55615 | 2 | worktree-agent-a1349fd36b09e8a4b | .claude/worktrees/agent-a1349fd36b09e8a4b | 68c648e | 2026-10-11 |
+| WP08 | a3s_sync plan | RE-REVIEW (security delta) | 1 | impl=a1349fd3 ver=a34e0b61 rev=aab55615 | 2 | worktree-agent-a1349fd36b09e8a4b | .claude/worktrees/agent-a1349fd36b09e8a4b | 68c648e | 2026-10-11 |
 
 ## Done before orchestration
 
