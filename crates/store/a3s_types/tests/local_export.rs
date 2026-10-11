@@ -139,7 +139,7 @@ fn export_stream_is_java_readable() {
     let bytes = encode_stream(&export).unwrap();
     let graph = a3s_jserial::read_with_limits(&bytes, Limits::JAVA_A3S).unwrap();
 
-    // Root class with the (provisional) JVM-computed UID.
+    // Root class with the JVM-computed UID.
     let root = graph.root_value().unwrap().as_ref().unwrap();
     let desc = graph.class_desc(graph.object(root).unwrap().class).unwrap();
     assert_eq!(desc.name, "fr.soe.a3s.domain.AutoConfig");

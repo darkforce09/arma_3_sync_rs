@@ -37,8 +37,7 @@ fn profile_classes() -> Vec<(MakeDesc, Expected)> {
             wire::auto_config_export_desc,
             Expected {
                 name: "fr.soe.a3s.domain.AutoConfig",
-                // PROVISIONAL — JVM-computed default UID (the class declares
-                // none), computed from the Java source.
+                // JVM-computed default UID (the class declares none).
                 uid: 6_424_431_620_520_340_750,
                 flags: S,
                 fields: &[
