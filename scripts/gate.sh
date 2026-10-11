@@ -42,6 +42,11 @@ export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-8}"
 export CARGO_TERM_COLOR=never
 export RUSTFLAGS="-D warnings"
 export RUSTDOCFLAGS="-D warnings"
+# JDK for the Java fixture harness (WP01) and #[ignore]d Java cross-check tests.
+if [[ -z "${JAVA_HOME:-}" && -f "$ROOT/scripts/java_env.sh" ]]; then
+    # shellcheck disable=SC1091
+    source "$ROOT/scripts/java_env.sh" >/dev/null 2>&1 || true
+fi
 # Headless Vulkan for egui_kittest snapshot tests.
 export VK_ICD_FILENAMES="${VK_ICD_FILENAMES:-/usr/share/vulkan/icd.d/lvp_icd.x86_64.json}"
 

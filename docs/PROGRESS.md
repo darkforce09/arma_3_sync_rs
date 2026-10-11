@@ -2,7 +2,7 @@
 
 Mode: PAUSED (user restarting PC; resume with /orchestrate)            Updated: 2026-10-11
 Current wave: 0/1          Next action: on resume — check WP11 worktree (.claude/worktrees/agent-a39b7a5c85d46a5e2): if its agent is gone, spawn a new rust-implementer told to `git merge --ff-only worktree-agent-a39b7a5c85d46a5e2` in its fresh worktree and finish WP11 fix round 1 (items listed in docs/specs/WP11.md 2026-10-11 lines + the fix-round message: Java ref-count limit via a3s_jserial reader exception, cache commit after zip/zsync, umask perms, .a3s.tmp temp names, D-17, ZIP64 margin, minors). Then: start WP10 (sync pipeline, deps merged), WP14 needs WP05 → start WP05, WP13, WP15; then WP21.
-Waiting-on: WP11 fix round 1 (interrupted)
+Waiting-on: WP11 fix round 1 (interrupted; WIP commit 3cdce4f — item 1 partly done: java_filter_stats in a3s_jserial + encode_checked; items 2–6 + minors remain; serde_json 1.0.152 bump is fine). gate.sh now sources scripts/java_env.sh automatically.
 Blockers: none
 
 ## In flight
