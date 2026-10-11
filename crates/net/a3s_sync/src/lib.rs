@@ -10,8 +10,10 @@
 //! * [`plan`]: compares the remote tree with the local disk ([`plan::plan_repository`]) and
 //!   summarizes a selection ([`PlanSummary`]).
 //! * [`completion`]: zsync completion of outdated local files.
+//! * [`download`]: the download executor (parallel transfers, resume, zsync, progress).
 
 pub mod completion;
+pub mod download;
 pub mod error;
 pub mod event_filter;
 pub mod events;
