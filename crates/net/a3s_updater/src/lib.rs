@@ -1,21 +1,32 @@
-//! Self-updater core: configuration (`updater.toml`), release lookup (GitHub Releases, JSON
-//! manifest, legacy `a3s.xml`), verified download and safe installation of an update archive.
+//! Self-updater: configuration (`updater.toml`), release lookup (GitHub Releases, JSON
+//! manifest, legacy `a3s.xml`), verified download and safe installation of an update archive,
+//! and applying it to the running application.
 //!
-//! Typical flow: [`UpdateConfig::load`] → [`resolve_release`] → [`is_newer`] against the running
-//! version → [`download_release`] into a [`StagingDir`] → [`validate_archive`] with the
-//! release's SHA-256 → [`stage_archive`] → [`install_staged`] with a [`FileReplacer`]. Replacing the running executable, elevation and relaunch belong to the
-//! caller.
+//! Applications use [`UpdateSession`] ([`apply`]): `check` finds the latest release, `apply`
+//! downloads, verifies and installs it with progress events, replacing the running executable
+//! and handing the install to an elevated copy of the binary when Windows needs UAC
+//! ([`elevation`]). [`apply::console`] has the console flows, [`apply::text`] the texts of a
+//! GUI, [`apply::relaunch`] the restart.
+//!
+//! Building blocks: [`UpdateConfig::load`] → [`resolve_release`] → [`is_newer`] against the
+//! running version → [`download_release`] into a [`StagingDir`] → [`validate_archive`] with the
+//! release's SHA-256 → [`stage_archive`] → [`install_staged`] with a [`FileReplacer`].
 //!
 //! HTTP functions are `async` and cancellable; archive and installation functions are blocking.
 
+pub mod apply;
 mod archive;
 mod config;
 mod diag;
+pub mod elevation;
 mod error;
 mod http;
 mod release;
 mod version;
 
+pub use apply::{
+    ApplyError, ApplyOutcome, CheckOutcome, UpdateContext, UpdateEvent, UpdateSession,
+};
 pub use archive::{
     CopyReplacer, FileReplacer, InstallReport, MANAGED_FILES_NAME, StagedEntry, VerifiedArchive,
     install_staged, is_user_managed, stage_archive, validate_archive,

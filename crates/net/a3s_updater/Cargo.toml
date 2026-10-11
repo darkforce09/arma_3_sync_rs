@@ -1,6 +1,6 @@
 [package]
 name = "a3s_updater"
-description = "Self-updater core for Arma3Sync: configuration, release lookup, verified download and safe installation."
+description = "Self-updater for Arma3Sync: configuration, release lookup, verified download, safe installation, self-replacement and UAC elevation."
 authors.workspace = true
 edition.workspace = true
 homepage.workspace = true
@@ -38,6 +38,7 @@ zip.workspace = true
 
 [dev-dependencies]
 axum.workspace = true
+base64.workspace = true
 rcgen.workspace = true
 rustls.workspace = true
 tempfile.workspace = true

@@ -20,7 +20,7 @@ A crate may depend on crates from its own group or a group listed above it in th
 | Crate | Purpose | Java counterpart |
 | --- | --- | --- |
 | **foundation** | | |
-| `a3s_foundation` | Error taxonomy and chain formatting, display formatting, logging, application directories. | `exception/*`, `utils/*`, `DebugLogger`, `dao/ApplicationPaths` |
+| `a3s_foundation` | Error taxonomy and chain formatting, display formatting, logging, application directories, Windows command-line and PowerShell quoting. | `exception/*`, `utils/*`, `DebugLogger`, `dao/ApplicationPaths` |
 | **store** | | |
 | `a3s_jserial` | Generic Java Object Serialization Stream Protocol reader/writer. | JDK `ObjectInput/OutputStream` |
 | `a3s_types` | Domain types + their exact Java class descriptors. | `domain/*`, `constant/*` |
@@ -30,7 +30,7 @@ A crate may depend on crates from its own group or a group listed above it in th
 | `a3s_transport` | HTTP(S), FTP(S), SFTP, WebDAV; proxies, timeouts, throttling, cancel. | `dao/connection/*` |
 | `a3s_sync` | Client check → plan → download. | `service/synchronization/*`, `service/connection/*` |
 | `a3s_admin` | Repository build, content check, upload and events editing. | `service/administration/*`, `dao/repository/RepositoryBuildProcessor`, `service/connection/Connection{Check,Upload,Delete}Processor` |
-| `a3s_updater` | Self-updater core: `updater.toml`, release lookup (GitHub, `a3s.json`, legacy `a3s.xml`), verified download, safe archive installation. | `updater/` (`fr.soe.a3sUpdater`) |
+| `a3s_updater` | Self-updater: `updater.toml`, release lookup (GitHub, `a3s.json`, legacy `a3s.xml`), verified download, safe archive installation, self-replacement of the running binary, UAC elevation, console update flows. | `updater/` (`fr.soe.a3sUpdater`), `service/UpdaterProcess` |
 | **game** | | |
 | `a3s_addons` | Addon discovery and registry (mods and CDLCs under their symbolic keys), launch priorities, modset groups from repositories and events, missing/duplicate checks on addon groups. | `service/AddonService`, `dao/AddonDAO`, addon parts of `ProfileService`, `RepositoryService`, `ui/main/AddonsPanel` |
 | `a3s_platform` | OS integration: registry, Arma 3 / Steam / TeamSpeak 3 detection, special folders, process probe, autostart, desktop shortcuts, single instance. | `dao/ConfigurationDAO` (registry), `dao/WinRegistry`, `dao/PreferencesDAO` (Run key), `dao/LauncherDAO.isApplicationRunning`, JUnique and `JShellLink` use |
@@ -227,6 +227,21 @@ Wire compatibility is the requirement; these differences are deliberate.
   user-data prefixes match case-insensitively; the legacy FTP update transport is dropped; the
   diagnostic log defaults to `<data dir>/logs/arma3sync-updater-debug.log` of the Rust
   application.
+* **Applying updates:** exit codes (check: 0 available, 2 none, 1 error; update: 0, 2, 1; legacy
+  `-update` always 0) and the console lines stay Java's. There is no separate updater program:
+  the application updates itself and replaces its running binary (rename over it on Unix, rename
+  it away to `.a3s-old-*` on Windows; leftovers are removed at the next start). With UAC the
+  unelevated application downloads and verifies the archive, then starts its own binary elevated
+  with a hidden `__a3s-elevated-install` subcommand that only re-verifies the SHA-256 and installs
+  into its own directory, through PowerShell `-EncodedCommand`; the parent waits up to 10 minutes
+  and relaunches the application unelevated (Java hands the whole update to an elevated copy of
+  the JRE and updater, forwards its `a3s.updater.*` properties and relaunches elevated). A
+  release archive must hold `arma3sync[.exe]` at its root and no portable user data; AppImage,
+  macOS bundle, Java and cargo-build installations are refused. An unknown archive size proceeds
+  with indeterminate progress; Linux and macOS fail before the download when the installation is
+  not writable; unknown updater flags exit 1 in every mode; console progress prints once per
+  percent; Windows argument quoting follows the MSVC rules (Java's doubled the backslashes before
+  an embedded quote twice).
 * **Insecure TLS override** is the environment variable `A3S_ALLOW_INSECURE_SSL=1` instead of
   Java's `-Da3s.allowInsecureSsl=true`.
 * **Game tools:** each bikey extraction has its own cancel token (Java's flag is never reset, so

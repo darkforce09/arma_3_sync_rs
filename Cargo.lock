@@ -224,6 +224,7 @@ version = "0.1.0-alpha.1"
 dependencies = [
  "a3s_foundation",
  "axum",
+ "base64 0.22.1",
  "chrono",
  "futures",
  "parking_lot",
