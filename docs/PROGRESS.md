@@ -84,6 +84,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 - D-13 2026-10-11: a3s_ui indeterminate mark = accent_primary, unchecked border = text_disabled, mode-aware JAVA_BLUE helper (readability on dark; local-only).
 - D-14 2026-10-11: Rust builder excludes .ebo.zip (and any compression-stage .zip) from the sync tree; Java only excludes .pbo.zip (user).
 - D-15 2026-10-11: sync plan rejects unsafe remote names (path traversal, absolute paths, separators) and never follows symlinked dirs in the extra-file scan (security hardening; Java is vulnerable).
+- D-16 2026-10-11: downloads follow user-created symlinks inside the destination; only remote names are validated (no .., absolute, separators). Deletions never follow links.
 - D-10 2026-10-10: JDK = user-local Temurin 25.0.4.1 (Bazzite, no dnf); harness sources scripts/java_env.sh; no Gradle — compile with javac.
 - D-9 2026-10-10: custom agent types need a session restart; until then spawn general-purpose/opus with a ROLE header. (Now registered in this session.)
 
