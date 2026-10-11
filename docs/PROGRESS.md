@@ -55,7 +55,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 | 2 | WP16 | a3s_launch | WP13, WP15 | SPEC_OK | | |
 | 2 | WP18 | presets | WP13, WP02, WP04 | SPEC_OK | | |
 | 2 | WP32 | updater apply | WP31, WP15 | SPEC_OK | | |
-| 3 | WP10 | sync pipeline | WP08, WP09 | SPEC | | |
+| 3 | WP10 | sync pipeline | WP08, WP09 | SPEC_OK | | |
 | 3 | WP21 | a3s_viewer_context | WP14, WP07 | SPEC_OK | | |
 | 4 | WP19 | CLI | WP10, WP11, WP12, WP14, WP17 | TODO | | |
 | 4 | WP22 | viewer shell | WP20, WP21, WP15, WP16 | TODO | | serial |
