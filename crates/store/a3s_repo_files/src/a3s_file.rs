@@ -80,6 +80,12 @@ pub fn encode_a3s<T: JavaCodec>(value: &T) -> Result<Vec<u8>> {
     gzip(&a3s_types::encode_stream(value)?)
 }
 
+/// Compresses an already encoded Java serialization stream into `.a3s` file bytes, e.g. for an
+/// upload of exactly the stream the caller validated.
+pub fn encode_a3s_stream(raw: &[u8]) -> Result<Vec<u8>> {
+    gzip(raw)
+}
+
 /// Compresses `raw` like Java's `GZIPOutputStream`.
 pub(crate) fn gzip(raw: &[u8]) -> Result<Vec<u8>> {
     // Header like Java's `GZIPOutputStream` (mtime 0, OS "unknown" since JDK 16).

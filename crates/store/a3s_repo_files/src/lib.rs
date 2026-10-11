@@ -19,6 +19,8 @@ pub mod local;
 pub mod services;
 mod temp_file;
 
-pub use a3s_file::{A3sFile, decode_a3s, encode_a3s, read_a3s, write_a3s, write_a3s_stream};
+pub use a3s_file::{
+    A3sFile, decode_a3s, encode_a3s, encode_a3s_stream, read_a3s, write_a3s, write_a3s_stream,
+};
 pub use error::{Error, Result};
 pub use temp_file::{TempFileMode, temp_file_next_to};

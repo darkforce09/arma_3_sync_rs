@@ -81,6 +81,23 @@ impl<K, V> JavaHashMap<K, V> {
         }
     }
 
+    /// `new HashMap<>(initialCapacity)`: no table yet, `threshold = tableSizeFor(capacity)`.
+    // Mirrors java.util.HashMap.<init>(int, float) (OpenJDK 25)
+    pub fn with_initial_capacity(initial_capacity: i32) -> Self {
+        Self {
+            table_len: 0,
+            threshold: table_size_for(initial_capacity.min(MAXIMUM_CAPACITY)),
+            entries: Vec::new(),
+        }
+    }
+
+    /// `clear()`: removes every mapping; the table length and `threshold` stay, so a cleared
+    /// map never shrinks.
+    // Mirrors java.util.HashMap.clear (OpenJDK 25)
+    pub fn clear(&mut self) {
+        self.entries.clear();
+    }
+
     /// The map `ObjectInputStream` rebuilds from `entries` (in stream order).
     ///
     /// JDK 19+ sizes the table like `putAll` does, but never below the default 16:

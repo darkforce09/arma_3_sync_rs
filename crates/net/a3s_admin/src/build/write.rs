@@ -142,16 +142,17 @@ pub(crate) fn encode_checked<T: JavaCodec>(
 ) -> Result<Vec<u8>, BuildError> {
     let raw =
         a3s_types::encode_stream(value).map_err(|source| BuildError::Encode { file, source })?;
-    if raw.len() as u64 > MAX_STREAM_BYTES {
-        return Err(BuildError::LimitExceeded {
-            file,
-            source: a3s_jserial::Error::LimitExceeded("stream size"),
-        });
-    }
-    a3s_jserial::java_filter_stats(&raw)
-        .and_then(|stats| stats.check(JavaFilterLimits::JAVA_A3S))
-        .map_err(|source| BuildError::LimitExceeded { file, source })?;
+    check_stream(&raw).map_err(|source| BuildError::LimitExceeded { file, source })?;
     Ok(raw)
+}
+
+/// Checks that both Java's and Rust's `.a3s` readers accept the uncompressed stream `raw`.
+// Mirrors dao/A3SFilesAccessor.java:27-30
+pub(crate) fn check_stream(raw: &[u8]) -> Result<(), a3s_jserial::Error> {
+    if raw.len() as u64 > MAX_STREAM_BYTES {
+        return Err(a3s_jserial::Error::LimitExceeded("stream size"));
+    }
+    a3s_jserial::java_filter_stats(raw).and_then(|stats| stats.check(JavaFilterLimits::JAVA_A3S))
 }
 
 /// Decodes a stream produced by [`encode_checked`].

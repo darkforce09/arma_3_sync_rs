@@ -12,14 +12,14 @@
 //! listings are sorted by name; symbolic link loops fail the scan; the compression
 //! stage's own `.ebo.zip` outputs are not sync leaves.
 
-mod carry;
+pub(crate) mod carry;
 mod changelogs;
 mod events;
 mod hash;
-mod java_hash;
+pub(crate) mod java_hash;
 mod metadata;
 mod scan;
-mod write;
+pub(crate) mod write;
 mod zip;
 mod zsync;
 

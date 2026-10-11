@@ -29,7 +29,7 @@ A crate may depend on crates from its own group or a group listed above it in th
 | **net** | | |
 | `a3s_transport` | HTTP(S), FTP(S), SFTP, WebDAV; proxies, timeouts, throttling, cancel. | `dao/connection/*` |
 | `a3s_sync` | Client check → plan → download. | `service/synchronization/*`, `service/connection/*` |
-| `a3s_admin` | Repository build (check and upload to come). | `service/administration/*`, `dao/repository/RepositoryBuildProcessor` |
+| `a3s_admin` | Repository build, content check, upload and events editing. | `service/administration/*`, `dao/repository/RepositoryBuildProcessor`, `service/connection/Connection{Check,Upload,Delete}Processor` |
 | `a3s_updater` | Self-updater core: `updater.toml`, release lookup (GitHub, `a3s.json`, legacy `a3s.xml`), verified download, safe archive installation. | `updater/` (`fr.soe.a3sUpdater`) |
 | **game** | | |
 | `a3s_addons` | Addon discovery and registry (mods and CDLCs under their symbolic keys), launch priorities, modset groups from repositories and events, missing/duplicate checks on addon groups. | `service/AddonService`, `dao/AddonDAO`, addon parts of `ProfileService`, `RepositoryService`, `ui/main/AddonsPanel` |
@@ -116,7 +116,14 @@ Wire compatibility is the requirement; these differences are deliberate.
   `deny.toml` ignores RUSTSEC-2023-0071 (RSA timing) because only public-key verification is used;
   re-evaluate if client public-key authentication is added.
 * **Repository upload** writes nested `racine` folders to their real paths (Java uploads them to
-  wrong paths).
+  wrong paths). Other upload differences are local only: a failed upload resumes by remote path
+  for an unchanged local `.a3s/sync` and unchanged files (Java resumes at an index that counts
+  failed files as done); parallel workers share one queue and the first failure stops them all;
+  the metadata upload is not interrupted by a cancel once it started; nothing is deleted below a
+  directory that is deleted; the content check keeps one connection per worker. The uploaded
+  `.a3s` files are byte-identical to Java's (the JDK 25 round trip of the local files).
+* **Events editing** treats a null `addonNames` in an old events file as empty (Java throws), and
+  renaming an event may keep its own name (Java reports a duplicate).
 * **Repository build:** the compression stage's own outputs (`<name>.zip` for any compressible
   file, so also `.ebo.zip`) are never sync leaves (Java turns its `.ebo.zip` into a leaf on the
   next build); a repository whose path is a symbolic link reports the real `totalFilesSize` of the
