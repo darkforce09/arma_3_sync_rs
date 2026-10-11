@@ -199,8 +199,7 @@ async fn attempt(worker: &mut Worker, task: &DownloadTask, size: u64) -> Attempt
     let control_remote = control_path(task);
     let control_ctx = TransferCtx {
         cancel: worker.shared.run.clone(),
-        progress: Arc::new(AtomicU64::new(0)),
-        throttle: None,
+        ..TransferCtx::default()
     };
     let Some(transport) = worker.transport.as_mut() else {
         return ZsyncEnd::End(TaskEnd::Cancelled).into();
@@ -270,10 +269,9 @@ async fn attempt(worker: &mut Worker, task: &DownloadTask, size: u64) -> Attempt
         Arc::clone(&flag.flag),
     );
 
-    let progress = worker
+    let ctx = worker
         .shared
         .begin_attempt(worker.id, 0, plan.download_size());
-    let ctx = worker.transfer_ctx(progress);
     let part_display = absolute(&part);
     let mut transport_error = None;
     if let Some(transport) = worker.transport.as_mut() {

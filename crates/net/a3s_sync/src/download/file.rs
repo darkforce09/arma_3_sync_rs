@@ -4,13 +4,11 @@
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
 
 use a3s_transport::{CancellationToken, Transport};
 
 use super::error::{Attempt, DownloadError, RetryState};
-use super::executor::{Shared, TaskEnd, Worker};
+use super::executor::{TaskEnd, Worker};
 use super::sink::DownloadedZip;
 use super::{PART_EXTENSION, ZIP_EXTENSION, ZSYNC_EXTENSION, zsync};
 use crate::remote::RemoteFile;
@@ -220,30 +218,6 @@ fn can_resume(transport: &Transport) -> bool {
     !matches!(transport, Transport::Webdav(_))
 }
 
-/// Watches the first bytes of an attempt that asked to resume at `offset`: when the transport
-/// restarted from 0 instead (HTTP `200`, FTP without `REST`), the `.part` is shorter than
-/// `offset` and the progress offset is corrected. Never completes.
-async fn watch_effective_offset(
-    shared: &Shared,
-    id: usize,
-    part: &Path,
-    offset: u64,
-    progress: &AtomicU64,
-) {
-    if offset > 0 {
-        while progress.load(Ordering::Relaxed) == 0 {
-            tokio::time::sleep(OFFSET_PROBE_INTERVAL).await;
-        }
-        if regular_file_len(part).await.is_some_and(|len| len < offset) {
-            shared.set_attempt_offset(id, 0);
-        }
-    }
-    std::future::pending::<()>().await;
-}
-
-/// Polling interval of [`watch_effective_offset`].
-const OFFSET_PROBE_INTERVAL: Duration = Duration::from_millis(20);
-
 /// A full download with resume.
 // Mirrors dao/connection/AbstractConnexionDAO.java:243-318
 #[allow(clippy::too_many_lines)]
@@ -290,8 +264,7 @@ async fn full_download(worker: &mut Worker, index: usize, task: &DownloadTask) -
             };
 
         shared.set_running(index);
-        let progress = shared.begin_attempt(worker.id, offset, expected);
-        let ctx = worker.transfer_ctx(Arc::clone(&progress));
+        let ctx = shared.begin_attempt(worker.id, offset, expected);
         let Some(transport) = worker.transport.as_mut() else {
             return TaskEnd::Cancelled;
         };
@@ -299,9 +272,6 @@ async fn full_download(worker: &mut Worker, index: usize, task: &DownloadTask) -
             biased;
             () = shared.run.cancelled() => Err(a3s_transport::Error::Cancelled),
             result = transport.download_file(&remote, &part, offset, &ctx) => result,
-            () = watch_effective_offset(&shared, worker.id, &part, offset, &progress) => {
-                Err(a3s_transport::Error::Cancelled)
-            }
         };
         let received = shared.end_attempt(worker.id);
 

@@ -204,9 +204,7 @@ pub fn plan_repository(
             .ok_or_else(|| PlanError::EventNotFound { name: name.clone() })?;
         tree = event_filter::filter(tree, event);
     }
-    // Remote names are joined to local folders below: reject traversal first.
-    validate_names(&tree)?;
-    // 2. Destination paths.
+    // 2. Destination paths (rejects unsafe remote names first).
     assign_destinations(
         &mut tree,
         &options.destination,
@@ -247,8 +245,11 @@ fn check_destination(destination: &Path) -> Result<(), SyncOptionsError> {
 /// Checks that every node name below the root is a single plain path component.
 ///
 /// A name is accepted only if `Path::new(name)` has exactly one [`Component::Normal`] equal to
-/// the name, and it contains none of `/`, `\`, `\0`, `:` (on every platform, so a repository is
-/// planned the same way everywhere). Java joins names unchecked
+/// the name, it contains none of `/`, `\`, `\0`, `:`, it does not end with `.` or a space
+/// (Windows strips them, so `x.` would alias `x`), and it is not a Windows device name (`CON`,
+/// `PRN`, `AUX`, `NUL`, `COM1`-`COM9`, `LPT1`-`LPT9`, any case, with or without an extension).
+/// The rules apply on every platform, so a repository is planned the same way everywhere.
+/// Java joins names unchecked
 /// (`RepositoryService.java:487-508, 613-656`), so a hostile `.a3s/sync` could make it read,
 /// write or delete outside the destination.
 pub fn validate_names(tree: &PlanTree) -> Result<(), PlanError> {
@@ -266,7 +267,10 @@ pub fn validate_names(tree: &PlanTree) -> Result<(), PlanError> {
 
 /// Whether `name` is a single plain path component (see [`validate_names`]).
 pub fn is_safe_name(name: &str) -> bool {
-    if name.contains(['/', '\\', '\0', ':']) {
+    if name.contains(['/', '\\', '\0', ':']) || name.ends_with(['.', ' ']) {
+        return false;
+    }
+    if is_windows_device_name(name) {
         return false;
     }
     let mut components = Path::new(name).components();
@@ -274,6 +278,21 @@ pub fn is_safe_name(name: &str) -> bool {
         (components.next(), components.next()),
         (Some(Component::Normal(c)), None) if c == std::ffi::OsStr::new(name)
     )
+}
+
+/// Whether the part of `name` before its first `.` is a Windows device name.
+fn is_windows_device_name(name: &str) -> bool {
+    let stem = name.split('.').next().unwrap_or(name).to_ascii_uppercase();
+    match stem.as_str() {
+        "CON" | "PRN" | "AUX" | "NUL" => true,
+        _ => {
+            let (prefix, digit) = stem.split_at(stem.len().min(3));
+            matches!(prefix, "COM" | "LPT")
+                && digit.len() == 1
+                && digit.as_bytes()[0].is_ascii_digit()
+                && digit != "0"
+        }
+    }
 }
 
 /// `std::path::absolute(path)`, or `path` itself if that fails (empty path, no current dir).

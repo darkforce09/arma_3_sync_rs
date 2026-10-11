@@ -142,24 +142,28 @@ impl RemoteConnection {
         self.poisoned
     }
 
-    /// Fetches `relative` into memory, returning as soon as `ctx` is cancelled (the transport
-    /// may not notice a cancel while the server stalls). A cancel poisons the connection.
-    async fn fetch_cancellable(
+    /// Fetches `remote` into memory, returning [`RemoteError::Cancelled`] as soon as `ctx` is
+    /// cancelled (the transport may not notice a cancel while the server stalls). A cancel
+    /// poisons the connection; other failures are mapped with [`RemoteError::fetch`].
+    pub async fn fetch_file(
         &mut self,
-        relative: &str,
+        remote: &RemoteFile,
         ctx: &TransferCtx,
-    ) -> Option<a3s_transport::Result<Vec<u8>>> {
+    ) -> Result<Vec<u8>, RemoteError> {
         if ctx.cancel.is_cancelled() {
-            return None;
+            return Err(RemoteError::Cancelled);
         }
+        let path = remote.transport_path();
         let fetched = tokio::select! {
             () = ctx.cancel.cancelled() => None,
-            res = self.transport.fetch(relative, ctx) => Some(res),
+            res = self.transport.fetch(&path, ctx) => Some(res),
         };
         if matches!(fetched, None | Some(Err(a3s_transport::Error::Cancelled))) {
             self.poisoned = true;
         }
         fetched
+            .ok_or(RemoteError::Cancelled)?
+            .map_err(|e| RemoteError::fetch(&self.protocol, remote, e))
     }
 
     /// The protocol this connection was opened with.
@@ -178,26 +182,25 @@ impl RemoteConnection {
     }
 
     /// Fetches and decodes `.a3s/<file>`; returns the value and the downloaded (compressed)
-    /// size. `.a3s/sync` is decoded on a blocking thread.
+    /// size. `.a3s/sync` is decoded on a blocking thread; a cancel during the decode returns
+    /// [`RemoteError::Cancelled`] at once and discards the decoded value.
     // Mirrors dao/connection/AbstractConnexionDAO.java:144-174 (in memory, no temp folder)
     pub async fn fetch_a3s<T: JavaCodec + Send + 'static>(
         &mut self,
         file: A3sFile,
         ctx: &TransferCtx,
     ) -> Result<(T, u64), RemoteError> {
-        if ctx.cancel.is_cancelled() {
-            return Err(RemoteError::Cancelled);
-        }
         let remote = RemoteFile::new(file.file_name(), A3S_FOLDER, false);
-        let bytes = self
-            .fetch_cancellable(&remote.transport_path(), ctx)
-            .await
-            .ok_or(RemoteError::Cancelled)?
-            .map_err(|e| RemoteError::fetch(&self.protocol, &remote, e))?;
+        let bytes = self.fetch_file(&remote, ctx).await?;
         let len = bytes.len() as u64;
         let decoded = if file == A3sFile::Sync {
-            match tokio::task::spawn_blocking(move || a3s_repo_files::decode_a3s::<T>(&bytes)).await
-            {
+            let decode =
+                tokio::task::spawn_blocking(move || a3s_repo_files::decode_a3s::<T>(&bytes));
+            let joined = tokio::select! {
+                () = ctx.cancel.cancelled() => return Err(RemoteError::Cancelled),
+                joined = decode => joined,
+            };
+            match joined {
                 Ok(decoded) => decoded,
                 Err(join) if join.is_panic() => std::panic::resume_unwind(join.into_panic()),
                 // The runtime is shutting down.
@@ -206,6 +209,7 @@ impl RemoteConnection {
         } else {
             a3s_repo_files::decode_a3s::<T>(&bytes)
         };
+        ensure_not_cancelled(ctx)?;
         let value = decoded.map_err(|e| RemoteError::decode(file, e))?;
         Ok((value, len))
     }
@@ -421,13 +425,9 @@ pub async fn import_autoconfig(
     );
     let mut connection = RemoteConnection::connect(protocol, options, ctx).await?;
     let remote = RemoteFile::new(file_name, "", false);
-    let result = connection
-        .fetch_cancellable(&remote.transport_path(), ctx)
-        .await;
+    let result = connection.fetch_file(&remote, ctx).await;
     connection.close().await;
-    let bytes = result
-        .ok_or(RemoteError::Cancelled)?
-        .map_err(|e| RemoteError::fetch(protocol, &remote, e))?;
+    let bytes = result?;
     ensure_not_cancelled(ctx)?;
     a3s_repo_files::decode_a3s(&bytes).map_err(|e| RemoteError::decode(A3sFile::AutoConfig, e))
 }

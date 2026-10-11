@@ -392,7 +392,7 @@ impl FtpTransport {
                 }
             }
         }
-        let mut file = crate::open_destination(dest, 0).await?;
+        let mut file = crate::open_destination(dest, 0, ctx).await?;
         let written = self.retrieve(relative, &mut file, ctx).await?;
         file.sync_all().await?;
         Ok(written)
@@ -448,7 +448,7 @@ impl FtpTransport {
             return Ok(Resume::Restart);
         }
         if offset == size {
-            let file = crate::open_destination(dest, size).await?;
+            let file = crate::open_destination(dest, size, ctx).await?;
             file.sync_all().await?;
             return Ok(Resume::Done(size));
         }
@@ -500,7 +500,7 @@ impl FtpTransport {
 
         let remaining = size - offset;
         let copied = async {
-            let mut file = crate::open_destination(dest, offset).await?;
+            let mut file = crate::open_destination(dest, offset, ctx).await?;
             // One byte more than expected reveals a server that ignored REST.
             let mut limited = (&mut reader).take(remaining + 1);
             let n = copy(&mut limited, &mut file, ctx, self.read_timeout).await?;

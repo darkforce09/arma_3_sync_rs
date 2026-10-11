@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-use a3s_transport::{CancellationToken, TransferCtx, Transport};
+use a3s_transport::{CancellationToken, StartOffset, TransferCtx, Transport};
 use parking_lot::Mutex;
 
 use super::error::{DownloadError, FileError};
@@ -30,7 +30,8 @@ const MONITOR_STOP_TIMEOUT: Duration = Duration::from_millis(200);
 ///
 /// Never panics on bad input: every failure ends up in the report. Emits `Phase(Downloading)`,
 /// `TransferTotal`, `Transfer`, `Speed`, `DiskUsage`, `ActiveConnections`, `ConnectionWaiting`,
-/// `FileStarted`, `FileDone`, `FileFailed` and `ConnectionLost`, never `Finished`.
+/// `FileStarted`, `FileDone`, `FileFailed` and, as the last event, `ConnectionLost`; never
+/// `Finished`.
 ///
 /// Cancelling `cancel` makes the call return [`DownloadEnd::Cancelled`] within a second; tasks
 /// in flight keep their `Running` status and partial files, so a later call resumes them.
@@ -99,7 +100,12 @@ pub async fn download(
 
     shared.emit_transfer();
     events.emit(SyncEvent::ActiveConnections { active: 0 });
-    shared.finish_report(tasks, cancel, started)
+    let report = shared.finish_report(tasks, cancel, started);
+    // A lost connection ends the operation: nothing follows the event.
+    if matches!(report.end, DownloadEnd::ConnectionLost { .. }) {
+        events.emit(SyncEvent::ConnectionLost);
+    }
+    report
 }
 
 /// Runs the workers and the monitor until every worker ended, or the run was cancelled (by the
@@ -196,8 +202,10 @@ enum Stop {
 struct Slot {
     /// Index of the task.
     task: Option<usize>,
-    /// Bytes on disk before this attempt.
+    /// Bytes on disk before this attempt, as requested.
     offset: u64,
+    /// The offset the transport actually started at, once it opened the file.
+    start_offset: StartOffset,
     /// Bytes of this attempt.
     progress: Arc<AtomicU64>,
     /// Denominator of the file percentage.
@@ -209,6 +217,12 @@ struct Slot {
 impl Slot {
     fn attempt_bytes(&self) -> u64 {
         self.progress.load(Ordering::Relaxed)
+    }
+
+    /// The requested offset until the transport reports where it really started (0 when it
+    /// restarted the file instead of resuming).
+    fn effective_offset(&self) -> u64 {
+        self.start_offset.get().unwrap_or(self.offset)
     }
 }
 
@@ -332,19 +346,22 @@ impl Shared {
     }
 
     /// Starts an attempt of worker `id`: `offset` bytes are already on disk and the file
-    /// percentage is relative to `percent_base`. Returns the attempt's progress counter.
-    pub(crate) fn begin_attempt(
-        &self,
-        id: usize,
-        offset: u64,
-        percent_base: u64,
-    ) -> Arc<AtomicU64> {
+    /// percentage is relative to `percent_base`. Returns the attempt's transfer context: run
+    /// token, fresh progress counter and start offset, shared throttle.
+    pub(crate) fn begin_attempt(&self, id: usize, offset: u64, percent_base: u64) -> TransferCtx {
+        let ctx = TransferCtx {
+            cancel: self.run.clone(),
+            progress: Arc::new(AtomicU64::new(0)),
+            throttle: Some(Arc::clone(&self.request.throttle)),
+            start_offset: StartOffset::default(),
+        };
         let mut state = self.state.lock();
         let slot = &mut state.slots[id];
         slot.offset = offset;
         slot.percent_base = percent_base;
-        slot.progress = Arc::new(AtomicU64::new(0));
-        Arc::clone(&slot.progress)
+        slot.progress = Arc::clone(&ctx.progress);
+        slot.start_offset = ctx.start_offset.clone();
+        ctx
     }
 
     /// Ends the current attempt of worker `id`; returns the bytes it received.
@@ -354,11 +371,6 @@ impl Shared {
         state.slots[id].progress = Arc::new(AtomicU64::new(0));
         state.finished_bytes = state.finished_bytes.saturating_add(received);
         received
-    }
-
-    /// Corrects the offset of worker `id`'s attempt when the transport restarted from 0.
-    pub(crate) fn set_attempt_offset(&self, id: usize, offset: u64) {
-        self.state.lock().slots[id].offset = offset;
     }
 
     /// Runs effects collected under the lock.
@@ -380,32 +392,27 @@ impl Shared {
     /// A worker could not connect (`None`: cancelled). When no worker connected, the run
     /// ends with the first failure.
     fn connect_failed(&self, error: Option<DownloadError>) {
-        let mut effects = Effects::default();
-        {
-            let mut state = self.state.lock();
-            state.connecting -= 1;
-            if let Some(error) = error {
-                tracing::warn!("Download connection failed: {error}");
-                if state.first_connect_error.is_none() {
-                    state.first_connect_error = Some(error);
-                }
-            }
-            let all_failed = state.connecting == 0 && state.connected == 0;
-            if all_failed
-                && state.stop.is_none()
-                && !self.run.is_cancelled()
-                && let Some(error) = state.first_connect_error.take()
-            {
-                if error.is_connection_lost() {
-                    state.stop = Some(Stop::ConnectionLost(error));
-                    effects.emit(SyncEvent::ConnectionLost);
-                } else {
-                    state.stop = Some(Stop::Failed(error));
-                }
-                self.run.cancel();
+        let mut state = self.state.lock();
+        state.connecting -= 1;
+        if let Some(error) = error {
+            tracing::warn!("Download connection failed: {error}");
+            if state.first_connect_error.is_none() {
+                state.first_connect_error = Some(error);
             }
         }
-        self.apply(effects);
+        let all_failed = state.connecting == 0 && state.connected == 0;
+        if all_failed
+            && state.stop.is_none()
+            && !self.run.is_cancelled()
+            && let Some(error) = state.first_connect_error.take()
+        {
+            if error.is_connection_lost() {
+                state.stop = Some(Stop::ConnectionLost(error));
+            } else {
+                state.stop = Some(Stop::Failed(error));
+            }
+            self.run.cancel();
+        }
     }
 
     /// Ends the run with `error` (a worker failed unexpectedly).
@@ -531,7 +538,6 @@ impl Shared {
                 }
                 tracing::warn!("Connection lost: {error}");
                 state.stop = Some(Stop::ConnectionLost(error));
-                effects.emit(SyncEvent::ConnectionLost);
                 self.run.cancel();
             }
             TaskEnd::Cancelled => {}
@@ -554,8 +560,8 @@ impl Shared {
             let bytes = slot.attempt_bytes();
             run_bytes = run_bytes.saturating_add(bytes);
             if slot.task.is_some() {
-                transferred =
-                    transferred.saturating_add(slot.offset.saturating_add(bytes).min(slot.cap));
+                transferred = transferred
+                    .saturating_add(slot.effective_offset().saturating_add(bytes).min(slot.cap));
             }
         }
         let current = state
@@ -566,7 +572,7 @@ impl Shared {
             Some((index, slot)) => (
                 Some(self.tasks[index].relative_path.clone()),
                 file_percent(
-                    slot.offset.saturating_add(slot.attempt_bytes()),
+                    slot.effective_offset().saturating_add(slot.attempt_bytes()),
                     slot.percent_base,
                 ),
             ),
@@ -645,15 +651,6 @@ pub(crate) struct Worker {
 }
 
 impl Worker {
-    /// Context of a payload transfer: run token, fresh progress counter, shared throttle.
-    pub(crate) fn transfer_ctx(&self, progress: Arc<AtomicU64>) -> TransferCtx {
-        TransferCtx {
-            cancel: self.shared.run.clone(),
-            progress,
-            throttle: Some(Arc::clone(&self.shared.request.throttle)),
-        }
-    }
-
     /// Whether the transport already completed a file .
     pub(crate) fn reused(&self) -> bool {
         self.completed > 0

@@ -16,10 +16,12 @@ use crate::model::{PlanDirectory, PlanLeaf, PlanNode, PlanTree};
 /// [`PART_EXTENSION`] or [`PBO_ZIP_EXTENSION`] are never extra. The content of an extra folder
 /// is added too. Unreadable folders are silently skipped.
 ///
-/// A local symbolic link is never followed: it becomes one deleted file node for the link
-/// itself, even when it points to a folder (Java lists the target's content, so a link
-/// could make it delete outside the destination, and link loops never end). Folders whose name
-/// is not a plain path component (see [`super::validate_names`]) are not listed.
+/// An extra local symbolic link is never followed: it becomes one deleted file node for the
+/// link itself, even when it points to a folder (Java lists the target's content, so a link
+/// could make it delete outside the destination, and link loops never end). A folder the
+/// repository has, which the user replaced by a link (e.g. an addon folder kept on another
+/// disk), is listed through the link: downloads write through it too. Folders whose name is
+/// not a plain path component (see [`super::validate_names`]) are not listed.
 // Mirrors service/RepositoryService.java:607-659
 pub fn add_extra_local_files(tree: &mut PlanTree, destination: &Path, exact_match: bool) -> usize {
     scan(&mut tree.root, true, destination, exact_match)

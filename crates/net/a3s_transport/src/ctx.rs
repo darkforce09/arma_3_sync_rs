@@ -60,6 +60,39 @@ pub struct TransferCtx {
     /// Incremented with every byte received or sent.
     pub progress: Arc<AtomicU64>,
     pub throttle: Option<Arc<Throttle>>,
+
+    /// Where a file download actually started writing, set once the destination is opened.
+    pub start_offset: StartOffset,
+}
+
+/// The offset a download actually resumed at.
+///
+/// The requested offset, or 0 when the server or protocol restarted the file (HTTP `200` to a
+/// range request, FTP without `REST`, WebDAV). Unset until the destination file is opened;
+/// clones share the value.
+#[derive(Clone, Debug)]
+pub struct StartOffset(Arc<AtomicU64>);
+
+impl StartOffset {
+    /// Marker of "not opened yet".
+    const UNSET: u64 = u64::MAX;
+
+    /// The offset, or `None` before the destination was opened.
+    pub fn get(&self) -> Option<u64> {
+        let value = self.0.load(Ordering::Acquire);
+        (value != Self::UNSET).then_some(value)
+    }
+
+    /// Records the offset; a later call (a restart within the same transfer) replaces it.
+    pub(crate) fn set(&self, offset: u64) {
+        self.0.store(offset.min(Self::UNSET - 1), Ordering::Release);
+    }
+}
+
+impl Default for StartOffset {
+    fn default() -> Self {
+        Self(Arc::new(AtomicU64::new(Self::UNSET)))
+    }
 }
 
 impl TransferCtx {

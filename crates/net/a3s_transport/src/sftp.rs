@@ -231,7 +231,7 @@ impl SftpTransport {
         if resume_from > 0 {
             remote.seek(SeekFrom::Start(resume_from)).await?;
         }
-        let mut file = crate::open_destination(dest, resume_from).await?;
+        let mut file = crate::open_destination(dest, resume_from, ctx).await?;
         let written = copy(&mut remote, &mut file, ctx, self.read_timeout).await?;
         file.sync_all().await?;
         Ok(resume_from + written)

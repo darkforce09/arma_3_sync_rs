@@ -12,7 +12,7 @@ use a3s_sync::{EventSender, PlanError, PlanSummary, PlanTree, RemoteMetadata, Sy
 use a3s_transport::CancellationToken;
 use a3s_types::{SyncTreeDirectory, SyncTreeLeaf, SyncTreeNode};
 
-const HOSTILE: [&str; 9] = [
+const HOSTILE: [&str; 16] = [
     "..",
     "/abs",
     "a/../..",
@@ -22,6 +22,13 @@ const HOSTILE: [&str; 9] = [
     "C:x",
     "a/b",
     "nul\0byte",
+    "x.",
+    "x ",
+    "CON",
+    "nul.txt",
+    "Com1",
+    "lpt9.pbo",
+    "AUX.",
 ];
 
 fn leaf(name: &str) -> SyncTreeNode {
@@ -84,7 +91,8 @@ fn d15_is_safe_name_table() {
         assert!(!is_safe_name(name), "{name:?}");
     }
     for name in [
-        "@ace", "addons", "x.pbo", "..x", "x..", "a b", ".hidden", "ünï",
+        "@ace", "addons", "x.pbo", "..x", "a b", ".hidden", "ünï", "console", "com10", "lpt",
+        "nul_x", " x",
     ] {
         assert!(is_safe_name(name), "{name:?}");
     }

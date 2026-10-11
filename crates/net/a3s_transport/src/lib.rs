@@ -29,7 +29,7 @@ use tokio::io::AsyncRead;
 
 use crate::session::SessionState;
 
-pub use ctx::{Throttle, TransferCtx};
+pub use ctx::{StartOffset, Throttle, TransferCtx};
 pub use error::{Error, Result};
 pub use options::{ProxyConfig, TransportOptions, is_local_test_host};
 pub use session::{UploadSession, UploadSessionStats};
@@ -334,8 +334,12 @@ fn non_root(relative: &str) -> Result<String> {
 }
 
 /// Opens `dest` for writing at `offset`: truncates it to `offset` bytes (0 = new file) and
-/// positions at the end. Creates parent directories.
-pub(crate) async fn open_destination(dest: &Path, offset: u64) -> Result<tokio::fs::File> {
+/// positions at the end. Creates parent directories. Records `offset` in `ctx.start_offset`.
+pub(crate) async fn open_destination(
+    dest: &Path,
+    offset: u64,
+    ctx: &TransferCtx,
+) -> Result<tokio::fs::File> {
     use tokio::io::AsyncSeekExt as _;
     if let Some(parent) = dest.parent() {
         tokio::fs::create_dir_all(parent).await?;
@@ -350,5 +354,6 @@ pub(crate) async fn open_destination(dest: &Path, offset: u64) -> Result<tokio::
         file.set_len(offset).await?;
         file.seek(std::io::SeekFrom::Start(offset)).await?;
     }
+    ctx.start_offset.set(offset);
     Ok(file)
 }

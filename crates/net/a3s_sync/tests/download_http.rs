@@ -1333,3 +1333,169 @@ async fn resumable_full_download_wins_over_zsync() {
     assert_eq!(std::fs::read(dest.join("@a/x.pbo")).expect("file"), new);
     assert!(part_files(dest).is_empty());
 }
+
+/// Every `transferred` value of the `Transfer` events.
+fn transferred_values(events: &[SyncEvent]) -> Vec<u64> {
+    events
+        .iter()
+        .filter_map(|e| match e {
+            SyncEvent::Transfer(p) => Some(p.transferred),
+            _ => None,
+        })
+        .collect()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn restarted_resume_corrects_the_progress_offset() {
+    let server = HttpServer::start().await;
+    let dest_dir = tempfile::tempdir().expect("tempdir");
+    let dest = dest_dir.path();
+    let content = random_bytes(200 * 1024, 43);
+    server.put("@a/x.pbo", &content);
+    // The server ignores the range and pauses after more bytes than the requested offset.
+    server.rule(
+        "@a/x.pbo",
+        Rule {
+            no_range: true,
+            stall_after: Some(50 * 1024),
+            stall_for: Some(Duration::from_millis(600)),
+            ..Rule::default()
+        },
+    );
+    let offset = 10 * 1024;
+    std::fs::create_dir_all(dest.join("@a")).expect("mkdir");
+    std::fs::write(dest.join("@a/x.pbo.part"), &content[..offset]).expect("part");
+    let mut task = file_task(dest, "@a/x.pbo", content.len() as u64);
+    task.status = DownloadStatus::Running;
+    let mut tasks = vec![task];
+    let (report, events) = run(
+        &request(server.protocol(), 1),
+        &mut tasks,
+        Arc::new(NoZipSink),
+        &CancellationToken::new(),
+    )
+    .await;
+    assert!(
+        matches!(report.end, DownloadEnd::Completed),
+        "{:?}",
+        report.errors
+    );
+    assert_eq!(std::fs::read(dest.join("@a/x.pbo")).expect("file"), content);
+    let values = transferred_values(&events);
+    // During the stall the progress is the bytes of the restarted transfer, not offset + bytes.
+    assert!(values.contains(&(50 * 1024)), "{values:?}");
+    assert!(!values.contains(&(offset as u64 + 50 * 1024)), "{values:?}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn resume_answered_416_fails_the_file_and_drops_the_part() {
+    let server = HttpServer::start().await;
+    let dest_dir = tempfile::tempdir().expect("tempdir");
+    let dest = dest_dir.path();
+    let content = random_bytes(64 * 1024, 44);
+    server.put("@a/x.pbo", &content);
+    server.rule(
+        "@a/x.pbo",
+        Rule {
+            status: Some(416),
+            ..Rule::default()
+        },
+    );
+    std::fs::create_dir_all(dest.join("@a")).expect("mkdir");
+    std::fs::write(dest.join("@a/x.pbo.part"), &content[..1000]).expect("part");
+    let mut task = file_task(dest, "@a/x.pbo", content.len() as u64);
+    task.status = DownloadStatus::Running;
+    let mut tasks = vec![task];
+    let (report, events) = run(
+        &request(server.protocol(), 1),
+        &mut tasks,
+        Arc::new(NoZipSink),
+        &CancellationToken::new(),
+    )
+    .await;
+    assert!(matches!(report.end, DownloadEnd::Completed));
+    assert_eq!(report.errors.len(), 1);
+    assert_eq!(report.errors[0].relative_path, "@a/x.pbo");
+    assert_eq!(file_failed(&events), 1);
+    // One request: resuming cannot help, so there is no retry.
+    let seen = server.seen();
+    assert_eq!(seen.len(), 1, "{seen:?}");
+    assert_eq!(seen[0].range.as_deref(), Some("bytes=1000-"));
+    assert!(part_files(dest).is_empty());
+    assert!(!dest.join("@a/x.pbo").exists());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn webdav_never_resumes() {
+    let server = HttpServer::start().await;
+    let dest_dir = tempfile::tempdir().expect("tempdir");
+    let dest = dest_dir.path();
+    let content = random_bytes(120 * 1024, 45);
+    server.put("@a/x.pbo", &content);
+    std::fs::create_dir_all(dest.join("@a")).expect("mkdir");
+    // A stale partial file with wrong bytes: resuming would corrupt the result.
+    std::fs::write(dest.join("@a/x.pbo.part"), vec![0xEE_u8; 30 * 1024]).expect("part");
+    let mut task = file_task(dest, "@a/x.pbo", content.len() as u64);
+    task.status = DownloadStatus::Running;
+    let mut tasks = vec![task];
+    let mut protocol = server.protocol();
+    protocol.protocol_type = ProtocolType::HttpWebdav;
+    let (report, _) = run(
+        &request(protocol, 1),
+        &mut tasks,
+        Arc::new(NoZipSink),
+        &CancellationToken::new(),
+    )
+    .await;
+    assert!(
+        matches!(report.end, DownloadEnd::Completed),
+        "{:?}",
+        report.errors
+    );
+    let seen = server.seen();
+    assert_eq!(seen.len(), 1, "{seen:?}");
+    assert_eq!(seen[0].range, None);
+    assert_eq!(std::fs::read(dest.join("@a/x.pbo")).expect("file"), content);
+    assert_eq!(report.bytes_received, content.len() as u64);
+}
+
+/// A zip sink that panics, which panics the worker handing a zip over.
+struct PanickingSink;
+
+impl ZipSink for PanickingSink {
+    fn submit(&self, _zip: a3s_sync::download::DownloadedZip) {
+        panic!("sink failure");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn worker_panic_fails_the_run() {
+    let server = HttpServer::start().await;
+    let dest_dir = tempfile::tempdir().expect("tempdir");
+    let dest = dest_dir.path();
+    let content = random_bytes(4 * 1024, 46);
+    server.put("@a/x.pbo.zip", &content);
+    let mut tasks = vec![compressed_task(
+        dest,
+        "@a/x.pbo",
+        10_000,
+        content.len() as u64,
+        "abc",
+    )];
+    let (report, events) = run(
+        &request(server.protocol(), 1),
+        &mut tasks,
+        Arc::new(PanickingSink),
+        &CancellationToken::new(),
+    )
+    .await;
+    let DownloadEnd::Failed { error } = &report.end else {
+        panic!("{:?}", report.end);
+    };
+    assert_eq!(error.kind(), ErrorKind::Internal);
+    match report.outcome(vec![]) {
+        Some(Outcome::Failed { error }) => assert_eq!(error.kind, ErrorKind::Internal),
+        other => panic!("{other:?}"),
+    }
+    no_finished(&events);
+}

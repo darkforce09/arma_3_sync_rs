@@ -346,7 +346,7 @@ impl HttpTransport {
         let offset = if resumed { resume_from } else { 0 };
         let expected = response.content_length().map(|len| len + offset);
 
-        let mut file = crate::open_destination(dest, offset).await?;
+        let mut file = crate::open_destination(dest, offset, ctx).await?;
         let mut written = offset;
         while let Some(chunk) = self.next_chunk(&mut response, ctx).await? {
             file.write_all(&chunk).await?;

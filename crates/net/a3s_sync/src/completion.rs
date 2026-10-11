@@ -209,8 +209,7 @@ pub fn local_completion(
 ///
 /// After the first error, no new file is started and the first error is returned (approved
 /// deviation DV-P6); completions already computed are written to the tree but must be
-/// considered unreliable. Cancellation returns [`CompletionError::Cancelled`] (if the runtime
-/// shuts down while classifying, the tree is left empty).
+/// considered unreliable. Cancellation returns [`CompletionError::Cancelled`].
 ///
 /// Emits [`Phase::DeterminingCompletion`], then a [`SyncEvent::Progress`] per percent of the
 /// checked files.
@@ -250,11 +249,11 @@ pub async fn determine_completion(
         probe_connection = Some(connection);
     }
 
-    // Classification stats every outdated local file: run it on a blocking thread.
-    let owned = std::mem::take(tree);
+    // Classification stats every outdated local file: run it on a blocking thread, on a copy,
+    // so that the caller's tree stays intact if this future is dropped meanwhile.
+    let mut owned = tree.clone();
     let info = server_info.clone();
     let classified = tokio::task::spawn_blocking(move || {
-        let mut owned = owned;
         let candidates: Vec<Candidate> = classify_leaves(&mut owned, &info, partial_supported)
             .into_iter()
             .filter_map(|relative_path| {
@@ -274,7 +273,7 @@ pub async fn determine_completion(
             candidates
         }
         Err(join) if join.is_panic() => std::panic::resume_unwind(join.into_panic()),
-        // The runtime is shutting down; the tree is lost with the task.
+        // The runtime is shutting down.
         Err(_) => return Err(CompletionError::Cancelled),
     };
     if ctx.cancel.is_cancelled() {
@@ -445,13 +444,10 @@ async fn file_completion(
         false,
     );
     let path = remote.transport_path();
-    let fetched = tokio::select! {
-        () = ctx.cancel.cancelled() => return Err(CompletionError::Cancelled),
-        res = connection.transport_mut().fetch(&path, ctx) => res,
-    };
-    let bytes = fetched.map_err(|e| {
-        CompletionError::remote(RemoteError::fetch(connection.protocol(), &remote, e))
-    })?;
+    let bytes = connection
+        .fetch_file(&remote, ctx)
+        .await
+        .map_err(CompletionError::remote)?;
 
     let stop = Arc::new(AtomicBool::new(false));
     let blocking_stop = Arc::clone(&stop);
