@@ -2,7 +2,6 @@
 //! the WebDAV verbs are used for uploads.
 
 use std::path::Path;
-use std::sync::atomic::Ordering;
 
 use a3s_types::Protocol;
 use reqwest::header::{self, HeaderValue};
@@ -233,15 +232,7 @@ fn upload_stream(
             return Ok(None);
         }
         buf.truncate(n);
-        ctx.progress.fetch_add(n as u64, Ordering::Relaxed);
-        if let Some(throttle) = &ctx.throttle {
-            tokio::select! {
-                () = ctx.cancel.cancelled() => {
-                    return Err(std::io::Error::other(Error::Cancelled));
-                }
-                () = throttle.consume(n) => {}
-            }
-        }
+        ctx.account(n).await.map_err(std::io::Error::other)?;
         Ok(Some((bytes::Bytes::from(buf), (reader, ctx))))
     })
 }

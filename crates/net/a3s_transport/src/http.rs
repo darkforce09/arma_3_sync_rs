@@ -315,11 +315,7 @@ impl HttpTransport {
         let mut out = Vec::with_capacity(expected as usize);
         while let Some(chunk) = self.next_chunk(&mut response, ctx).await? {
             out.extend_from_slice(&chunk);
-            ctx.progress
-                .fetch_add(chunk.len() as u64, Ordering::Relaxed);
-            if let Some(throttle) = &ctx.throttle {
-                throttle.consume(chunk.len()).await;
-            }
+            ctx.account(chunk.len()).await?;
         }
         if out.len() as u64 != expected {
             return Err(Error::Incomplete {
@@ -351,11 +347,7 @@ impl HttpTransport {
         while let Some(chunk) = self.next_chunk(&mut response, ctx).await? {
             file.write_all(&chunk).await?;
             written += chunk.len() as u64;
-            ctx.progress
-                .fetch_add(chunk.len() as u64, Ordering::Relaxed);
-            if let Some(throttle) = &ctx.throttle {
-                throttle.consume(chunk.len()).await;
-            }
+            ctx.account(chunk.len()).await?;
         }
         file.flush().await?;
         file.sync_all().await?;

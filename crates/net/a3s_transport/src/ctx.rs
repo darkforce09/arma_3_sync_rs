@@ -107,7 +107,33 @@ impl TransferCtx {
             Ok(())
         }
     }
+
+    /// Counts `n` transferred bytes into the progress and, with a throttle, waits until they
+    /// are within its limit, in steps of at most [`ACCOUNT_STEP`]. Cancellation ends the wait.
+    pub(crate) async fn account(&self, n: usize) -> Result<()> {
+        let Some(throttle) = &self.throttle else {
+            self.progress.fetch_add(n as u64, Ordering::Relaxed);
+            return Ok(());
+        };
+        let mut left = n;
+        while left > 0 {
+            let step = left.min(ACCOUNT_STEP);
+            left -= step;
+            self.progress.fetch_add(step as u64, Ordering::Relaxed);
+            tokio::select! {
+                () = self.cancel.cancelled() => return Err(Error::Cancelled),
+                () = throttle.consume(step) => {}
+            }
+        }
+        Ok(())
+    }
 }
+
+/// Largest share of a read accounted at once under a throttle. HTTP bodies arrive in chunks of
+/// up to several hundred KiB (hyper grows its read buffer): accounted whole, progress jumps by
+/// a chunk and the throttle then sleeps for all of it, so the reported speed swings between
+/// zero and a multiple of the limit.
+const ACCOUNT_STEP: usize = 16 * 1024;
 
 /// Chunk size of transfers (also the SFTP write size, `SftpDAO.SFTP_WRITE_BUFFER_SIZE`).
 pub(crate) const COPY_BUFFER: usize = 64 * 1024;
@@ -170,13 +196,7 @@ where
             res = maybe_timeout(write_timeout, write) => res?,
         }
         total += n as u64;
-        ctx.progress.fetch_add(n as u64, Ordering::Relaxed);
-        if let Some(throttle) = &ctx.throttle {
-            tokio::select! {
-                () = ctx.cancel.cancelled() => return Err(Error::Cancelled),
-                () = throttle.consume(n) => {}
-            }
-        }
+        ctx.account(n).await?;
     }
     let flush = writer.flush();
     tokio::select! {

@@ -830,7 +830,9 @@ async fn throttle_and_speed() {
         })
         .collect();
     assert!(speeds.len() >= 2, "{speeds:?}");
-    assert!(speeds[1..].iter().all(|&s| s <= 900 * 1024), "{speeds:?}");
+    // Every sample, the first included: the throttle paces each read in small steps, so no
+    // half-second sample sees much more than the limit.
+    assert!(speeds.iter().all(|&s| s <= 900 * 1024), "{speeds:?}");
     assert!(
         report.average_speed > 0 && report.average_speed <= 900 * 1024,
         "{}",
