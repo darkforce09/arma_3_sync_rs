@@ -8,6 +8,35 @@ pub fn java_trim(s: &str) -> &str {
     s.trim_matches(|c: char| c <= '\u{20}')
 }
 
+/// `java.lang.Character.isWhitespace`.
+///
+/// The Unicode space, line and paragraph separators except the non-breaking ones (U+00A0,
+/// U+2007, U+202F), plus `\t`, `\n`, U+000B, `\f`, `\r` and U+001C–U+001F. U+0085 is not
+/// whitespace.
+pub fn java_is_whitespace(c: char) -> bool {
+    matches!(
+        c,
+        '\t' | '\n'
+            | '\u{0B}'
+            | '\u{0C}'
+            | '\r'
+            | '\u{1C}'..='\u{1F}'
+            | ' '
+            | '\u{1680}'
+            | '\u{2000}'..='\u{2006}'
+            | '\u{2008}'..='\u{200A}'
+            | '\u{2028}'
+            | '\u{2029}'
+            | '\u{205F}'
+            | '\u{3000}'
+    )
+}
+
+/// `java.lang.String.isBlank`: empty or only [`java_is_whitespace`] chars.
+pub fn java_is_blank(s: &str) -> bool {
+    s.chars().all(java_is_whitespace)
+}
+
 /// `java.lang.String.compareToIgnoreCase`.
 ///
 /// Compares UTF-16 code units after `Character.toUpperCase` then `Character.toLowerCase`, which

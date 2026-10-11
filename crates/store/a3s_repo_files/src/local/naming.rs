@@ -21,33 +21,7 @@ pub fn name_hash(name: &str) -> String {
     crate::hash::to_hex(&digest[..HASH_PREFIX_BYTES])
 }
 
-pub(crate) use a3s_types::java_string::java_trim;
-
-/// Java `Character.isWhitespace`.
-fn java_is_whitespace(c: char) -> bool {
-    matches!(
-        c,
-        '\t' | '\n'
-            | '\u{0B}'
-            | '\u{0C}'
-            | '\r'
-            | '\u{1C}'..='\u{1F}'
-            // Space separators except the non-breaking ones, line and paragraph separators.
-            | ' '
-            | '\u{1680}'
-            | '\u{2000}'..='\u{2006}'
-            | '\u{2008}'..='\u{200A}'
-            | '\u{2028}'
-            | '\u{2029}'
-            | '\u{205F}'
-            | '\u{3000}'
-    )
-}
-
-/// Java `String.isBlank()`: empty or only `Character.isWhitespace` chars.
-pub(crate) fn java_is_blank(s: &str) -> bool {
-    s.chars().all(java_is_whitespace)
-}
+pub(crate) use a3s_types::java_string::{java_is_blank, java_trim};
 
 /// Java's `sanitizeRepositoryName`, without the Rust additions of [`sanitize`].
 // Mirrors dao/repository/RepositoryDAO.java:330-342
