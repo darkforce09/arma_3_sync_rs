@@ -1,0 +1,28 @@
+[package]
+name = "a3s_foundation"
+description = "Error taxonomy, formatting, logging and application directories shared by every crate."
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+include.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[lints]
+workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+
+[dependencies]
+chrono.workspace = true
+parking_lot.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

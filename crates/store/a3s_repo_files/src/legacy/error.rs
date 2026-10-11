@@ -1,6 +1,6 @@
 use std::io;
 
-use a3s_error::{ErrorKind, UserFacing};
+use a3s_foundation::error::{ErrorKind, UserFacing};
 
 use super::allowlist::Rejected;
 use super::crypto::CryptoError;

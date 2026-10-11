@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use a3s_error::{ErrorKind, UserFacing};
+use a3s_foundation::error::{ErrorKind, UserFacing};
 use a3s_transport::{TransferCtx, TransportOptions};
 use a3s_types::{Protocol, ProtocolType, ServerInfo};
 use parking_lot::Mutex;
@@ -494,7 +494,7 @@ async fn file_completion(
     // Mirrors dao/connection/http/HttpDAO.java:484-485
     tracing::info!(
         "File completion: {}% {}",
-        a3s_format::java_double_to_string(((100.0 * complete) as i64) as f64 / 100.0),
+        a3s_foundation::format::java_double_to_string(((100.0 * complete) as i64) as f64 / 100.0),
         local.display()
     );
     Ok(complete)

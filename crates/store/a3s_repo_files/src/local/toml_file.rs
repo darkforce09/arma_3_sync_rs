@@ -189,5 +189,5 @@ pub(crate) fn file_name(path: &Path) -> String {
 
 /// `File.lastModified()` in ms; `0` when unknown, as in Java.
 pub(crate) fn modified_millis(path: &Path) -> i64 {
-    a3s_hash::modified_millis(path).unwrap_or(0)
+    crate::hash::modified_millis(path).unwrap_or(0)
 }

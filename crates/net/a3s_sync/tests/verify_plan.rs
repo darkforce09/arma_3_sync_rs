@@ -59,7 +59,7 @@ fn options(destination: &Path, exact_match: bool) -> SyncOptions {
 fn plan_with(
     metadata: &RemoteMetadata,
     options: &SyncOptions,
-    cache: &mut a3s_hash::Sha1Cache,
+    cache: &mut a3s_repo_files::hash::Sha1Cache,
 ) -> Result<PlanTree, PlanError> {
     plan_repository(
         metadata,
@@ -72,7 +72,11 @@ fn plan_with(
 }
 
 fn plan(metadata: &RemoteMetadata, options: &SyncOptions) -> Result<PlanTree, PlanError> {
-    plan_with(metadata, options, &mut a3s_hash::Sha1Cache::default())
+    plan_with(
+        metadata,
+        options,
+        &mut a3s_repo_files::hash::Sha1Cache::default(),
+    )
 }
 
 /// The plan, or `None` when it is rejected for an unsafe name (hostile names
@@ -225,11 +229,11 @@ fn verify_wog_partial_local_tree() {
 
     // Cache says the stand-in has the remote SHA-1 (same mtime): the file is up to date.
     let abs = std::path::absolute(&local).expect("absolute");
-    let mtime = a3s_hash::modified_millis(&abs).expect("mtime");
-    let mut cache = a3s_hash::Sha1Cache::default();
+    let mtime = a3s_repo_files::hash::modified_millis(&abs).expect("mtime");
+    let mut cache = a3s_repo_files::hash::Sha1Cache::default();
     cache.entries.insert(
         abs.clone(),
-        a3s_hash::FileAttributes {
+        a3s_repo_files::hash::FileAttributes {
             sha1: remote_leaf.sha1.clone().expect("sha1"),
             last_modified: mtime,
         },
@@ -294,8 +298,8 @@ fn verify_sha1_cache_reuse_by_mtime_through_plan() {
             leaf("b.pbo", Some("0"), 0),
         ],
     )]));
-    let mut cache = a3s_hash::Sha1Cache::default();
-    let run = |cache: &mut a3s_hash::Sha1Cache| {
+    let mut cache = a3s_repo_files::hash::Sha1Cache::default();
+    let run = |cache: &mut a3s_repo_files::hash::Sha1Cache| {
         let (sender, rx) = EventSender::channel();
         let tree = plan_repository(
             &metadata,
@@ -358,7 +362,7 @@ fn verify_cancel_during_hashing() {
             trigger.cancel();
         }
     });
-    let mut cache = a3s_hash::Sha1Cache::default();
+    let mut cache = a3s_repo_files::hash::Sha1Cache::default();
     let result = plan_repository(
         &metadata,
         &options(b, false),
@@ -628,7 +632,7 @@ fn verify_steps_never_touch_remote_deleted_flag() {
     assign_destinations(&mut tree, b, false, &NoAddons).expect("safe names");
     compute_local_sha1(
         &mut tree,
-        &mut a3s_hash::Sha1Cache::default(),
+        &mut a3s_repo_files::hash::Sha1Cache::default(),
         &CancellationToken::new(),
         &EventSender::noop(),
     )
@@ -730,7 +734,7 @@ fn verify_auto_discover_destinations_and_hashing() {
         &metadata,
         &opts,
         &locator,
-        &mut a3s_hash::Sha1Cache::default(),
+        &mut a3s_repo_files::hash::Sha1Cache::default(),
         &CancellationToken::new(),
         &EventSender::noop(),
     )

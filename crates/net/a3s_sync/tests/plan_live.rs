@@ -58,7 +58,7 @@ async fn live_wog_plan_and_completion() {
             &planned_metadata,
             &sync_options,
             &NoAddons,
-            &mut a3s_hash::Sha1Cache::default(),
+            &mut a3s_repo_files::hash::Sha1Cache::default(),
             &cancel,
             &EventSender::noop(),
         )

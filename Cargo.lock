@@ -3,15 +3,10 @@
 version = 4
 
 [[package]]
-name = "a3s_addons"
-version = "0.1.0-alpha.1"
-
-[[package]]
 name = "a3s_admin"
 version = "0.1.0-alpha.1"
 dependencies = [
  "a3s_dev_tools",
- "a3s_hash",
  "a3s_jserial",
  "a3s_repo_files",
  "a3s_types",
@@ -27,13 +22,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "a3s_build_info"
-version = "0.1.0-alpha.1"
-dependencies = [
- "chrono",
-]
-
-[[package]]
 name = "a3s_dev_tools"
 version = "0.1.0-alpha.1"
 dependencies = [
@@ -46,43 +34,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "a3s_error"
-version = "0.1.0-alpha.1"
-dependencies = [
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "a3s_format"
-version = "0.1.0-alpha.1"
-dependencies = [
- "chrono",
-]
-
-[[package]]
-name = "a3s_hash"
-version = "0.1.0-alpha.1"
-dependencies = [
- "parking_lot",
- "rayon",
- "serde",
- "sha1 0.11.0",
- "tempfile",
-]
-
-[[package]]
-name = "a3s_jserial"
-version = "0.1.0-alpha.1"
-dependencies = [
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "a3s_launch"
-version = "0.1.0-alpha.1"
-
-[[package]]
-name = "a3s_log"
+name = "a3s_foundation"
 version = "0.1.0-alpha.1"
 dependencies = [
  "chrono",
@@ -94,31 +46,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "a3s_paths"
+name = "a3s_jserial"
 version = "0.1.0-alpha.1"
 dependencies = [
- "a3s_error",
- "tempfile",
  "thiserror 2.0.21",
 ]
-
-[[package]]
-name = "a3s_platform"
-version = "0.1.0-alpha.1"
 
 [[package]]
 name = "a3s_repo_files"
 version = "0.1.0-alpha.1"
 dependencies = [
- "a3s_error",
- "a3s_hash",
+ "a3s_foundation",
  "a3s_jserial",
- "a3s_paths",
  "a3s_types",
  "aes",
  "base64 0.22.1",
  "flate2",
  "parking_lot",
+ "rayon",
  "serde",
  "sha1 0.11.0",
  "tempfile",
@@ -131,9 +76,7 @@ dependencies = [
 name = "a3s_sync"
 version = "0.1.0-alpha.1"
 dependencies = [
- "a3s_error",
- "a3s_format",
- "a3s_hash",
+ "a3s_foundation",
  "a3s_repo_files",
  "a3s_transport",
  "a3s_types",
@@ -153,14 +96,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "a3s_tools"
-version = "0.1.0-alpha.1"
-
-[[package]]
 name = "a3s_transport"
 version = "0.1.0-alpha.1"
 dependencies = [
- "a3s_hash",
  "a3s_repo_files",
  "a3s_types",
  "axum",
@@ -207,18 +145,6 @@ dependencies = [
  "egui_kittest",
  "resvg",
 ]
-
-[[package]]
-name = "a3s_updater"
-version = "0.1.0-alpha.1"
-
-[[package]]
-name = "a3s_viewer"
-version = "0.1.0-alpha.1"
-
-[[package]]
-name = "a3s_viewer_context"
-version = "0.1.0-alpha.1"
 
 [[package]]
 name = "a3s_zsync"
@@ -555,12 +481,8 @@ dependencies = [
 [[package]]
 name = "arma3sync"
 version = "0.1.0-alpha.1"
-
-[[package]]
-name = "arma3sync-cli"
-version = "0.1.0-alpha.1"
 dependencies = [
- "arma3sync",
+ "chrono",
 ]
 
 [[package]]

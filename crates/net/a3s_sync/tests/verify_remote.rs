@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
-use a3s_error::ErrorKind;
+use a3s_foundation::error::ErrorKind;
 use a3s_repo_files::{A3sFile, decode_a3s};
 use a3s_sync::events::{PercentCounter, RateLimiter};
 use a3s_sync::remote::{CheckJob, check_repositories, check_repository, import_autoconfig};

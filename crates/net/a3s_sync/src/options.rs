@@ -3,7 +3,7 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use a3s_error::{ErrorKind, UserFacing};
+use a3s_foundation::error::{ErrorKind, UserFacing};
 use a3s_types::ServerInfo;
 use a3s_types::local::Repository;
 

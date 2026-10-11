@@ -5,7 +5,7 @@
 //!
 //! 1. [`crate::event_filter::filter`] when an event is selected;
 //! 2. [`assign_destinations`]: local folder of every node (with addon auto-discovery);
-//! 3. [`compute_local_sha1`]: SHA-1 of the local files, through the [`a3s_hash::Sha1Cache`];
+//! 3. [`compute_local_sha1`]: SHA-1 of the local files, through the [`a3s_repo_files::hash::Sha1Cache`];
 //! 4. [`mark_updated`]: new or changed nodes;
 //! 5. [`mark_hidden`]: hidden folders;
 //! 6. [`add_extra_local_files`]: local content missing remotely, as `deleted` nodes;
@@ -22,7 +22,7 @@ use std::collections::HashMap;
 use std::hash::BuildHasher;
 use std::path::{Component, Path, PathBuf};
 
-use a3s_error::{ErrorKind, UserFacing};
+use a3s_foundation::error::{ErrorKind, UserFacing};
 use a3s_transport::CancellationToken;
 
 use crate::event_filter;
@@ -49,8 +49,8 @@ pub const PBO_ZIP_EXTENSION: &str = ".pbo.zip";
 
 /// Where auto-discovered addon folders live.
 ///
-/// `a3s_sync` cannot depend on the addon registry (`a3s_addons` sits above it); callers adapt
-/// theirs to this trait.
+/// The addon registry will sit above `a3s_sync`, so this crate cannot depend on it; callers
+/// adapt theirs to this trait.
 pub trait AddonLocator: Sync {
     /// The local folder that **contains** the addon folder named `directory_name` (Java
     /// `Addon.path`), if known.
@@ -171,7 +171,7 @@ pub fn plan_repository(
     metadata: &RemoteMetadata,
     options: &SyncOptions,
     addons: &dyn AddonLocator,
-    cache: &mut a3s_hash::Sha1Cache,
+    cache: &mut a3s_repo_files::hash::Sha1Cache,
     cancel: &CancellationToken,
     events: &EventSender,
 ) -> Result<PlanTree, PlanError> {
@@ -310,7 +310,7 @@ mod tests {
             metadata,
             options,
             &NoAddons,
-            &mut a3s_hash::Sha1Cache::default(),
+            &mut a3s_repo_files::hash::Sha1Cache::default(),
             &CancellationToken::new(),
             &EventSender::noop(),
         )

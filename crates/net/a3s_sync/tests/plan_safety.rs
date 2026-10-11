@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use a3s_error::{ErrorKind, UserFacing as _};
+use a3s_foundation::error::{ErrorKind, UserFacing as _};
 use a3s_sync::plan::{
     NoAddons, assign_destinations, is_safe_name, plan_repository, select_all_except_root,
     validate_names,
@@ -108,7 +108,7 @@ fn d15_plan_rejects_hostile_names() {
                     &metadata,
                     &options(&dest, exact_match),
                     &NoAddons,
-                    &mut a3s_hash::Sha1Cache::default(),
+                    &mut a3s_repo_files::hash::Sha1Cache::default(),
                     &CancellationToken::new(),
                     &EventSender::noop(),
                 );

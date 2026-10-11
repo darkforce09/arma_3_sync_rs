@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use a3s_admin::build::{
     BuildError, BuildEvent, BuildOptions, BuildOutcome, STAGE_SHA1, build_repository,
 };
-use a3s_hash::Sha1Cache;
+use a3s_repo_files::hash::Sha1Cache;
 use a3s_repo_files::{A3sFile, read_a3s};
 use a3s_types::local::Repository;
 use a3s_types::{
@@ -497,7 +497,7 @@ fn auto_config() {
 
 fn expected_zsync(file: &Path, name: &str, url: &str, sha1: &str) -> Vec<u8> {
     let bytes = fs::read(file).unwrap();
-    let mtime = a3s_hash::modified_millis(file).unwrap();
+    let mtime = a3s_repo_files::hash::modified_millis(file).unwrap();
     a3s_zsync::ControlFile::generate(
         &bytes[..],
         bytes.len() as u64,
@@ -547,7 +547,7 @@ fn zsync_generation() {
         let second = build(&repo, &mut cache);
         assert_eq!(second.zsync_generated, 1);
         assert_eq!(
-            a3s_hash::modified_millis(&zsync).unwrap(),
+            a3s_repo_files::hash::modified_millis(&zsync).unwrap(),
             1_000_000_000_000
         );
         let txt_sha1 = leaf(&second.sync, "@m/readme.txt").sha1.clone().unwrap();
@@ -637,11 +637,11 @@ fn zip_compression_reuse_and_deletion() {
     let second = build(&repo, &mut cache);
     assert_eq!(second.zipped, 1);
     assert_eq!(
-        a3s_hash::modified_millis(&zip_a).unwrap(),
+        a3s_repo_files::hash::modified_millis(&zip_a).unwrap(),
         1_000_000_000_000
     );
     assert_ne!(
-        a3s_hash::modified_millis(&zip_b).unwrap(),
+        a3s_repo_files::hash::modified_millis(&zip_b).unwrap(),
         1_000_000_000_000
     );
     assert!(unzip_single(&zip_b).1 == vec![7u8; 30_000]);

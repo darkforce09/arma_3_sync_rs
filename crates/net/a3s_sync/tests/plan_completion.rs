@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
-use a3s_error::{ErrorKind, UserFacing as _};
+use a3s_foundation::error::{ErrorKind, UserFacing as _};
 use a3s_sync::completion::determine_completion;
 use a3s_sync::plan::{NoAddons, assign_destinations};
 use a3s_sync::{

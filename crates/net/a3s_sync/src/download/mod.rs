@@ -217,7 +217,7 @@ pub fn apply_statuses(tree: &mut PlanTree, tasks: &[DownloadTask]) {
 mod tests {
     use std::path::Path;
 
-    use a3s_error::ErrorKind;
+    use a3s_foundation::error::ErrorKind;
     use a3s_types::{SyncTreeDirectory, SyncTreeLeaf, SyncTreeNode};
 
     use super::*;

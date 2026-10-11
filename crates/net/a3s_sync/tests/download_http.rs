@@ -6,7 +6,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use a3s_error::ErrorKind;
+use a3s_foundation::error::ErrorKind;
 use a3s_sync::download::{
     CollectZips, DownloadEnd, DownloadReport, DownloadRequest, MAX_RESUME_RETRIES, NoZipSink,
     ZipSink, download,

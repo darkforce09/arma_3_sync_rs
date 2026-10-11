@@ -6,9 +6,11 @@ use std::io::{Read as _, Write as _};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
+use a3s_foundation::paths::legacy::{
+    LegacyJavaData, discover_legacy_java, inspect_java_installation,
+};
+use a3s_foundation::paths::{Os, PlatformEnv};
 use a3s_jserial::{ArrayData, Graph, Node};
-use a3s_paths::legacy::{LegacyJavaData, discover_legacy_java, inspect_java_installation};
-use a3s_paths::{Os, PlatformEnv};
 use a3s_repo_files::legacy::{
     ImportOptions, ImportReport, ItemOutcome, NamedOutcome, import, read_configuration_file,
     read_profile_file, read_repository_file, sealed, should_offer_import,

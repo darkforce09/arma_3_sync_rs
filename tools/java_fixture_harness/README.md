@@ -4,7 +4,7 @@ Runs the real Arma3Sync Java code (`java_version/Arma3Sync`) to produce the gold
 `tests/fixtures/` and to cross-check files written by the Rust implementation. Nothing is ported:
 the harness compiles the minimal set of Arma3Sync sources with plain `javac` and calls them.
 
-Use it through the Rust wrapper (`crates/build/a3s_dev_tools`):
+Use it through the Rust wrapper (`crates/development/a3s_dev_tools`):
 
 ```sh
 source scripts/java_env.sh

@@ -26,8 +26,8 @@ mod zsync;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use a3s_hash::Sha1Cache;
 use a3s_repo_files::A3sFile;
+use a3s_repo_files::hash::Sha1Cache;
 use a3s_repo_files::layout::{A3S_FOLDER, is_compressible};
 use a3s_types::local::Repository;
 use a3s_types::{AutoConfig, Changelogs, Events, JavaDate, ServerInfo, SyncTreeDirectory};
@@ -249,7 +249,7 @@ pub(crate) fn cpu_threads() -> usize {
 
 /// `max(1, min(8, availableProcessors))`, also used for `.zsync` generation.
 pub(crate) fn hash_threads() -> usize {
-    cpu_threads().clamp(1, a3s_hash::MAX_THREADS)
+    cpu_threads().clamp(1, a3s_repo_files::hash::MAX_THREADS)
 }
 
 /// A rayon pool with named threads, or `None` (use the global pool) if it cannot be built.

@@ -23,8 +23,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 
 use a3s_admin::build::{BuildEvent, BuildOptions, build_repository};
-use a3s_hash::Sha1Cache;
 use a3s_jserial::{Content, Graph, NodeId, Value};
+use a3s_repo_files::hash::Sha1Cache;
 use a3s_types::local::Repository;
 use a3s_types::{FavoriteServer, Protocol, ProtocolType};
 use parking_lot::Mutex;
@@ -179,8 +179,9 @@ fn prepare_step(variant_dir: &Path, step: &Json, repo_dir: &Path) {
         let mtime = f["mtime_ms"].as_i64().unwrap();
         let size = f["size"].as_u64().unwrap();
         let current = fs::metadata(&path).ok();
-        let unchanged = current
-            .is_some_and(|m| m.len() == size && a3s_hash::modified_millis(&path).unwrap() == mtime);
+        let unchanged = current.is_some_and(|m| {
+            m.len() == size && a3s_repo_files::hash::modified_millis(&path).unwrap() == mtime
+        });
         if !unchanged {
             fs::create_dir_all(path.parent().unwrap()).unwrap();
             fs::copy(path_of_in(&step_repo, rel), &path).unwrap();
@@ -613,7 +614,7 @@ fn java_reads_rust_builds() {
                 let target = path_of_in(&snapshot, &rel);
                 fs::create_dir_all(target.parent().unwrap()).unwrap();
                 fs::copy(path_of_in(repo, &rel), &target).unwrap();
-                let mtime = a3s_hash::modified_millis(&path_of_in(repo, &rel)).unwrap();
+                let mtime = a3s_repo_files::hash::modified_millis(&path_of_in(repo, &rel)).unwrap();
                 set_mtime(&target, mtime);
             }
             for file in A3S_FILES {

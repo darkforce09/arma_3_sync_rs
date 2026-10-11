@@ -1,6 +1,6 @@
 //! Port of `src/test/java/fr/soe/a3s/dao/PreferencesDAOTest.java`.
 
-use a3s_paths::AppDirs;
+use a3s_foundation::paths::AppDirs;
 use a3s_repo_files::local::LocalStore;
 use a3s_types::constants::{
     CheckRepositoriesFrequency, IconResize, LookAndFeel, MinimizationType, StartWithOs,

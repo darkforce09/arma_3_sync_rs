@@ -18,9 +18,7 @@ workspace = true
 all-features = true
 
 [dependencies]
-a3s_error.workspace = true
-a3s_format.workspace = true
-a3s_hash.workspace = true
+a3s_foundation.workspace = true
 a3s_repo_files.workspace = true
 a3s_transport.workspace = true
 a3s_types.workspace = true

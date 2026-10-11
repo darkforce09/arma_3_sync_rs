@@ -2,7 +2,7 @@
 //!
 //! Run with `cargo test -p a3s_sync --test verify_live -- --ignored --test-threads=1`.
 
-use a3s_error::ErrorKind;
+use a3s_foundation::error::ErrorKind;
 use a3s_sync::remote::import_autoconfig;
 use a3s_transport::{TransferCtx, TransportOptions};
 use a3s_types::{Protocol, ProtocolType};

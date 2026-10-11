@@ -1,0 +1,27 @@
+[package]
+name = "arma3sync"
+description = "The `arma3sync` binary: GUI and command line interface."
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+include.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[lints]
+workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+
+[dependencies]
+chrono.workspace = true
+
+[[bin]]
+name = "arma3sync"
+path = "src/main.rs"
+# The library is also called `arma3sync`; documenting both collides.
+doc = false

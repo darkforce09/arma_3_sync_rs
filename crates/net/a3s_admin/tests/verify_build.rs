@@ -14,8 +14,8 @@ use a3s_admin::build::{
     BuildError, BuildEvent, BuildOptions, BuildOutcome, STAGE_SHA1, STAGE_ZIP, STAGE_ZSYNC,
     build_repository,
 };
-use a3s_hash::Sha1Cache;
 use a3s_repo_files::A3sFile;
+use a3s_repo_files::hash::Sha1Cache;
 use a3s_types::local::Repository;
 use a3s_types::{Protocol, ProtocolType, ServerInfo, SyncTreeDirectory, SyncTreeNode};
 
@@ -146,7 +146,7 @@ fn unzip_single(zip_path: &Path) -> (String, Vec<u8>) {
 
 fn expected_zsync(file: &Path, name: &str, url: &str, sha1: &str) -> Vec<u8> {
     let bytes = fs::read(file).unwrap();
-    let mtime = a3s_hash::modified_millis(file).unwrap();
+    let mtime = a3s_repo_files::hash::modified_millis(file).unwrap();
     a3s_zsync::ControlFile::generate(
         &bytes[..],
         bytes.len() as u64,
@@ -513,7 +513,7 @@ fn snapshot(repo: &Path, out: &Path) {
         let target = out.join(&rel);
         fs::create_dir_all(target.parent().unwrap()).unwrap();
         fs::copy(repo.join(&rel), &target).unwrap();
-        let mtime = a3s_hash::modified_millis(&repo.join(&rel)).unwrap();
+        let mtime = a3s_repo_files::hash::modified_millis(&repo.join(&rel)).unwrap();
         set_mtime(&target, mtime);
     }
 }

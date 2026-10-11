@@ -454,7 +454,7 @@ mod tests {
         ] {
             let err = check_local_path(&task(relative, destination)).expect(relative);
             assert!(matches!(err, DownloadError::UnsafePath { .. }), "{err:?}");
-            assert_eq!(err.kind(), a3s_error::ErrorKind::InvalidData);
+            assert_eq!(err.kind(), a3s_foundation::error::ErrorKind::InvalidData);
         }
 
         // Symbolic links the user created inside the destination are followed.

@@ -39,7 +39,7 @@ The project is maintained by AI agents. Keep it small: every rule below states a
 
 | Folder | Holds |
 |---|---|
-| `crates/` | The Cargo workspace, by group (see `ARCHITECTURE.md`) |
+| `crates/` | The Cargo workspace by group: `foundation`, `store` (Java serialization, domain types, repository files, zsync), `net` (transports, sync, repository admin), `viewer` (egui widgets), `application` (the `arma3sync` binary), `development` (Java harness wrapper). See `ARCHITECTURE.md` |
 | `tests/fixtures/` | Golden fixtures written by the Java implementation (data; see its README) |
 | `tools/java_fixture_harness/` | Java harness that runs the real Arma3Sync code to produce fixtures and verify Rust output |
 | `scripts/java_env.sh` | Sources the JDK for the harness |
@@ -58,7 +58,7 @@ cargo test --workspace --all-features                               # All tests 
 cargo test -p a3s_jserial -p a3s_types -p a3s_repo_files -p a3s_zsync # Golden wire-format tests
 cargo doc --workspace --no-deps                                     # Docs (CI denies warnings)
 cargo deny check && typos                                           # Licences/advisories, spelling
-cargo run -p arma3sync-cli                                          # The application
+cargo run -p arma3sync                                          # The application
 
 # JDK cross-checks and live network tests (opt-in)
 source scripts/java_env.sh && cargo test -p a3s_dev_tools -- --ignored --test-threads=1

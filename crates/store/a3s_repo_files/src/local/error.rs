@@ -1,7 +1,7 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-use a3s_error::{ErrorKind, UserFacing};
+use a3s_foundation::error::{ErrorKind, UserFacing};
 
 /// Errors of the local TOML store.
 #[non_exhaustive]
@@ -76,7 +76,7 @@ pub(crate) fn display_path(path: &Path) -> String {
 impl Error {
     /// Per-file text used in the load summaries: the message and its details, one per line.
     pub fn detail(&self) -> String {
-        a3s_error::format_chain_lines(self)
+        a3s_foundation::error::format_chain_lines(self)
     }
 }
 

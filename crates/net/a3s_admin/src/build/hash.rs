@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use a3s_hash::{EMPTY_FILE_SHA1, Sha1Cache, hash_files, modified_millis};
+use a3s_repo_files::hash::{EMPTY_FILE_SHA1, Sha1Cache, hash_files, modified_millis};
 use parking_lot::Mutex;
 
 use super::scan::LeafRef;

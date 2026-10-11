@@ -101,7 +101,7 @@ async fn live_wog_download() {
             assert_eq!(bytes.len() as u64, compressed_size);
             assert!(bytes.starts_with(b"PK\x03\x04"));
         } else {
-            let actual = a3s_hash::sha1_file(&task.local_path()).expect("sha1");
+            let actual = a3s_repo_files::hash::sha1_file(&task.local_path()).expect("sha1");
             assert_eq!(Some(actual), sha1.clone(), "{}", task.relative_path);
         }
     }

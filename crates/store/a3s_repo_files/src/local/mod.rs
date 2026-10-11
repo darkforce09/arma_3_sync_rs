@@ -70,7 +70,7 @@ pub struct LocalDirs {
 
 impl LocalDirs {
     /// The store directories inside the application directories.
-    pub fn from_app_dirs(dirs: &a3s_paths::AppDirs) -> Self {
+    pub fn from_app_dirs(dirs: &a3s_foundation::paths::AppDirs) -> Self {
         Self {
             config: dirs.config_dir().to_path_buf(),
             profiles: dirs.profiles_dir(),
@@ -125,7 +125,7 @@ pub struct LocalStore {
 
 impl LocalStore {
     /// A store in the application directories. Nothing is created until the first write.
-    pub fn new(dirs: &a3s_paths::AppDirs) -> Self {
+    pub fn new(dirs: &a3s_foundation::paths::AppDirs) -> Self {
         Self::with_dirs(LocalDirs::from_app_dirs(dirs))
     }
 

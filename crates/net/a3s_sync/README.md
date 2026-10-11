@@ -1,5 +1,8 @@
 # a3s_sync
 
-Part of the Arma3Sync Rust rewrite (see [`ARCHITECTURE.md`](../../../ARCHITECTURE.md)).
+The client synchronization engine: fetch a repository's `.a3s` metadata, compare it with the
+local folder into a plan (downloads, zsync patches, deletions, never outside the destination),
+and run the download with resume, zsync and progress events.
 
-Client synchronization engine: check, plan and download repository content.
+Boundaries: depends on the store crates and `a3s_transport`; no UI. Live tests against the public
+WOG repository are `#[ignore]`d and read only metadata and small files.

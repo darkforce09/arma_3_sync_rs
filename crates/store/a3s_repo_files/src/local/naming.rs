@@ -18,7 +18,7 @@ const FALLBACK_NAME: &str = "repository";
 // Mirrors dao/repository/RepositoryDAO.java:344-359
 pub fn name_hash(name: &str) -> String {
     let digest = Sha1::digest(name.as_bytes());
-    a3s_hash::to_hex(&digest[..HASH_PREFIX_BYTES])
+    crate::hash::to_hex(&digest[..HASH_PREFIX_BYTES])
 }
 
 /// Java `String.trim()`: strips every char `<= U+0020` at either end.

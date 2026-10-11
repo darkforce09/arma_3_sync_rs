@@ -4,8 +4,8 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-use a3s_error::UserFacing as _;
-use a3s_hash::{FileAttributes, Sha1Cache};
+use a3s_foundation::error::UserFacing as _;
+use a3s_repo_files::hash::{FileAttributes, Sha1Cache};
 use a3s_repo_files::local::{CacheKind, Error, LocalDirs, LocalStore};
 use a3s_types::constants::{
     CheckRepositoriesFrequency, IconResize, LookAndFeel, MinimizationType, StartWithOs,

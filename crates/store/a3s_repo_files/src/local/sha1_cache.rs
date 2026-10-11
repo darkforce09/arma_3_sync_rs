@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use a3s_hash::{FileAttributes, Sha1Cache};
+use crate::hash::{FileAttributes, Sha1Cache};
 use serde::{Deserialize, Serialize};
 
 use super::{CacheKind, Error, LocalStore, toml_file};

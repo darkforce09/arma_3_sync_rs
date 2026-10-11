@@ -8,7 +8,7 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use a3s_error::ErrorKind;
+use a3s_foundation::error::ErrorKind;
 use a3s_repo_files::A3sFile;
 
 use crate::RemoteError;

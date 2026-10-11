@@ -68,7 +68,7 @@ pub(crate) fn plan(
 // Mirrors jazsyncmake/MetaFileMaker.java:64-121
 fn generate(job: &ZsyncJob) -> io::Result<()> {
     let meta = fs::metadata(&job.file)?;
-    let mtime = a3s_hash::modified_millis(&job.file)?;
+    let mtime = a3s_repo_files::hash::modified_millis(&job.file)?;
     let reader = BufReader::new(fs::File::open(&job.file)?);
     let control = ControlFile::generate(
         reader,

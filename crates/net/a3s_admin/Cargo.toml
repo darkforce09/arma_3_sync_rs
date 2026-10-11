@@ -18,9 +18,8 @@ workspace = true
 all-features = true
 
 [dependencies]
-a3s_hash.workspace = true
-a3s_jserial.workspace = true
 a3s_repo_files.workspace = true
+a3s_jserial.workspace = true
 a3s_types.workspace = true
 a3s_zsync.workspace = true
 parking_lot.workspace = true

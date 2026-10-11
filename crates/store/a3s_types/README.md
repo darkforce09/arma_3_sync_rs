@@ -1,5 +1,7 @@
 # a3s_types
 
-Part of the Arma3Sync Rust rewrite (see [`ARCHITECTURE.md`](../../../ARCHITECTURE.md)).
+Arma3Sync's domain types (sync tree, server info, changelogs, events, autoconfig, protocols, local
+client data) and their exact Java wire mappings: class names, `serialVersionUID`s and field
+descriptors, locked by `tests/descriptor_lock.rs`.
 
-Arma3Sync domain types and their exact Java wire mappings.
+Boundaries: builds on `a3s_jserial`; no file or network access.

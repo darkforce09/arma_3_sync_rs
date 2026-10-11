@@ -4,7 +4,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use a3s_hash::Sha1Cache;
+use a3s_repo_files::hash::Sha1Cache;
 use a3s_transport::CancellationToken;
 use parking_lot::Mutex;
 
@@ -64,7 +64,7 @@ pub fn compute_local_sha1(
         if !path.exists() {
             return;
         }
-        let cached = a3s_hash::modified_millis(&path)
+        let cached = a3s_repo_files::hash::modified_millis(&path)
             .ok()
             .and_then(|mtime| cache.get(&path, mtime));
         if let Some(sha1) = cached {
@@ -97,7 +97,7 @@ pub fn compute_local_sha1(
             });
         }
     };
-    let results = a3s_hash::hash_files(&paths, cache, &stop, &on_done);
+    let results = a3s_repo_files::hash::hash_files(&paths, cache, &stop, &on_done);
 
     let interrupted = results
         .iter()
@@ -285,10 +285,10 @@ mod tests {
         std::fs::write(&unrelated, b"x").expect("write");
         let a = std::path::absolute(base.join("a")).expect("absolute");
         let b = std::path::absolute(base.join("b")).expect("absolute");
-        let mtime = a3s_hash::modified_millis(&a).expect("mtime");
+        let mtime = a3s_repo_files::hash::modified_millis(&a).expect("mtime");
 
         let mut cache = Sha1Cache::default();
-        let entry = |sha1: &str, last_modified| a3s_hash::FileAttributes {
+        let entry = |sha1: &str, last_modified| a3s_repo_files::hash::FileAttributes {
             sha1: sha1.to_owned(),
             last_modified,
         };

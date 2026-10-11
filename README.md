@@ -24,8 +24,8 @@ Prerequisites:
 
 | Purpose | Command |
 | --- | --- |
-| Run the app | `cargo run -p arma3sync-cli` |
-| Release build | `cargo build -p arma3sync-cli --release` |
+| Run the app | `cargo run -p arma3sync` |
+| Release build | `cargo build -p arma3sync --release` |
 | All tests | `cargo test --workspace --all-features` |
 | Live read-only tests against a public repository | `cargo test -p a3s_transport -- --ignored --test-threads=1` |
 | Lints | `cargo clippy --workspace --all-targets --all-features -- -D warnings` |

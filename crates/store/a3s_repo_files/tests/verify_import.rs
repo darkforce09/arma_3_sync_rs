@@ -6,9 +6,9 @@ use std::io::{Read as _, Write as _};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
+use a3s_foundation::paths::legacy::{LegacyJavaData, discover_legacy_java};
+use a3s_foundation::paths::{Os, PlatformEnv};
 use a3s_jserial::{Graph, Node};
-use a3s_paths::legacy::{LegacyJavaData, discover_legacy_java};
-use a3s_paths::{Os, PlatformEnv};
 use a3s_repo_files::legacy::{
     FILE_CORRUPTED, ImportOptions, ItemOutcome, NamedOutcome, import, read_configuration_file,
 };
@@ -493,9 +493,9 @@ fn verify_store_write_failure_aborts_without_marker() {
         return;
     };
     assert!(
-        a3s_error::UserFacing::user_message(&err).starts_with("Failed to write file: "),
+        a3s_foundation::error::UserFacing::user_message(&err).starts_with("Failed to write file: "),
         "{}",
-        a3s_error::UserFacing::user_message(&err)
+        a3s_foundation::error::UserFacing::user_message(&err)
     );
     assert!(store.legacy_import_marker().is_none());
     assert!(!store.legacy_import_marker_path().exists());

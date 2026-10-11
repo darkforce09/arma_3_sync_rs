@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-use a3s_hash::{FileAttributes, Sha1Cache};
+use a3s_repo_files::hash::{FileAttributes, Sha1Cache};
 use a3s_repo_files::legacy::naming::{
     java_legacy_repository_file_name, java_preferred_repository_file_name,
 };

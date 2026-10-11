@@ -69,7 +69,7 @@ async fn verify_live_wog_ftp_resume_uses_rest() {
         .await
         .unwrap();
     assert_eq!(len, size);
-    assert_eq!(a3s_hash::sha1_file(&dest).unwrap(), sha1);
+    assert_eq!(a3s_repo_files::hash::sha1_file(&dest).unwrap(), sha1);
     assert_eq!(
         resume_ctx.progress.load(Ordering::Relaxed),
         size - third,
@@ -84,7 +84,7 @@ async fn verify_live_wog_ftp_resume_uses_rest() {
         .unwrap();
     assert_eq!(len, size);
     assert_eq!(done_ctx.progress.load(Ordering::Relaxed), 0);
-    assert_eq!(a3s_hash::sha1_file(&dest).unwrap(), sha1);
+    assert_eq!(a3s_repo_files::hash::sha1_file(&dest).unwrap(), sha1);
 
     // Resume from 1 byte before the end.
     truncate(&dest, size - 1);
@@ -93,7 +93,7 @@ async fn verify_live_wog_ftp_resume_uses_rest() {
         .await
         .unwrap();
     assert_eq!(len, size);
-    assert_eq!(a3s_hash::sha1_file(&dest).unwrap(), sha1);
+    assert_eq!(a3s_repo_files::hash::sha1_file(&dest).unwrap(), sha1);
 
     // The control connection is still in sync: a session `exists` on the repo works.
     {

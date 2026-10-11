@@ -10,6 +10,7 @@
 
 mod a3s_file;
 mod error;
+pub mod hash;
 pub mod layout;
 pub mod legacy;
 pub mod local;

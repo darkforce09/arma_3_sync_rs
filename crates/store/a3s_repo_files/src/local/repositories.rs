@@ -46,7 +46,7 @@ impl RepositoriesLoad {
         let new_file = file_name(&source);
         if let Some(kept) = self.repositories.get(&name) {
             let kept_file = file_name(&kept.source);
-            let kept_mtime = a3s_hash::modified_millis(&kept.source).unwrap_or(i64::MIN);
+            let kept_mtime = crate::hash::modified_millis(&kept.source).unwrap_or(i64::MIN);
             if modified_millis(&source) > kept_mtime {
                 self.duplicate_warnings
                     .push(replaced_warning(&name, &kept_file, &new_file));

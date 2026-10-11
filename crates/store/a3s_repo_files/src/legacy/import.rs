@@ -3,9 +3,9 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
-use a3s_error::{ErrorKind, UserFacing};
-use a3s_hash::Sha1Cache;
-use a3s_paths::legacy::LegacyJavaData;
+use crate::hash::Sha1Cache;
+use a3s_foundation::error::{ErrorKind, UserFacing};
+use a3s_foundation::paths::legacy::LegacyJavaData;
 use a3s_types::constants::DEFAULT_PROFILE_NAME;
 use a3s_types::local::{FileAttributes, LegacyConfiguration, LegacyRepository, Profile};
 
@@ -695,7 +695,7 @@ fn to_cache(map: &BTreeMap<String, FileAttributes>) -> Sha1Cache {
             .map(|(path, attributes)| {
                 (
                     PathBuf::from(path),
-                    a3s_hash::FileAttributes {
+                    crate::hash::FileAttributes {
                         sha1: attributes.sha1.clone(),
                         last_modified: attributes.last_modified,
                     },

@@ -37,7 +37,6 @@ tracing.workspace = true
 url.workspace = true
 
 [dev-dependencies]
-a3s_hash.workspace = true
 a3s_repo_files.workspace = true
 axum.workspace = true
 dav-server.workspace = true

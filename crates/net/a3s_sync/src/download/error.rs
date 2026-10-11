@@ -3,7 +3,7 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-use a3s_error::{ErrorKind, UserFacing, messages};
+use a3s_foundation::error::{ErrorKind, UserFacing, messages};
 
 use super::MAX_RESUME_RETRIES;
 use crate::{EventError, RemoteError};

@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use a3s_error::ErrorKind;
+use a3s_foundation::error::ErrorKind;
 use a3s_sync::download::{
     CollectZips, DownloadEnd, DownloadReport, DownloadRequest, DownloadedZip, NoZipSink, ZipSink,
     download,
@@ -373,7 +373,7 @@ fn control_for(content: &[u8]) -> ControlFile {
         let dir = tempfile::tempdir().expect("tempdir");
         let p = dir.path().join("f");
         std::fs::write(&p, content).expect("write");
-        a3s_hash::sha1_file(&p).expect("sha1")
+        a3s_repo_files::hash::sha1_file(&p).expect("sha1")
     };
     ControlFile::generate(
         content,

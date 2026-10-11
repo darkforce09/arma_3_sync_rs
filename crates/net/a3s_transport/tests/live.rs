@@ -47,7 +47,7 @@ async fn live_wog_ftp() {
     let dest = dir.path().join("file");
     let len = t.download_file(&path, &dest, 0, &ctx).await.unwrap();
     assert_eq!(len as i64, size);
-    assert_eq!(a3s_hash::sha1_file(&dest).unwrap(), sha1);
+    assert_eq!(a3s_repo_files::hash::sha1_file(&dest).unwrap(), sha1);
 
     // Resume: keep the first half, fetch the rest with REST.
     let half = (size / 2) as u64;
@@ -59,7 +59,7 @@ async fn live_wog_ftp() {
         .unwrap();
     let len = t.download_file(&path, &dest, half, &ctx).await.unwrap();
     assert_eq!(len as i64, size);
-    assert_eq!(a3s_hash::sha1_file(&dest).unwrap(), sha1);
+    assert_eq!(a3s_repo_files::hash::sha1_file(&dest).unwrap(), sha1);
 
     let missing = t.fetch("does/not/exist.pbo", &ctx).await;
     assert!(

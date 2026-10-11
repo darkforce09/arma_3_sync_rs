@@ -4,7 +4,7 @@ mod download_support;
 
 use std::sync::Arc;
 
-use a3s_error::ErrorKind;
+use a3s_foundation::error::ErrorKind;
 use a3s_sync::download::{CollectZips, DownloadEnd, NoZipSink, download};
 use a3s_sync::{DownloadStatus, EventSender, SyncEvent};
 use a3s_transport::CancellationToken;
@@ -70,7 +70,11 @@ async fn ftp_downloads_and_errors() {
     let target = std::path::absolute(dest.join("@b/short.pbo")).expect("absolute");
     assert_eq!(
         error.to_string(),
-        a3s_error::messages::incomplete_transfer(&target.to_string_lossy(), 5_000, 8_000)
+        a3s_foundation::error::messages::incomplete_transfer(
+            &target.to_string_lossy(),
+            5_000,
+            8_000
+        )
     );
     let failed: Vec<_> = drain(&rx)
         .into_iter()

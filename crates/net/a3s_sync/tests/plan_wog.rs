@@ -50,7 +50,7 @@ fn plan(
         metadata,
         options,
         &NoAddons,
-        &mut a3s_hash::Sha1Cache::default(),
+        &mut a3s_repo_files::hash::Sha1Cache::default(),
         &CancellationToken::new(),
         events,
     )

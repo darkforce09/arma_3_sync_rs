@@ -1,10 +1,10 @@
 //! Errors of remote metadata access.
 //!
 //! Replaces `exception/remote/*` and the `IOException` messages the Java DAOs build with
-//! `ConnectionExceptionFactory` (ported to [`a3s_error::messages::connection`]).
+//! `ConnectionExceptionFactory` (ported to [`a3s_foundation::error::messages::connection`]).
 
-use a3s_error::messages::{self, RemoteA3sFile};
-use a3s_error::{ErrorKind, UserFacing};
+use a3s_foundation::error::messages::{self, RemoteA3sFile};
+use a3s_foundation::error::{ErrorKind, UserFacing};
 use a3s_repo_files::A3sFile;
 use a3s_types::{Protocol, ProtocolType};
 
@@ -179,7 +179,7 @@ impl UserFacing for RemoteError {
 // Mirrors dao/A3SFilesAccessor.java:26
 const FILE_CORRUPTED: &str = "The file seems to be corrupted.";
 
-/// The `a3s_error` mirror of an [`A3sFile`].
+/// The `a3s_foundation::error` mirror of an [`A3sFile`].
 pub(crate) fn remote_a3s_file(file: A3sFile) -> RemoteA3sFile {
     match file {
         A3sFile::Sync => RemoteA3sFile::Sync,
@@ -292,7 +292,7 @@ pub(crate) fn transport_kind(err: &a3s_transport::Error) -> ErrorKind {
 
 #[cfg(test)]
 mod tests {
-    use a3s_error::ErrorKind;
+    use a3s_foundation::error::ErrorKind;
     use a3s_types::{Protocol, ProtocolType};
 
     use super::*;

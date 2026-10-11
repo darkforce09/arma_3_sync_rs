@@ -1,13 +1,12 @@
 [workspace]
 resolver = "3"
 members = [
-  "crates/build/*",
-  "crates/game/*",
-  "crates/net/*",
+  "crates/foundation/*",
   "crates/store/*",
-  "crates/top/*",
-  "crates/utils/*",
+  "crates/net/*",
   "crates/viewer/*",
+  "crates/application/*",
+  "crates/development/*",
 ]
 
 [workspace.package]
@@ -23,44 +22,23 @@ version = "0.1.0-alpha.1"
 
 [workspace.dependencies]
 # ---------------------------------------------------------------------------------
-# Own crates. Keep sorted by group, then name.
+# Own crates, by group in dependency order.
+a3s_foundation = { path = "crates/foundation/a3s_foundation", version = "=0.1.0-alpha.1", default-features = false }
 
-# build
-a3s_build_info = { path = "crates/build/a3s_build_info", version = "=0.1.0-alpha.1", default-features = false }
-a3s_dev_tools = { path = "crates/build/a3s_dev_tools", version = "=0.1.0-alpha.1", default-features = false }
-
-# game
-a3s_addons = { path = "crates/game/a3s_addons", version = "=0.1.0-alpha.1", default-features = false }
-a3s_launch = { path = "crates/game/a3s_launch", version = "=0.1.0-alpha.1", default-features = false }
-a3s_platform = { path = "crates/game/a3s_platform", version = "=0.1.0-alpha.1", default-features = false }
-a3s_tools = { path = "crates/game/a3s_tools", version = "=0.1.0-alpha.1", default-features = false }
-
-# net
-a3s_admin = { path = "crates/net/a3s_admin", version = "=0.1.0-alpha.1", default-features = false }
-a3s_sync = { path = "crates/net/a3s_sync", version = "=0.1.0-alpha.1", default-features = false }
-a3s_transport = { path = "crates/net/a3s_transport", version = "=0.1.0-alpha.1", default-features = false }
-
-# store
-a3s_hash = { path = "crates/store/a3s_hash", version = "=0.1.0-alpha.1", default-features = false }
 a3s_jserial = { path = "crates/store/a3s_jserial", version = "=0.1.0-alpha.1", default-features = false }
 a3s_repo_files = { path = "crates/store/a3s_repo_files", version = "=0.1.0-alpha.1", default-features = false }
 a3s_types = { path = "crates/store/a3s_types", version = "=0.1.0-alpha.1", default-features = false }
 a3s_zsync = { path = "crates/store/a3s_zsync", version = "=0.1.0-alpha.1", default-features = false }
 
-# top
-a3s_updater = { path = "crates/top/a3s_updater", version = "=0.1.0-alpha.1", default-features = false }
-arma3sync = { path = "crates/top/arma3sync", version = "=0.1.0-alpha.1", default-features = false }
+a3s_admin = { path = "crates/net/a3s_admin", version = "=0.1.0-alpha.1", default-features = false }
+a3s_sync = { path = "crates/net/a3s_sync", version = "=0.1.0-alpha.1", default-features = false }
+a3s_transport = { path = "crates/net/a3s_transport", version = "=0.1.0-alpha.1", default-features = false }
 
-# utils
-a3s_error = { path = "crates/utils/a3s_error", version = "=0.1.0-alpha.1", default-features = false }
-a3s_format = { path = "crates/utils/a3s_format", version = "=0.1.0-alpha.1", default-features = false }
-a3s_log = { path = "crates/utils/a3s_log", version = "=0.1.0-alpha.1", default-features = false }
-a3s_paths = { path = "crates/utils/a3s_paths", version = "=0.1.0-alpha.1", default-features = false }
-
-# viewer
 a3s_ui = { path = "crates/viewer/a3s_ui", version = "=0.1.0-alpha.1", default-features = false }
-a3s_viewer = { path = "crates/viewer/a3s_viewer", version = "=0.1.0-alpha.1", default-features = false }
-a3s_viewer_context = { path = "crates/viewer/a3s_viewer_context", version = "=0.1.0-alpha.1", default-features = false }
+
+arma3sync = { path = "crates/application/arma3sync", version = "=0.1.0-alpha.1", default-features = false }
+
+a3s_dev_tools = { path = "crates/development/a3s_dev_tools", version = "=0.1.0-alpha.1", default-features = false }
 
 # ---------------------------------------------------------------------------------
 # External crates. Keep sorted.
@@ -71,10 +49,7 @@ base64 = "0.22"
 bytes = "1"
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 clap = { version = "4.6", features = ["derive"] }
-crossbeam-channel = "0.5.17"
 dav-server = "0.11.0"
-directories = "6.0.0"
-ecb = "0.2.1"
 eframe = { version = "0.36.2", default-features = false }
 egui = "0.36.2"
 egui_extras = "0.36.2"
@@ -82,20 +57,13 @@ egui_kittest = "0.36.2"
 flate2 = "1.1"
 fs4 = "1.1.0"
 futures = "0.3.34"
-insta = "1.49"
-interprocess = "2.4"
 libunftp = { version = "0.23.1", default-features = false, features = ["aws_lc_rs"] }
 md4 = "0.11.0"
-mslnk = "0.1.8"
 parking_lot = "0.12.5"
-percent-encoding = "2.3"
 rayon = "1.12"
 rcgen = { version = "0.14.10", default-features = false, features = ["aws_lc_rs", "pem"] }
-regex = "1.13"
 reqwest = { version = "0.13.5", default-features = false }
 resvg = { version = "0.45.1", default-features = false }
-rfd = "0.17.2"
-roxmltree = "0.21.1"
 russh = "0.64.1"
 russh-sftp = "3.0.1"
 rustls = { version = "0.23.45", default-features = false, features = ["aws_lc_rs", "std", "tls12"] }
@@ -103,7 +71,6 @@ rustls-platform-verifier = "0.7.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.152"
 sha1 = "0.11.0"
-sha2 = "0.11.0"
 suppaftp = "12.1"
 tempfile = "3.27"
 thiserror = "2.0"
@@ -113,10 +80,8 @@ tokio-util = "0.7.20"
 toml = "1.1"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }
-tray-icon = "0.26.1"
 unftp-sbe-fs = "0.4.0"
 url = "2.5"
-winreg = "0.56.0"
 zip = { version = "9.0", default-features = false, features = ["deflate"] }
 
 [profile.dev]

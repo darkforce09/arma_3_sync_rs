@@ -9,7 +9,7 @@ use a3s_repo_files::legacy::sealed::{self, SEALED_OBJECT, SEALED_OBJECT_UID, Sea
 use a3s_repo_files::legacy::{Error, read_object_file};
 
 fn hex(bytes: &[u8]) -> String {
-    a3s_hash::to_hex(bytes)
+    a3s_repo_files::hash::to_hex(bytes)
 }
 
 // ---------------------------------------------------------------------------------------------

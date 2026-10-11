@@ -19,37 +19,26 @@ A crate may depend on crates from its own group or a group listed above it in th
 
 | Crate | Purpose | Java counterpart |
 | --- | --- | --- |
-| **build** | | |
-| `a3s_build_info` | Version, git hash, target triple baked into binaries. | `version.properties` |
-| `a3s_dev_tools` | Fixture regeneration, repo checks. | – |
-| **utils** | | |
-| `a3s_log` | `tracing` setup, log files. | `DebugLogger` |
-| `a3s_paths` | Config/data/cache dirs, portable mode, legacy-path discovery. | `dao/ApplicationPaths` |
-| `a3s_format` | Sizes, speeds, durations. | `utils/*` |
-| `a3s_error` | Error chain formatting. | `exception/*` |
+| **foundation** | | |
+| `a3s_foundation` | Error taxonomy and chain formatting, display formatting, logging, application directories. | `exception/*`, `utils/*`, `DebugLogger`, `dao/ApplicationPaths` |
 | **store** | | |
 | `a3s_jserial` | Generic Java Object Serialization Stream Protocol reader/writer. | JDK `ObjectInput/OutputStream` |
 | `a3s_types` | Domain types + their exact Java class descriptors. | `domain/*`, `constant/*` |
-| `a3s_repo_files` | `.a3s/*` gzip files, local TOML store, legacy Java data importer. | `dao/A3SFilesAccessor`, `dao/*DAO` |
+| `a3s_repo_files` | `.a3s/*` gzip files, local TOML store, legacy Java data importer, parallel SHA-1 with mtime cache. | `dao/A3SFilesAccessor`, `dao/*DAO`, `dao/repository/RepositorySHA1Processor` |
 | `a3s_zsync` | jazsync-compatible `.zsync` writer, reader and patcher. | `jazsync/*`, `jazsyncmake/*` |
-| `a3s_hash` | Parallel SHA-1 with mtime cache. | `dao/repository/RepositorySHA1Processor` |
 | **net** | | |
 | `a3s_transport` | HTTP(S), FTP(S), SFTP, WebDAV; proxies, timeouts, throttling, cancel. | `dao/connection/*` |
-| `a3s_sync` | Client check → plan → download → unzip → cleanup. | `service/synchronization/*`, `service/connection/*` |
-| `a3s_admin` | Build / check / upload repositories. | `service/administration/*`, `dao/repository/RepositoryBuildProcessor` |
-| **game** | | |
-| `a3s_addons` | Addon discovery, groups, modsets, priorities, CDLC table. | `service/AddonService`, `constant/GameDLCs` |
-| `a3s_launch` | Run parameters (`-mod=` …), process launch. | `service/LaunchService`, `dao/LauncherDAO` |
-| `a3s_tools` | Bikey extractor, TFAR/ACRE2 installers, RPT tail, launcher HTML presets. | `ui/tools/*`, `service/Arma3LauncherPreset*` |
-| `a3s_platform` | Registry, shortcuts, single instance, autostart. | `dao/WinRegistry`, junique, jshortcut |
+| `a3s_sync` | Client check → plan → download. | `service/synchronization/*`, `service/connection/*` |
+| `a3s_admin` | Repository build (check and upload to come). | `service/administration/*`, `dao/repository/RepositoryBuildProcessor` |
 | **viewer** | | |
 | `a3s_ui` | Theme tokens (port of `ui/theme`), Geist fonts, SVG icons, widgets. | `ui/theme`, `ui/icon`, `ui/components` |
-| `a3s_viewer_context` | App state, commands, background tasks ↔ UI channel. | `controller/*` observers, `ui/Facade` |
-| `a3s_viewer` | eframe app: tabs, repository tabs, dialogs, tray. | `ui/main`, `ui/repository`, … |
-| **top** | | |
-| `arma3sync` | Facade crate, shared entry point. | `main/ArmA3Sync` |
-| `arma3sync-cli` | The `arma3sync` binary (GUI by default, CLI subcommands). | `main/ArmA3Sync`, `console/*` |
-| `a3s_updater` | Self-update from GitHub releases. | `updater/` subproject |
+| **application** | | |
+| `arma3sync` | The `arma3sync` binary and its build information. | `main/ArmA3Sync`, `version.properties` |
+| **development** | | |
+| `a3s_dev_tools` | Java fixture harness wrapper: fixture regeneration, Java cross-checks. Dev-dependency only. | – |
+
+Planned parts (addons, launch, tools, platform integration, the viewer application, the updater)
+get a crate when their ttm ticket starts, inside the group that fits.
 
 ## Repository wire format
 
@@ -106,7 +95,7 @@ probed with `Range: bytes=0-1` on `.a3s/sync` (must answer 206).
 ## Local client data
 
 The Rust client stores its own configuration as TOML in the platform config directory
-(`a3s_paths`). On first start it offers a one-time import of the Java client's data
+(`a3s_foundation::paths`). On first start it offers a one-time import of the Java client's data
 (`a3s.cfg`, `a3s.prefs`, `*.a3s.profile`, AES-encrypted `*.a3s.repository`).
 
 ## Intentional differences from Java

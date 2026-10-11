@@ -8,7 +8,7 @@
 //! `Repository` (`dao/A3SFilesAccessor.java`, `dao/EncryptionProvider.java`). The Workshop cache
 //! is a `java.util.Properties` file.
 //!
-//! [`import`] copies everything [`a3s_paths::legacy`] discovers into the Rust store. It never
+//! [`import`] copies everything [`a3s_foundation::paths::legacy`] discovers into the Rust store. It never
 //! touches the Java files and never overwrites Rust data.
 
 mod allowlist;

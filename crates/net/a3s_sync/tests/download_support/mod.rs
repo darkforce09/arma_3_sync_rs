@@ -520,7 +520,7 @@ pub fn with_complete(mut task: DownloadTask, value: f64) -> DownloadTask {
 }
 
 pub fn sha1(path: &Path) -> String {
-    a3s_hash::sha1_file(path).expect("sha1")
+    a3s_repo_files::hash::sha1_file(path).expect("sha1")
 }
 
 /// Every `*.part` file below `dir`.
