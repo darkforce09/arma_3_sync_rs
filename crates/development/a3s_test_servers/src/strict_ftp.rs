@@ -29,6 +29,10 @@ pub struct Behaviour {
     /// Refuse the first `PASV` with 425.
     pub refuse_first_pasv: bool,
 
+    /// Close the passive port as soon as it is announced: every data connection is refused,
+    /// while `RETR` of a missing file is still answered with 550.
+    pub close_passive: bool,
+
     /// Never send the completion reply (226) of a `RETR`.
     pub withhold_completion: bool,
 
@@ -126,7 +130,7 @@ async fn session(
                 pasv_count += 1;
                 let listener = TcpListener::bind("127.0.0.1:0").await?;
                 let port = listener.local_addr()?.port();
-                passive = Some(listener);
+                passive = (!behaviour.close_passive).then_some(listener);
                 format!(
                     "227 Entering Passive Mode (127,0,0,1,{},{})",
                     port / 256,
@@ -137,8 +141,8 @@ async fn session(
                 let offset = if behaviour.ignore_rest { 0 } else { restart };
                 restart = 0;
                 match (passive.take(), arg == path) {
-                    (None, _) => "425 no data connection".to_owned(),
-                    (Some(_), false) => "550 no such file".to_owned(),
+                    (_, false) => "550 no such file".to_owned(),
+                    (None, true) => "425 no data connection".to_owned(),
                     (Some(listener), true) => {
                         write.write_all(b"150 sending\r\n").await?;
                         let accepted =

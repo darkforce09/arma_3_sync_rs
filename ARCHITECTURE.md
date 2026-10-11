@@ -185,7 +185,9 @@ Wire compatibility is the requirement; these differences are deliberate.
   SFTP connections (Java's MINA client bypassed it).
 * **Transports:** an FTP `DELE` or `RMD` refused with 550 counts as "already gone" only once
   `MLST`, `CWD` or a usable listing confirms the target is missing (Java ignores every 550).
-  WebDAV maps 409 on `PUT`/`MKCOL` to a missing parent and a 207 answer to `DELETE` to an
+  In an FTP upload session a name the cached listing holds only in another case is confirmed
+  with `MLST`, so a case-insensitive server answers as outside a session (Java's session
+  answers "missing"). WebDAV maps 409 on `PUT`/`MKCOL` to a missing parent and a 207 answer to `DELETE` to an
   error (Java maps only 401 and 404, and takes 207 as success).
 * **Platform integration** (local only): start-with-Windows writes the per-user `Run` value
   `arma3sync-rs` (Java: machine-wide `ArmA3Sync`, which needs admin rights and is left alone)

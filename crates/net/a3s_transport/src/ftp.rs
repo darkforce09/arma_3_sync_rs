@@ -55,6 +55,18 @@ pub struct FtpTransport {
     poisoned: bool,
 }
 
+/// A passive data connection that could not be opened. suppaftp opens it after sending the
+/// transfer command, so the reply to that command is still unread
+/// ([`FtpTransport::settle_data_command`]).
+#[derive(Debug, thiserror::Error)]
+#[error("FTP data connection failed: {0}")]
+struct DataConnectFailed(#[source] std::io::Error);
+
+fn is_data_connect_failure(err: &std::io::Error) -> bool {
+    err.get_ref()
+        .is_some_and(|inner| inner.is::<DataConnectFailed>())
+}
+
 fn reply_code(err: &FtpError) -> Option<u32> {
     match err {
         FtpError::UnexpectedResponse(response) => Some(response.status.code()),
@@ -187,6 +199,34 @@ fn parse_pasv_port(reply: &str) -> Option<u16> {
     (numbers.len() == 6).then(|| numbers[4] * 256 + numbers[5])
 }
 
+/// What a cached directory listing says about one name.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ListedName {
+    Present,
+    Absent,
+
+    /// The listing cannot tell: the server must answer (`MLST`).
+    Unsure,
+}
+
+/// Looks `name` up in a directory listing. A dot-file may be hidden from `LIST`; a name
+/// listed only in another case exists on a case-insensitive server (macOS, Windows), so both
+/// are left to `MLST`, which then agrees with `exists` outside a session.
+fn listed_name(names: &HashSet<String>, name: &str) -> ListedName {
+    if names.contains(name) {
+        return ListedName::Present;
+    }
+    if name.starts_with('.') {
+        return ListedName::Unsure;
+    }
+    let folded = name.to_lowercase();
+    if names.iter().any(|listed| listed.to_lowercase() == folded) {
+        ListedName::Unsure
+    } else {
+        ListedName::Absent
+    }
+}
+
 /// A directory listing.
 enum Listing {
     Entries(Vec<ListEntry>),
@@ -248,10 +288,12 @@ impl FtpTransport {
                 let dialer = data_dialer.clone();
                 let target = SocketAddr::new(addr.ip(), announced.port());
                 Box::pin(async move {
-                    dialer
-                        .connect(target)
-                        .await
-                        .map_err(FtpError::ConnectionError)
+                    dialer.connect(target).await.map_err(|err| {
+                        FtpError::ConnectionError(std::io::Error::new(
+                            err.kind(),
+                            DataConnectFailed(err),
+                        ))
+                    })
                 })
             });
 
@@ -351,6 +393,35 @@ impl FtpTransport {
         }
     }
 
+    /// Settles a data command (`RETR`, `LIST`, `STOR`) whose passive data connection failed.
+    ///
+    /// suppaftp sends the command before it connects, unlike commons-net, which connects
+    /// first (`FTPClient._openDataConnection_`). A server that refuses the command (550) may
+    /// close its passive port before the connection attempt arrives, so the attempt is refused
+    /// while the real answer waits on the control connection. That reply is read here: a
+    /// refusal becomes the command's result; a preliminary reply means the server waits for
+    /// the lost data connection, so its final reply is drained and the connection error
+    /// stands. Without a reply the transport is poisoned. Bounded, and ignores cancellation
+    /// like [`Self::resync`].
+    async fn settle_data_command<T>(&mut self, result: FtpResult<T>) -> FtpResult<T> {
+        let err = match result {
+            Err(FtpError::ConnectionError(err)) if is_data_connect_failure(&err) => err,
+            other => return other,
+        };
+        let reply = tokio::time::timeout(
+            self.resync_timeout(),
+            self.stream
+                .read_response_in(&[Status::AboutToSend, Status::AlreadyOpen]),
+        )
+        .await;
+        match reply {
+            Ok(Err(refused @ FtpError::UnexpectedResponse(_))) => return Err(refused),
+            Ok(Ok(_)) => self.drain_manual_reply().await,
+            Ok(Err(_)) | Err(_) => self.poisoned = true,
+        }
+        Err(FtpError::ConnectionError(err))
+    }
+
     /// Reads the final reply of a data transfer opened by hand; poisons the transport when
     /// no reply arrives. Bounded, and ignores cancellation like [`Self::resync`].
     async fn drain_manual_reply(&mut self) {
@@ -378,14 +449,17 @@ impl FtpTransport {
     {
         self.ensure_usable()?;
         let absolute = self.absolute(relative);
-        let mut transfer = control(
+        let transfer = control(
             &mut self.poisoned,
             ctx,
             None,
             self.stream.retr_as_stream(&absolute),
         )
-        .await?
-        .map_err(|e| map_ftp_error(e, relative))?;
+        .await?;
+        let mut transfer = self
+            .settle_data_command(transfer)
+            .await
+            .map_err(|e| map_ftp_error(e, relative))?;
         let copied = match copy(&mut transfer, writer, ctx, self.read_timeout).await {
             Ok(n) => ctx.check_cancelled().map(|()| n),
             Err(err) => Err(err),
@@ -614,9 +688,11 @@ impl FtpTransport {
             return Ok(Listing::Missing);
         }
         let argument = if all { Some("-a") } else { None };
-        let mut lines = control(&mut self.poisoned, ctx, None, self.stream.list(argument)).await?;
+        let lines = control(&mut self.poisoned, ctx, None, self.stream.list(argument)).await?;
+        let mut lines = self.settle_data_command(lines).await;
         if all && matches!(lines, Err(FtpError::UnexpectedResponse(_))) {
-            lines = control(&mut self.poisoned, ctx, None, self.stream.list(None)).await?;
+            let plain = control(&mut self.poisoned, ctx, None, self.stream.list(None)).await?;
+            lines = self.settle_data_command(plain).await;
         }
         let base = self.base.clone();
         // Every command uses absolute paths: a refused CWD back does not invalidate the
@@ -663,7 +739,7 @@ impl FtpTransport {
             let mut found = self
                 .session
                 .cached_listing(parent)
-                .map(|names| names.contains(name));
+                .map(|names| listed_name(names, name));
             if found.is_none()
                 && let Some(names) = self.list_names(&self.absolute(parent), ctx).await?
             {
@@ -671,13 +747,12 @@ impl FtpTransport {
                 found = self
                     .session
                     .cached_listing(parent)
-                    .map(|names| names.contains(name));
+                    .map(|names| listed_name(names, name));
             }
             match found {
-                Some(true) => return Ok(true),
-                // Servers hide dot-files from LIST: confirm those with MLST.
-                Some(false) if !name.starts_with('.') => return Ok(false),
-                _ => {}
+                Some(ListedName::Present) => return Ok(true),
+                Some(ListedName::Absent) => return Ok(false),
+                Some(ListedName::Unsure) | None => {}
             }
         }
         // An unusable listing finds nothing, like Java's empty `listFiles`.
@@ -822,14 +897,17 @@ impl FtpTransport {
         ctx: &TransferCtx,
     ) -> Result<u64> {
         let absolute = self.absolute(relative);
-        let mut transfer = control(
+        let transfer = control(
             &mut self.poisoned,
             ctx,
             None,
             self.stream.put_with_stream(&absolute),
         )
-        .await?
-        .map_err(|e| map_ftp_error(e, relative))?;
+        .await?;
+        let mut transfer = self
+            .settle_data_command(transfer)
+            .await
+            .map_err(|e| map_ftp_error(e, relative))?;
         let copied =
             match copy_upload(&mut source.reader, &mut transfer, ctx, self.read_timeout).await {
                 Ok(n) => ctx.check_cancelled().map(|()| n),

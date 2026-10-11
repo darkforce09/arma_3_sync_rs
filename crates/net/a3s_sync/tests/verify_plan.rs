@@ -119,6 +119,16 @@ fn touch(path: &Path, content: &[u8]) {
     std::fs::write(path, content).expect("write");
 }
 
+/// Whether the filesystem holding `dir` treats names that differ only in case as one name (the
+/// default on Windows and macOS).
+fn case_insensitive_filesystem(dir: &Path) -> bool {
+    let probe = dir.join("case-probe");
+    touch(&probe, b"");
+    let insensitive = dir.join("CASE-PROBE").exists();
+    std::fs::remove_file(probe).expect("remove probe");
+    insensitive
+}
+
 /// Lexical normalization (no symlink resolution): folds `.` and `..`.
 fn normalize(path: &Path) -> PathBuf {
     let mut out = PathBuf::new();
@@ -559,16 +569,17 @@ fn verify_symlink_loop_terminates() {
 fn verify_exact_match_root_scan_and_exclusions() {
     let base = tempfile::tempdir().expect("tempdir");
     let b = base.path();
+    let case_insensitive = case_insensitive_filesystem(b);
     touch(&b.join("root.pbo.part"), b"x");
     touch(&b.join("root.pbo.zip"), b"x");
     touch(&b.join("Stale.txt"), b"x");
     touch(&b.join("@A/x.pbo"), b"x"); // case variant of remote `@a`
     let metadata = metadata_of(root(vec![dir("@a", true, vec![leaf("x.pbo", None, 1)])]));
     let tree = plan(&metadata, &options(b, true)).expect("plan");
-    // Remote `@a` vs local `@A`: equal ignoring case, so not extra (Java parity), while `@a`
-    // does not exist on a case-sensitive file system and is updated.
+    // Remote `@a` vs local `@A`: equal ignoring case, so not extra (Java parity). `@a` is
+    // missing, so updated, only on a case-sensitive file system; elsewhere `@A` is `@a`.
     assert_eq!(deleted_paths(&tree), ["Stale.txt"]);
-    assert!(tree.get("@a").expect("@a").updated());
+    assert_eq!(tree.get("@a").expect("@a").updated(), !case_insensitive);
     let PlanNode::Leaf(l) = tree.get("Stale.txt").expect("stale") else {
         panic!("leaf")
     };

@@ -288,6 +288,36 @@ async fn a_resume_ftp_missing_file() {
     );
 }
 
+/// A refused data connection (the server closed its passive port) still reads the reply to
+/// the command: a missing file is `NotFound`, an existing one the server's 425, and each reply
+/// answers its own command.
+#[tokio::test]
+async fn ftp_refused_data_connection_reads_the_reply() {
+    let stub = strict_ftp::serve(
+        STUB_PATH,
+        random_bytes(10, 1),
+        Behaviour {
+            close_passive: true,
+            ..Behaviour::default()
+        },
+    )
+    .await;
+    let options = TransportOptions::from_protocol(&stub.protocol);
+    let mut t = Transport::connect(&stub.protocol, &options).await.unwrap();
+    let ctx = TransferCtx::new();
+    let missing = t.fetch("other.pbo", &ctx).await;
+    assert!(matches!(missing, Err(Error::NotFound(_))), "{missing:?}");
+    let refused = t.fetch("f.pbo", &ctx).await;
+    assert!(
+        matches!(
+            &refused,
+            Err(Error::Ftp(suppaftp::FtpError::UnexpectedResponse(reply)))
+                if reply.status.code() == 425
+        ),
+        "{refused:?}"
+    );
+}
+
 /// A completion reply that never arrives times out and poisons the transport.
 #[tokio::test]
 async fn a_ftp_missing_completion_reply_poisons() {

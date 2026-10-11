@@ -434,17 +434,30 @@ async fn verify_ftp_delete_dir_with_dot_entries() {
     t.close().await;
 }
 
-/// Case-differing names: the session cache and MLST agree.
+/// Whether the filesystem holding `dir` treats names that differ only in case as one name (the
+/// default on Windows and macOS).
+fn case_insensitive_filesystem(dir: &Path) -> bool {
+    let probe = dir.join("case-probe");
+    std::fs::write(&probe, b"").unwrap();
+    let insensitive = dir.join("CASE-PROBE").exists();
+    std::fs::remove_file(probe).unwrap();
+    insensitive
+}
+
+/// Case-differing names: the session cache and MLST agree. The server (libunftp over the
+/// temporary directory) finds the other case only on a case-insensitive filesystem.
 #[tokio::test]
 async fn verify_ftp_case_sensitivity_consistent() {
     let fx = support::ftp::fixture(false).await;
     fx.put("c/File.PBO", b"x");
+    let case_insensitive = case_insensitive_filesystem(&fx.base.join("c"));
     let mut t = fx.connect().await;
     let ctx = TransferCtx::new();
     let outside = t.exists("c/file.pbo", &ctx).await.unwrap();
+    assert_eq!(outside, case_insensitive);
     let mut session = t.upload_session();
     let inside = session.exists("c/file.pbo", &ctx).await.unwrap();
-    assert_eq!(outside, inside);
+    assert_eq!(inside, case_insensitive);
     assert!(session.exists("c/File.PBO", &ctx).await.unwrap());
     drop(session);
     t.close().await;
