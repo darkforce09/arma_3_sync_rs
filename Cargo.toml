@@ -36,6 +36,7 @@ a3s_sync = { path = "crates/net/a3s_sync", version = "=0.1.0-alpha.1", default-f
 a3s_transport = { path = "crates/net/a3s_transport", version = "=0.1.0-alpha.1", default-features = false }
 
 a3s_addons = { path = "crates/game/a3s_addons", version = "=0.1.0-alpha.1", default-features = false }
+a3s_platform = { path = "crates/game/a3s_platform", version = "=0.1.0-alpha.1", default-features = false }
 a3s_tools = { path = "crates/game/a3s_tools", version = "=0.1.0-alpha.1", default-features = false }
 
 a3s_ui = { path = "crates/viewer/a3s_ui", version = "=0.1.0-alpha.1", default-features = false }
@@ -54,6 +55,7 @@ bytes = "1"
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 clap = { version = "4.6", features = ["derive"] }
 dav-server = "0.11.0"
+directories = "6.0.0"
 eframe = { version = "0.36.2", default-features = false }
 egui = "0.36.2"
 egui_extras = "0.36.2"
@@ -61,8 +63,10 @@ egui_kittest = "0.36.2"
 flate2 = "1.1"
 fs4 = "1.1.0"
 futures = "0.3.34"
+interprocess = "2.4.5"
 libunftp = { version = "0.23.1", default-features = false, features = ["aws_lc_rs"] }
 md4 = "0.11.0"
+mslnk = "0.1.8"
 parking_lot = "0.12.5"
 rayon = "1.12"
 rcgen = { version = "0.14.10", default-features = false, features = ["aws_lc_rs", "pem"] }
@@ -87,6 +91,7 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }
 unftp-sbe-fs = "0.4.0"
 url = "2.5"
+winreg = "0.56.0"
 zip = { version = "9.0", default-features = false, features = ["deflate"] }
 
 [profile.dev]

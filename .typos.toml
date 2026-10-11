@@ -30,3 +30,5 @@ Laf = "Laf"
 Localy = "Localy"
 Builded = "Builded"
 Leafs = "Leafs"
+# Windows command-line switches (`tasklist /FO CSV`).
+FO = "FO"

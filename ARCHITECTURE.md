@@ -32,6 +32,7 @@ A crate may depend on crates from its own group or a group listed above it in th
 | `a3s_admin` | Repository build (check and upload to come). | `service/administration/*`, `dao/repository/RepositoryBuildProcessor` |
 | **game** | | |
 | `a3s_addons` | Addon discovery and registry (mods and CDLCs under their symbolic keys), launch priorities, modset groups from repositories and events, missing/duplicate checks on addon groups. | `service/AddonService`, `dao/AddonDAO`, addon parts of `ProfileService`, `RepositoryService`, `ui/main/AddonsPanel` |
+| `a3s_platform` | OS integration: registry, Arma 3 / Steam / TeamSpeak 3 detection, special folders, process probe, autostart, desktop shortcuts, single instance. | `dao/ConfigurationDAO` (registry), `dao/WinRegistry`, `dao/PreferencesDAO` (Run key), `dao/LauncherDAO.isApplicationRunning`, JUnique and `JShellLink` use |
 | `a3s_tools` | Bikey extraction, RPT log tailing, TFAR and ACRE 2 installer logic, Arma 3 Launcher preset import and export. | `dao/CommonDAO`, `ui/tools/*`, `service/Arma3LauncherPreset{Importer,Exporter}` |
 | **viewer** | | |
 | `a3s_ui` | Theme tokens (port of `ui/theme`), Geist fonts, SVG icons, widgets. | `ui/theme`, `ui/icon`, `ui/components` |
@@ -40,7 +41,7 @@ A crate may depend on crates from its own group or a group listed above it in th
 | **development** | | |
 | `a3s_dev_tools` | Java fixture harness wrapper: fixture regeneration, Java cross-checks. Dev-dependency only. | – |
 
-Planned parts (launch, platform integration, the viewer application, the updater)
+Planned parts (launch, the viewer application, the updater)
 get a crate when their ttm ticket starts, inside the group that fits.
 
 ## Repository wire format
@@ -146,6 +147,16 @@ Wire compatibility is the requirement; these differences are deliberate.
 * **Proxy** is applied per connection with Java's effective routing, but its credentials go to
   the proxy only (Java's default `Authenticator` also answered the repository server) and a
   SOCKS4 proxy speaks SOCKS4 (Java's default made it SOCKS5).
+* **Platform integration** (local only): start-with-Windows writes the per-user `Run` value
+  `arma3sync-rs` (Java: machine-wide `ArmA3Sync`, which needs admin rights and is left alone)
+  pointing at the real executable (Java: the working folder); Linux and macOS get XDG and
+  LaunchAgent entries. Shortcut and `Run` arguments are quoted by Windows rules (Java did not
+  quote), shortcut names are validated and the target must exist. Registry strings are read as
+  UTF-16 and `REG_EXPAND_SZ` is accepted; blank values count as missing; TeamSpeak 3 detection
+  also checks the all-users install. "Is it running" matches whole image names from one CSV
+  `tasklist` (Java: substring of truncated names), and Linux scans `/proc`. Arma 3, its RPT and
+  user folders are also found through Steam libraries and Proton prefixes. Single instance
+  applies on every OS, per configuration folder (Java: Windows only).
 * **Insecure TLS override** is the environment variable `A3S_ALLOW_INSECURE_SSL=1` instead of
   Java's `-Da3s.allowInsecureSsl=true`.
 * **Game tools:** each bikey extraction has its own cancel token (Java's flag is never reset, so
