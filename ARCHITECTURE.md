@@ -30,6 +30,7 @@ A crate may depend on crates from its own group or a group listed above it in th
 | `a3s_transport` | HTTP(S), FTP(S), SFTP, WebDAV; proxies, timeouts, throttling, cancel. | `dao/connection/*` |
 | `a3s_sync` | Client check → plan → download. | `service/synchronization/*`, `service/connection/*` |
 | `a3s_admin` | Repository build (check and upload to come). | `service/administration/*`, `dao/repository/RepositoryBuildProcessor` |
+| `a3s_updater` | Self-updater core: `updater.toml`, release lookup (GitHub, `a3s.json`, legacy `a3s.xml`), verified download, safe archive installation. | `updater/` (`fr.soe.a3sUpdater`) |
 | **game** | | |
 | `a3s_addons` | Addon discovery and registry (mods and CDLCs under their symbolic keys), launch priorities, modset groups from repositories and events, missing/duplicate checks on addon groups. | `service/AddonService`, `dao/AddonDAO`, addon parts of `ProfileService`, `RepositoryService`, `ui/main/AddonsPanel` |
 | `a3s_platform` | OS integration: registry, Arma 3 / Steam / TeamSpeak 3 detection, special folders, process probe, autostart, desktop shortcuts, single instance. | `dao/ConfigurationDAO` (registry), `dao/WinRegistry`, `dao/PreferencesDAO` (Run key), `dao/LauncherDAO.isApplicationRunning`, JUnique and `JShellLink` use |
@@ -42,8 +43,8 @@ A crate may depend on crates from its own group or a group listed above it in th
 | **development** | | |
 | `a3s_dev_tools` | Java fixture harness wrapper: fixture regeneration, Java cross-checks. Dev-dependency only. | – |
 
-Planned parts (the viewer application, the updater)
-get a crate when their ttm ticket starts, inside the group that fits.
+Planned parts (the viewer application) get a crate when its ttm ticket starts, inside the
+group that fits.
 
 ## Repository wire format
 
@@ -193,6 +194,20 @@ Wire compatibility is the requirement; these differences are deliberate.
   cleaned on every OS where its folder is known (Java: Windows only). On Linux a Windows `.exe`
   starts through Steam (`steam -applaunch 107410 -noLauncher …`) with mod and mission paths in
   Wine `Z:` form; auto-restart then follows the game in the process list.
+* **Updater:** `updater.toml` keys, defaults and dev fallbacks, the `a3s.json`, GitHub and
+  `a3s.xml` metadata fields and `.a3s-updater-files` stay Java-compatible; the JVM properties
+  `-Da3s.updater.*` become `A3S_UPDATER_*` environment variables. Differences: the default GitHub
+  asset is `Arma3Sync-{version}-{target}.zip` (`{target}` = Rust target triple) and `a3s.json`
+  may carry a per-target `targets` table; a legacy XML without `<file>` derives the archive name
+  from that pattern. Releases without SHA-256 (legacy XML) are not downloaded unless the caller
+  allows it, and a download larger or smaller than the announced `size` fails. A remote XML
+  without `<nom>` falls through to the installation's `a3s.xml` (Java stops). Archives are
+  rejected for symbolic-link entries, absolute, drive or `:` names, more than 65 536 entries or
+  more than 4 GiB uncompressed; Unix permission bits are kept (without setuid, setgid, sticky).
+  Installed files are written to a temporary sibling and renamed over the target (Java copies in
+  place). TOML is parsed strictly by the `toml` crate; user-data prefixes match case-insensitively;
+  the legacy FTP update transport is dropped; the diagnostic log defaults to
+  `<data dir>/logs/arma3sync-updater-debug.log` of the Rust application.
 * **Insecure TLS override** is the environment variable `A3S_ALLOW_INSECURE_SSL=1` instead of
   Java's `-Da3s.allowInsecureSsl=true`.
 * **Game tools:** each bikey extraction has its own cancel token (Java's flag is never reset, so

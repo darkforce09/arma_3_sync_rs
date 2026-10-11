@@ -1,0 +1,42 @@
+[package]
+name = "a3s_updater"
+description = "Self-updater core for Arma3Sync: configuration, release lookup, verified download and safe installation."
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+include.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[lints]
+workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+
+[dependencies]
+a3s_foundation.workspace = true
+chrono.workspace = true
+futures.workspace = true
+parking_lot.workspace = true
+reqwest = { workspace = true, features = ["rustls", "stream"] }
+roxmltree.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["fs", "io-util", "macros", "rt", "time"] }
+tokio-util.workspace = true
+toml.workspace = true
+tracing.workspace = true
+url.workspace = true
+zip.workspace = true
+
+[dev-dependencies]
+axum.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["full"] }

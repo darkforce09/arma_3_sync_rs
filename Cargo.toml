@@ -34,6 +34,7 @@ a3s_zsync = { path = "crates/store/a3s_zsync", version = "=0.1.0-alpha.1", defau
 a3s_admin = { path = "crates/net/a3s_admin", version = "=0.1.0-alpha.1", default-features = false }
 a3s_sync = { path = "crates/net/a3s_sync", version = "=0.1.0-alpha.1", default-features = false }
 a3s_transport = { path = "crates/net/a3s_transport", version = "=0.1.0-alpha.1", default-features = false }
+a3s_updater = { path = "crates/net/a3s_updater", version = "=0.1.0-alpha.1", default-features = false }
 
 a3s_addons = { path = "crates/game/a3s_addons", version = "=0.1.0-alpha.1", default-features = false }
 a3s_launch = { path = "crates/game/a3s_launch", version = "=0.1.0-alpha.1", default-features = false }
@@ -74,6 +75,7 @@ rcgen = { version = "0.14.10", default-features = false, features = ["aws_lc_rs"
 regex = "1.13.1"
 reqwest = { version = "0.13.5", default-features = false }
 resvg = { version = "0.45.1", default-features = false }
+roxmltree = "0.20.0"
 russh = "0.64.1"
 russh-sftp = "3.0.1"
 rustls = { version = "0.23.45", default-features = false, features = ["aws_lc_rs", "std", "tls12"] }
@@ -81,6 +83,7 @@ rustls-platform-verifier = "0.7.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.152"
 sha1 = "0.11.0"
+sha2 = "0.11.0"
 suppaftp = "12.1"
 tempfile = "3.27"
 thiserror = "2.0"
