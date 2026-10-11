@@ -116,9 +116,13 @@ impl<'a> WorkshopMetadata<'a> {
 
     /// Adds the entries whose key is not present yet (values trimmed, no validation), in one
     /// atomic write. Returns the keys that were added.
+    ///
+    /// Unlike [`Self::save`], an existing file that cannot be read, parsed or has another
+    /// `format` is an error and is left untouched: it may hold the user's data.
     pub fn insert_missing(&self, entries: &[WorkshopEntry]) -> Result<Vec<String>, Error> {
         let _guard = self.store.write_lock.lock();
-        let mut file = self.load();
+        let mut file = toml_file::read::<WorkshopFile>(&self.store.workshop_path(), "workshop")?
+            .unwrap_or_default();
         let mut added = Vec::new();
         for entry in entries {
             if file.mods.contains_key(&entry.addon_key) {

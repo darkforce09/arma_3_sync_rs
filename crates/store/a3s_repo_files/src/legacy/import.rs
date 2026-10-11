@@ -198,7 +198,8 @@ impl UserFacing for ImportError {
 
 /// Whether to offer the import: no marker yet, and some Java data was found.
 pub fn should_offer_import(store: &LocalStore, sources: &[LegacyJavaData]) -> bool {
-    store.legacy_import_marker().is_none() && sources.iter().any(|s| !s.is_empty())
+    // An unreadable marker is not "no marker": the import may have run already.
+    matches!(store.read_legacy_import_marker(), Ok(None)) && sources.iter().any(|s| !s.is_empty())
 }
 
 /// Imports the Java data of `sources` into `store`.
@@ -211,16 +212,30 @@ pub fn should_offer_import(store: &LocalStore, sources: &[LegacyJavaData]) -> bo
 /// skipped. Problems with Java files are recorded in the report; only a failure of the Rust
 /// store is an error. On success the import marker is written, even if some files failed.
 ///
-/// Without [`ImportOptions::ignore_marker`], an existing marker makes this a no-op.
+/// Without [`ImportOptions::ignore_marker`], an existing marker makes this a no-op. A marker
+/// that exists but cannot be read counts as existing, and is never overwritten: with
+/// `ignore_marker` the import runs but the report warns instead of writing a marker.
 pub fn import(
     store: &LocalStore,
     sources: &[LegacyJavaData],
     options: &ImportOptions,
 ) -> Result<ImportReport, ImportError> {
-    if !options.ignore_marker && store.legacy_import_marker().is_some() {
+    let (marker_exists, marker_unreadable) = match store.read_legacy_import_marker() {
+        Ok(marker) => (marker.is_some(), None),
+        Err(err) => (
+            true,
+            Some(format!(
+                "The import marker cannot be read and is left unchanged: {}",
+                err.detail()
+            )),
+        ),
+    };
+    if marker_exists && !options.ignore_marker {
+        let warning =
+            marker_unreadable.unwrap_or_else(|| "The Java data was already imported.".to_owned());
         return Ok(ImportReport {
             sources: Vec::new(),
-            warnings: vec!["The Java data was already imported.".to_owned()],
+            warnings: vec![warning],
         });
     }
     let mut importer = Importer::new(store)?;
@@ -228,7 +243,11 @@ pub fn import(
         let report = importer.source(source)?;
         importer.report.sources.push(report);
     }
-    let report = importer.report;
+    let mut report = importer.report;
+    if let Some(warning) = marker_unreadable {
+        report.warnings.push(warning);
+        return Ok(report);
+    }
     let marker = ImportMarker {
         imported_at_ms: now_millis(),
         sources: sources
@@ -516,7 +535,8 @@ impl<'a> Importer<'a> {
     /// Writes the repository and its non-empty caches, keeping Java's keys and ms mtimes.
     fn write_repository(&self, legacy: &LegacyRepository) -> Result<(), ImportError> {
         let name = &legacy.repository.name;
-        self.store.write_repository(&legacy.repository)?;
+        // Caches first: an interrupted import leaves no repository without its caches, and the
+        // next run retries the whole repository.
         for (kind, map) in [
             (CacheKind::Sync, &legacy.files_for_sync),
             (CacheKind::Build, &legacy.files_for_build),
@@ -525,6 +545,7 @@ impl<'a> Importer<'a> {
                 self.store.write_sha1_cache(name, kind, &to_cache(map))?;
             }
         }
+        self.store.write_repository(&legacy.repository)?;
         Ok(())
     }
 
@@ -550,16 +571,25 @@ impl<'a> Importer<'a> {
         if legacy.addon_search_directory_paths.is_none() && legacy.launcher_options.is_none() {
             return Ok(None);
         }
-        let active = &legacy.configuration.profile_name;
-        let (mut profile, created) = if let Some(profile) = self.imported_profiles.get(active) {
+        let configured = &legacy.configuration.profile_name;
+        let exists_in_store = |name: &str| {
+            self.existing_profiles.contains(name) || self.store.profile_path(name).exists()
+        };
+        // Java resets an unknown active profile to "Default" before migrating
+        // (ui/main/MainPanel.java:481-490).
+        let active =
+            if self.imported_profiles.contains_key(configured) || exists_in_store(configured) {
+                configured.clone()
+            } else {
+                DEFAULT_PROFILE_NAME.to_owned()
+            };
+        let (mut profile, created) = if let Some(profile) = self.imported_profiles.get(&active) {
             (profile.clone(), false)
-        } else if active == DEFAULT_PROFILE_NAME
-            && !self.existing_profiles.contains(DEFAULT_PROFILE_NAME)
-            && !self.store.profile_path(DEFAULT_PROFILE_NAME).exists()
-        {
+        } else if active == DEFAULT_PROFILE_NAME && !exists_in_store(DEFAULT_PROFILE_NAME) {
             // Java's in-memory default profile (dao/ProfileDAO.java:44-48).
             (Profile::new(DEFAULT_PROFILE_NAME), true)
         } else {
+            // The profile already exists in the Rust store, which is never overwritten.
             return Ok(Some(format!(
                 "The search directories and launcher options of a3s.cfg were not migrated: \
                  profile \"{active}\" was not imported."
@@ -601,8 +631,13 @@ impl<'a> Importer<'a> {
         self.store.write_profile(&profile)?;
         self.imported_profiles.insert(active.clone(), profile);
         let created = if created { " (created)" } else { "" };
+        let fallback = if &active == configured {
+            String::new()
+        } else {
+            format!(" because the active profile \"{configured}\" does not exist")
+        };
         Ok(Some(format!(
-            "Migrated {} of a3s.cfg into profile \"{active}\"{created}.",
+            "Migrated {} of a3s.cfg into profile \"{active}\"{created}{fallback}.",
             parts.join(" and ")
         )))
     }
@@ -631,7 +666,20 @@ impl<'a> Importer<'a> {
             }
         };
         self.report.warnings.extend(legacy.warnings);
-        let added = self.store.workshop().insert_missing(&legacy.value)?;
+        let added = match self.store.workshop().insert_missing(&legacy.value) {
+            Ok(added) => added,
+            // The Rust file exists but cannot be read: it is left alone.
+            Err(
+                err @ (local::Error::Read { .. }
+                | local::Error::Parse { .. }
+                | local::Error::UnsupportedFormat { .. }),
+            ) => {
+                let message = format!("Not merged into the Rust Workshop cache: {}", err.detail());
+                self.report.warnings.push(message.clone());
+                return Ok(ItemOutcome::Failed(message));
+            }
+            Err(err) => return Err(err.into()),
+        };
         Ok(if added.is_empty() {
             ItemOutcome::SkippedExisting
         } else {

@@ -23,15 +23,26 @@ pub struct LegacyFile<T> {
 }
 
 /// Gunzips `compressed`, at most [`MAX_DECOMPRESSED_SIZE`] bytes (Java's `streamBytes` limit).
+///
+/// Errors of the gzip format or a truncated input are [`Error::Corrupted`] (Java
+/// `ZipException` / `EOFException`); other read errors are [`Error::Io`].
 // Mirrors dao/A3SFilesAccessor.java:28, 62
-pub(crate) fn gunzip(file: &str, compressed: &[u8]) -> Result<Vec<u8>, Error> {
+pub(crate) fn gunzip(file: &str, compressed: impl io::Read) -> Result<Vec<u8>, Error> {
     let mut raw = Vec::new();
     GzDecoder::new(compressed)
         .take(MAX_DECOMPRESSED_SIZE + 1)
         .read_to_end(&mut raw)
-        .map_err(|source| Error::Corrupted {
-            file: file.to_owned(),
-            source,
+        .map_err(|source| match source.kind() {
+            io::ErrorKind::InvalidInput
+            | io::ErrorKind::InvalidData
+            | io::ErrorKind::UnexpectedEof => Error::Corrupted {
+                file: file.to_owned(),
+                source,
+            },
+            _ => Error::Io {
+                file: file.to_owned(),
+                source,
+            },
         })?;
     if raw.len() as u64 > MAX_DECOMPRESSED_SIZE {
         return Err(Error::Io {
@@ -75,11 +86,12 @@ pub(crate) fn parse_stream(file: &str, raw: &[u8]) -> Result<Graph, Error> {
 // Mirrors dao/A3SFilesAccessor.java:55-83
 pub fn read_object_file(path: &Path) -> Result<Graph, Error> {
     let file = file_name(path);
-    let compressed = std::fs::read(path).map_err(|source| Error::Io {
+    let compressed = std::fs::File::open(path).map_err(|source| Error::Io {
         file: file.clone(),
         source,
     })?;
-    let raw = gunzip(&file, &compressed)?;
+    // Streamed: `GzDecoder` buffers the file itself.
+    let raw = gunzip(&file, compressed)?;
     let graph = parse_stream(&file, &raw)?;
     check_java_allowlist(&graph).map_err(|rejected| Error::Deserialize {
         file,

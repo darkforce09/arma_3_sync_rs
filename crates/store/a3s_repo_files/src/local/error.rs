@@ -1,7 +1,7 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-use a3s_error::{ErrorKind, UserFacing, messages};
+use a3s_error::{ErrorKind, UserFacing};
 
 /// Errors of the local TOML store.
 #[non_exhaustive]
@@ -27,7 +27,7 @@ pub enum Error {
     #[error("Failed to read file: {}\n{message}", path.display())]
     Parse { path: PathBuf, message: String },
 
-    /// A file was written by a newer version of the store.
+    /// A file has an unsupported `format` (e.g. written by a newer version of the store).
     #[error("Unsupported format {found} in {} (supported: {supported})", path.display())]
     UnsupportedFormat {
         path: PathBuf,
@@ -55,14 +55,6 @@ pub enum Error {
     /// A value could not be serialized to TOML.
     #[error("Failed to write file: {}\n{message}", path.display())]
     Serialize { path: PathBuf, message: String },
-
-    /// A store directory could not be created.
-    #[error("{}", messages::cannot_create_directory(path))]
-    CreateDir {
-        path: PathBuf,
-        #[source]
-        source: io::Error,
-    },
 
     /// A repository file holds a blank name (`dao/repository/RepositoryDAO.java:121-124`).
     #[error("Repository name is missing.")]
@@ -100,11 +92,6 @@ impl UserFacing for Error {
             Self::Write { .. } | Self::WriteProfile { .. } | Self::Serialize { .. } => {
                 ErrorKind::WriteFailed
             }
-            // Java reports these as `CreateDirectoryException`.
-            Self::CreateDir { source, .. } => match ErrorKind::from_io(source) {
-                ErrorKind::Io => ErrorKind::PermissionDenied,
-                kind => kind,
-            },
             Self::InvalidWorkshopEntry(_) => ErrorKind::InvalidInput,
         }
     }
@@ -127,7 +114,6 @@ impl UserFacing for Error {
             }
             // Mirrors dao/repository/RepositoryDAO.java:136-141
             Self::ReadRepositories { .. } => self.detail(),
-            Self::CreateDir { path, .. } => messages::cannot_create_directory(path),
             Self::MissingRepositoryName { .. } | Self::InvalidWorkshopEntry(_) => self.to_string(),
         }
     }

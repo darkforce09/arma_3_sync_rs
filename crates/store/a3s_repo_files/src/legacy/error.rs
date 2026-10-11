@@ -32,7 +32,10 @@ pub enum Error {
     },
 
     /// The serialization stream is invalid, holds a forbidden class or the wrong objects.
-    #[error("Failed to deserialize file: {file}")]
+    ///
+    /// The text follows Java's exception path: "Failed to read file: …" for a filter rejection
+    /// or a broken stream, "Failed to deserialize file: …" for unexpected classes.
+    #[error("{}", deserialize_text(file, source))]
     Deserialize {
         file: String,
         #[source]
@@ -55,6 +58,31 @@ pub enum Error {
     UnexpectedClass { file: String, found: String },
 }
 
+/// Java's message for each kind of deserialization failure.
+// Mirrors dao/A3SFilesAccessor.java:65-76, 96-107
+fn deserialize_text(file: &str, source: &DeserializeError) -> String {
+    match source {
+        // `InvalidClassException("filter status: REJECTED")`, an `IOException`.
+        DeserializeError::Rejected(_) => {
+            format!(
+                "Failed to read file: {file}
+filter status: REJECTED"
+            )
+        }
+        // `StreamCorruptedException` and friends, `IOException`s.
+        DeserializeError::Stream(err) => format!(
+            "Failed to read file: {file}
+{err}"
+        ),
+        // A null `encryptedContent` fails inside `SealedObject.getObject`.
+        DeserializeError::MissingEncryptedContent => {
+            format!("Failed to decrypt serialized file: {file}")
+        }
+        // Objects of an unknown or unexpected class: `ClassNotFoundException`.
+        DeserializeError::Types(_) => format!("Failed to deserialize file: {file}"),
+    }
+}
+
 /// Why a stream could not be deserialized.
 #[derive(Debug, thiserror::Error)]
 pub enum DeserializeError {
@@ -67,7 +95,7 @@ pub enum DeserializeError {
     Types(#[from] a3s_types::Error),
 
     /// A class outside Java's allowlist.
-    #[error(transparent)]
+    #[error("filter status: REJECTED")]
     Rejected(#[from] Rejected),
 
     /// A `SealedObject` without a byte-array `encryptedContent`.

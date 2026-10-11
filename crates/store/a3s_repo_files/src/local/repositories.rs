@@ -7,7 +7,7 @@ use a3s_types::local::Repository;
 
 use super::profiles::{ignored_warning, replaced_warning, summary};
 use super::toml_file::{self, file_name, modified_millis};
-use super::{CacheKind, Error, LocalStore};
+use super::{CacheKind, Error, LocalStore, TOML_EXTENSION};
 
 /// A repository and the file it was loaded from.
 #[derive(Clone, Debug, PartialEq)]
@@ -128,6 +128,9 @@ impl LocalStore {
 
     /// Like [`Self::write_repository`], then deletes `previous` (best effort) when it is another
     /// file, e.g. the file of a renamed repository.
+    ///
+    /// `previous` is only deleted when it is a `.toml` file directly inside the repositories
+    /// directory; anything else is logged and kept.
     // Mirrors dao/repository/RepositoryDAO.java:209-232
     pub fn write_repository_replacing(
         &self,
@@ -138,6 +141,13 @@ impl LocalStore {
         let target = self.repository_path(&repository.name);
         toml_file::write(&target, "repository", repository)?;
         if let Some(previous) = previous.filter(|p| !same_file(p, &target)) {
+            if !self.is_repository_file(previous) {
+                tracing::warn!(
+                    "Not deleting {}: not a repository file of this store.",
+                    previous.display()
+                );
+                return Ok(());
+            }
             match std::fs::remove_file(previous) {
                 Ok(()) => tracing::info!(
                     "Migrated repository file \"{}\" to \"{}\".",
@@ -167,6 +177,19 @@ impl LocalStore {
             deleted |= Self::delete_file(&path)?;
         }
         Ok(deleted)
+    }
+}
+
+impl LocalStore {
+    /// Whether `path` is a `.toml` file whose canonical parent is the repositories directory.
+    fn is_repository_file(&self, path: &Path) -> bool {
+        let is_toml = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.ends_with(TOML_EXTENSION));
+        let parent = path.parent().and_then(|p| std::fs::canonicalize(p).ok());
+        let repositories = std::fs::canonicalize(&self.dirs.repositories).ok();
+        is_toml && parent.is_some() && parent == repositories
     }
 }
 

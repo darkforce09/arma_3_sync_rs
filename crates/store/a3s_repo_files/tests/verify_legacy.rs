@@ -179,9 +179,10 @@ fn verify_allowlist_rejection_through_read_object_file() {
         ),
         "{err:?}"
     );
+    // Amended B23/A9: a filter rejection takes Java's IOException path.
     assert_eq!(
         err.to_string(),
-        "Failed to deserialize file: nested.a3s.profile"
+        "Failed to read file: nested.a3s.profile\nfilter status: REJECTED"
     );
 }
 

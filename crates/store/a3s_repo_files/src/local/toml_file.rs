@@ -36,20 +36,23 @@ pub(crate) fn encode<T: Serialize>(
     })
 }
 
-/// [`FORMAT_VERSION`] as a TOML integer.
+/// The only accepted value of `format` (a missing key reads as this).
 const SUPPORTED: i64 = FORMAT_VERSION as i64;
 
-/// Decodes an envelope. A missing `format` reads as 1, a newer one is rejected, unknown keys are
-/// ignored and a missing payload table reads as an empty table (serde defaults apply).
+/// Decodes an envelope. A missing `format` reads as 1, any other value is rejected, unknown
+/// keys are ignored and a missing payload table reads as an empty table (serde defaults apply).
+///
+/// Error messages never contain file content (the files hold credentials): only the parser's
+/// message, the line and column, and serde texts with the offending values removed.
 pub(crate) fn decode<T: DeserializeOwned>(path: &Path, text: &str, key: &str) -> Result<T, Error> {
     let parse_error = |message: String| Error::Parse {
         path: path.to_path_buf(),
         message,
     };
     let mut table: toml::Table =
-        toml::from_str(text).map_err(|err| parse_error(err.to_string()))?;
+        toml::from_str(text).map_err(|err| parse_error(describe(&err, text)))?;
     match table.get("format") {
-        None | Some(toml::Value::Integer(..=SUPPORTED)) => {}
+        None | Some(toml::Value::Integer(SUPPORTED)) => {}
         Some(toml::Value::Integer(found)) => {
             return Err(Error::UnsupportedFormat {
                 path: path.to_path_buf(),
@@ -69,7 +72,39 @@ pub(crate) fn decode<T: DeserializeOwned>(path: &Path, text: &str, key: &str) ->
         .unwrap_or_else(|| toml::Value::Table(toml::Table::new()));
     payload
         .try_into()
-        .map_err(|err: toml::de::Error| parse_error(err.to_string()))
+        .map_err(|err: toml::de::Error| parse_error(describe(&err, text)))
+}
+
+/// A content-free description of a TOML error: message plus `at line L, column C` when known.
+fn describe(err: &toml::de::Error, text: &str) -> String {
+    let message = redact(err.message());
+    match err.span() {
+        Some(span) => {
+            let before = text.get(..span.start).unwrap_or(text);
+            let line = before.matches('\n').count() + 1;
+            let column = before
+                .rsplit('\n')
+                .next()
+                .map_or(1, |l| l.chars().count() + 1);
+            format!("{message} at line {line}, column {column}")
+        }
+        None => message,
+    }
+}
+
+/// Removes the values that serde messages quote (`invalid type: string "x", expected …`,
+/// ``unknown variant `x`, expected …``) and keeps only the first line.
+fn redact(message: &str) -> String {
+    let first = message.lines().next().unwrap_or_default();
+    for prefix in ["invalid type", "invalid value", "unknown variant"] {
+        if first.starts_with(prefix) {
+            return match first.rfind(", expected") {
+                Some(i) => format!("{prefix}{}", &first[i..]),
+                None => prefix.to_owned(),
+            };
+        }
+    }
+    first.to_owned()
 }
 
 /// Reads and decodes `path`; `Ok(None)` when it does not exist.
@@ -92,23 +127,34 @@ pub(crate) fn write<T: Serialize>(path: &Path, key: &'static str, value: &T) -> 
 
 /// Writes `bytes` atomically (temporary file in the same directory, fsync, rename).
 ///
-/// On Unix the temporary file, and therefore the result, has mode `0600`. On failure the target
-/// is unchanged and the temporary file is removed.
+/// On Unix the temporary file, and therefore the result, has mode `0600`, and the directory is
+/// synced after the rename (best effort). On failure the target is unchanged and the temporary
+/// file is removed. Any failure, including creating the directory, is reported for the target
+/// file (Java's `CreateDirectoryException` is an `IOException` of the write).
 // Mirrors dao/A3SFilesAccessor.java:144-162, 188-201
 pub(crate) fn write_bytes(path: &Path, bytes: &[u8]) -> Result<(), Error> {
-    if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
-        std::fs::create_dir_all(dir).map_err(|source| Error::CreateDir {
-            path: dir.to_path_buf(),
-            source,
-        })?;
-    }
-    crate::a3s_file::write_atomic(path, bytes).map_err(|err| Error::Write {
+    let write_error = |source: io::Error| Error::Write {
         path: path.to_path_buf(),
-        source: match err {
+        source,
+    };
+    let dir = path.parent().filter(|d| !d.as_os_str().is_empty());
+    if let Some(dir) = dir {
+        std::fs::create_dir_all(dir).map_err(write_error)?;
+    }
+    crate::a3s_file::write_atomic(path, bytes).map_err(|err| {
+        write_error(match err {
             crate::Error::Io { source, .. } => source,
             other => io::Error::other(other.to_string()),
-        },
-    })
+        })
+    })?;
+    #[cfg(unix)]
+    if let Some(dir) = dir {
+        // Makes the rename durable; the data itself was synced before it.
+        if let Err(err) = std::fs::File::open(dir).and_then(|d| d.sync_all()) {
+            tracing::debug!("Cannot sync directory {}: {err}", dir.display());
+        }
+    }
+    Ok(())
 }
 
 /// The regular files of `dir` whose name ends with `.toml`, sorted by file name.

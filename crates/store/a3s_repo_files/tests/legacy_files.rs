@@ -147,10 +147,10 @@ fn a9_allowlist() {
         ),
         "{err:?}"
     );
-    assert!(
-        err.to_string()
-            .starts_with("Failed to deserialize file: int.a3s.profile"),
-        "{err}"
+    // Java: `InvalidClassException("filter status: REJECTED")`, an `IOException`.
+    assert_eq!(
+        err.to_string(),
+        "Failed to read file: int.a3s.profile\nfilter status: REJECTED"
     );
 
     // Nested arrays are rejected.
@@ -300,7 +300,10 @@ fn a15_rejects_serialized_classes_outside_the_legacy_allowlist() {
     ];
     let path = write_graph(dir.path(), "unexpected.bin", &graph);
     let err = read_object_file(&path).unwrap_err();
-    assert!(err.to_string().starts_with("Failed to deserialize file: "));
+    assert_eq!(
+        err.to_string(),
+        "Failed to read file: unexpected.bin\nfilter status: REJECTED"
+    );
 }
 
 #[test]

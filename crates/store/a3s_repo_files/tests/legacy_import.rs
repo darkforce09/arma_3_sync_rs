@@ -629,7 +629,7 @@ fn a13_failures_are_isolated() {
 }
 
 #[test]
-fn a13_unknown_active_profile_is_not_migrated() {
+fn a13_unknown_active_profile_falls_back_to_default() {
     let tmp = tempfile::tempdir().unwrap();
     let java = broken_layout(tmp.path(), "Ghost");
     let store = store(&tmp.path().join("rust"));
@@ -639,20 +639,51 @@ fn a13_unknown_active_profile_is_not_migrated() {
         &ImportOptions::default(),
     )
     .unwrap();
+    // Java resets an unknown active profile to "Default" first (MainPanel.java:481-490).
     let migration = report.sources[0].migration.clone().unwrap();
-    assert!(migration.contains("not migrated"), "{migration}");
-    assert!(migration.contains("\"Ghost\""), "{migration}");
+    assert_eq!(
+        migration,
+        "Migrated 2 search directories and the launcher options of a3s.cfg into profile \
+         \"Default\" (created) because the active profile \"Ghost\" does not exist."
+    );
     assert!(!store.profile_path("Ghost").exists());
-    assert!(!store.profile_path("Default").exists());
+    let profiles = store.load_profiles().unwrap();
+    assert_eq!(
+        profiles.profiles["Default"].addon_search_directories.len(),
+        2
+    );
+    assert_eq!(
+        profiles.profiles["Default"]
+            .launcher_options
+            .cpu_count_selection,
+        6
+    );
     // The imported profile is untouched.
     let java_night =
         read_profile_file(&java.join("config/Arma3Sync/profiles/Event Night.a3s.profile"))
             .unwrap()
             .value;
-    assert_eq!(
-        store.load_profiles().unwrap().profiles["Event Night"],
-        java_night
-    );
+    assert_eq!(profiles.profiles["Event Night"], java_night);
+}
+
+#[test]
+fn a13_existing_rust_default_is_not_overwritten_by_the_migration() {
+    let tmp = tempfile::tempdir().unwrap();
+    let java = broken_layout(tmp.path(), "Ghost");
+    let store = store(&tmp.path().join("rust"));
+    let mut mine = Profile::new("Default");
+    mine.additional_parameters = Some("mine".to_owned());
+    store.write_profile(&mine).unwrap();
+    let report = import(
+        &store,
+        &per_user_sources(&java, &[]),
+        &ImportOptions::default(),
+    )
+    .unwrap();
+    let migration = report.sources[0].migration.clone().unwrap();
+    assert!(migration.contains("not migrated"), "{migration}");
+    assert!(migration.contains("\"Default\""), "{migration}");
+    assert_eq!(store.load_profiles().unwrap().profiles["Default"], mine);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -734,4 +765,104 @@ fn a14_historical_variants_through_the_importer() {
     assert_eq!(repository.repository_check_connections(), 4);
     assert!(store.read_preferences().unwrap().prefer_github_updates);
     assert_eq!(store.read_configuration().unwrap().height, 900);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Fix round 1
+
+#[test]
+fn a12_unreadable_marker_is_not_absent() {
+    let tmp = tempfile::tempdir().unwrap();
+    let java = java_per_user(tmp.path(), "Default");
+    let sources = per_user_sources(&java, &[]);
+    for (i, marker) in ["format = 2\n[import]\n", "[import\n"]
+        .into_iter()
+        .enumerate()
+    {
+        let store = store(&tmp.path().join(format!("rust{i}")));
+        std::fs::create_dir_all(&store.dirs().config).unwrap();
+        std::fs::write(store.legacy_import_marker_path(), marker).unwrap();
+        assert!(store.read_legacy_import_marker().is_err());
+        assert!(!should_offer_import(&store, &sources));
+
+        // Not offered, nothing done.
+        let report = import(&store, &sources, &ImportOptions::default()).unwrap();
+        assert!(report.sources.is_empty());
+        assert_eq!(report.warnings.len(), 1);
+        assert!(!store.repository_path("Sample HTTP").exists());
+
+        // An explicit re-import runs but leaves the marker alone.
+        let report = import(
+            &store,
+            &sources,
+            &ImportOptions {
+                ignore_marker: true,
+            },
+        )
+        .unwrap();
+        assert!(!report.sources.is_empty());
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|w| w.starts_with("The import marker cannot be read")),
+            "{:?}",
+            report.warnings
+        );
+        assert_eq!(
+            std::fs::read_to_string(store.legacy_import_marker_path()).unwrap(),
+            marker
+        );
+    }
+}
+
+#[test]
+fn a11_unreadable_rust_workshop_file_is_reported_not_replaced() {
+    let tmp = tempfile::tempdir().unwrap();
+    let java = java_per_user(tmp.path(), "Default");
+    let store = store(&tmp.path().join("rust"));
+    std::fs::create_dir_all(&store.dirs().config).unwrap();
+    let mine = "format = 2\n[workshop.mods.\"@mine\"]\npublished_id = \"42\"\nname = \"Mine\"\n";
+    std::fs::write(store.workshop_path(), mine).unwrap();
+    let report = import(
+        &store,
+        &per_user_sources(&java, &[]),
+        &ImportOptions::default(),
+    )
+    .unwrap();
+    assert!(matches!(
+        &report.sources[0].workshop,
+        ItemOutcome::Failed(message) if message.starts_with("Not merged")
+    ));
+    assert_eq!(
+        std::fs::read_to_string(store.workshop_path()).unwrap(),
+        mine
+    );
+    // The rest is imported and the marker written.
+    assert!(store.legacy_import_marker().is_some());
+}
+
+#[cfg(unix)]
+#[test]
+fn a11_caches_are_written_before_the_repository() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let java = java_per_user(tmp.path(), "Default");
+    let store = store(&tmp.path().join("rust"));
+    let caches = &store.dirs().sha1_cache;
+    std::fs::create_dir_all(caches).unwrap();
+    std::fs::set_permissions(caches, std::fs::Permissions::from_mode(0o555)).unwrap();
+    let result = import(
+        &store,
+        &per_user_sources(&java, &[]),
+        &ImportOptions::default(),
+    );
+    std::fs::set_permissions(caches, std::fs::Permissions::from_mode(0o755)).unwrap();
+    // Root ignores directory permissions; there is nothing to check then.
+    if result.is_err() {
+        // The first repository's cache failed: no repository file without its caches.
+        assert!(store.load_repositories().unwrap().repositories.is_empty());
+        assert!(store.legacy_import_marker().is_none());
+    }
 }

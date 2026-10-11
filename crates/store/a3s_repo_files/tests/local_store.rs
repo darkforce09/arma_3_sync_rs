@@ -554,3 +554,138 @@ fn local_store_is_send_and_sync() {
     fn check<T: Send + Sync>() {}
     check::<LocalStore>();
 }
+
+// ---------------------------------------------------------------------------------------------
+// Fix round 1
+
+#[test]
+fn a2_errors_never_quote_file_content() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store(dir.path());
+    std::fs::create_dir_all(&store.dirs().repositories).unwrap();
+    std::fs::create_dir_all(&store.dirs().profiles).unwrap();
+    let repositories = &store.dirs().repositories;
+    // An unterminated string: the parser's `Display` would quote the line.
+    std::fs::write(
+        repositories.join("broken.toml"),
+        "format = 1\n[repository]\nname = \"WOG\"\n[repository.protocol]\npassword = \"secret1\n",
+    )
+    .unwrap();
+    // A wrong type and an unknown variant: serde would quote the values.
+    std::fs::write(
+        repositories.join("typed.toml"),
+        "format = 1\n[repository]\nname = \"X\"\nrevision = \"secret2\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        repositories.join("variant.toml"),
+        "format = 1\n[repository]\nname = \"Y\"\n[repository.protocol]\nprotocol_type = \
+         \"secret3\"\nurl = \"u\"\nport = \"1\"\nvalidate_ssl_certificate = true\n",
+    )
+    .unwrap();
+    std::fs::write(
+        store.dirs().profiles.join("p.toml"),
+        "format = 1\n[profile]\nname = 'secret4\n",
+    )
+    .unwrap();
+    std::fs::write(
+        store.configuration_path(),
+        "format = 1\n[configuration]\nheight = \"secret5\"\n",
+    )
+    .unwrap();
+
+    let load = store.load_repositories().unwrap();
+    assert_eq!(load.failures.len(), 3);
+    for failure in load.failures.values() {
+        for text in [
+            failure.detail(),
+            failure.user_message(),
+            format!("{failure:?}"),
+        ] {
+            assert!(!text.contains("secret"), "{text}");
+        }
+    }
+    let message = load.error_message().unwrap();
+    assert!(!message.contains("secret"), "{message}");
+    // The location is still reported.
+    assert!(message.contains("line 5"), "{message}");
+
+    let message = store.load_profiles().unwrap().error_message().unwrap();
+    assert!(!message.contains("secret"), "{message}");
+
+    let err = store.read_configuration().unwrap_err();
+    assert!(!err.detail().contains("secret"), "{}", err.detail());
+    assert!(err.detail().contains("invalid type"), "{}", err.detail());
+}
+
+#[test]
+fn a2_format_other_than_one_is_rejected() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store(dir.path());
+    std::fs::create_dir_all(&store.dirs().config).unwrap();
+    for found in [0, -1] {
+        std::fs::write(
+            store.preferences_path(),
+            format!("format = {found}\n[preferences]\n"),
+        )
+        .unwrap();
+        match store.read_preferences() {
+            Err(Error::UnsupportedFormat { found: f, .. }) => assert_eq!(f, found),
+            other => panic!("{found}: {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn a2_directory_creation_failure_reports_the_target_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let blocker = dir.path().join("blocker");
+    std::fs::write(&blocker, b"x").unwrap();
+    let store = store(&blocker);
+    let err = store
+        .write_configuration(&full_configuration())
+        .unwrap_err();
+    assert_eq!(
+        err.user_message(),
+        format!(
+            "Failed to write file: {}",
+            blocker.join("config/configuration.toml").display()
+        )
+    );
+    let err = store.write_profile(&Profile::new("Main")).unwrap_err();
+    assert!(
+        err.user_message().starts_with(&format!(
+            "Failed to write file: {}\n",
+            store.profile_path("Main").display()
+        )),
+        "{}",
+        err.user_message()
+    );
+}
+
+#[test]
+fn a4_write_replacing_never_deletes_outside_the_repositories_dir() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store(dir.path());
+    let outside = dir.path().join("precious.toml");
+    std::fs::write(&outside, "x").unwrap();
+    let wog = repository("WOG");
+    store
+        .write_repository_replacing(&wog, Some(&outside))
+        .unwrap();
+    assert!(outside.exists());
+
+    let not_toml = store.dirs().repositories.join("notes.txt");
+    std::fs::write(&not_toml, "x").unwrap();
+    store
+        .write_repository_replacing(&wog, Some(&not_toml))
+        .unwrap();
+    assert!(not_toml.exists());
+
+    // A path that leaves the directory through `..` is resolved first.
+    let sneaky = store.dirs().repositories.join("../../precious.toml");
+    store
+        .write_repository_replacing(&wog, Some(&sneaky))
+        .unwrap();
+    assert!(outside.exists());
+}

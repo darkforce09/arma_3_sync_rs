@@ -125,3 +125,31 @@ fn a6_insert_missing_never_overwrites() {
     assert_eq!(workshop.find("@ace").unwrap().name, "Mine");
     assert_eq!(workshop.find("@cba").unwrap().name, "CBA");
 }
+
+#[test]
+fn a6_insert_missing_leaves_unreadable_files_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store(dir.path());
+    std::fs::create_dir_all(dir.path().join("config")).unwrap();
+    let new = WorkshopEntry {
+        addon_key: "@ace".to_owned(),
+        published_id: "1".to_owned(),
+        name: "N".to_owned(),
+    };
+    for content in [
+        "format = 2\n[workshop.mods.\"@mine\"]\npublished_id = \"42\"\nname = \"Mine\"\n",
+        "format = 1\n[workshop.mods.\"@mine\"\n",
+    ] {
+        std::fs::write(store.workshop_path(), content).unwrap();
+        assert!(
+            store
+                .workshop()
+                .insert_missing(std::slice::from_ref(&new))
+                .is_err()
+        );
+        assert_eq!(
+            std::fs::read_to_string(store.workshop_path()).unwrap(),
+            content
+        );
+    }
+}

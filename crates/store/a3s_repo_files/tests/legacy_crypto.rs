@@ -182,7 +182,7 @@ fn a8_missing_content_and_wrong_root_are_errors() {
     assert!(
         err.with_file("r.a3s.repository")
             .to_string()
-            .starts_with("Failed to deserialize file: r.a3s.repository")
+            .starts_with("Failed to decrypt serialized file: r.a3s.repository")
     );
 
     let mut b = Builder::new();

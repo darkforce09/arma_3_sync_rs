@@ -189,15 +189,17 @@ impl LocalStore {
     }
 
     /// The marker of a completed legacy import, if one was written and is readable.
+    ///
+    /// An unreadable marker gives `None` here; use [`Self::read_legacy_import_marker`] to tell
+    /// it apart from a missing one.
     pub fn legacy_import_marker(&self) -> Option<ImportMarker> {
-        let path = self.legacy_import_marker_path();
-        match toml_file::read(&path, "import") {
-            Ok(marker) => marker,
-            Err(err) => {
-                tracing::warn!("Ignoring unreadable import marker: {}", err.detail());
-                None
-            }
-        }
+        self.read_legacy_import_marker().ok().flatten()
+    }
+
+    /// The marker of a completed legacy import: `Ok(None)` when there is none, `Err` when one
+    /// exists but cannot be read (or has another `format`).
+    pub fn read_legacy_import_marker(&self) -> Result<Option<ImportMarker>, Error> {
+        toml_file::read(&self.legacy_import_marker_path(), "import")
     }
 
     /// Writes the import marker atomically.
