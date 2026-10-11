@@ -8,6 +8,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use a3s_foundation::error::{ErrorKind, UserFacing};
+use a3s_transport::proxy::{ProxyError, transport_options};
 use a3s_transport::{CancellationToken, TransferCtx, TransportOptions};
 use a3s_types::Protocol;
 use a3s_types::constants::RepositoryStatus;
@@ -19,7 +20,7 @@ use crate::cleanup::{CleanupReport, DeleteRoots, delete_extra_files, protected_p
 use crate::completion::{CompletionError, determine_completion};
 use crate::download::{DownloadReport, DownloadRequest, DownloadedZip, ZIP_EXTENSION, ZipSink};
 use crate::events::{EventError, EventSender, Outcome, SyncEvent};
-use crate::model::{DownloadTaskKind, PlanTree};
+use crate::model::{DownloadStatus, DownloadTaskKind, PlanTree};
 use crate::options::{SyncOptions, SyncOptionsError};
 use crate::plan::{
     AddonLocator, PlanError, PlanSummary, downloaded_compressed, plan_repository,
@@ -39,11 +40,8 @@ pub struct CheckRequest {
     /// The event (modset) to synchronize, if any.
     pub event_name: Option<String>,
 
-    /// The repository's protocol.
+    /// The repository's protocol. Connections use the proxy of the stored configuration.
     pub protocol: Protocol,
-
-    /// Connection options.
-    pub transport_options: TransportOptions,
 
     /// Where existing addon folders are (auto-discovery).
     pub addons: Arc<dyn AddonLocator + Send + Sync>,
@@ -71,6 +69,10 @@ pub enum CheckError {
     #[error(transparent)]
     Options(SyncOptionsError),
 
+    /// The configured proxy cannot be used.
+    #[error(transparent)]
+    Proxy(ProxyError),
+
     /// Planning failed.
     #[error(transparent)]
     Plan(PlanError),
@@ -93,6 +95,7 @@ impl UserFacing for CheckError {
         match self {
             Self::Remote(e) => e.kind(),
             Self::Options(e) => e.kind(),
+            Self::Proxy(_) => ErrorKind::InvalidInput,
             Self::Plan(e) => e.kind(),
             Self::Completion(e) => e.kind(),
             Self::Store(e) => e.kind(),
@@ -141,6 +144,7 @@ pub struct RunReport {
 /// [`SyncSession::download`] resumes: finished files are skipped, partial ones continue.
 pub struct SyncSession {
     request: CheckRequest,
+    transport_options: TransportOptions,
     options: SyncOptions,
     metadata: RemoteMetadata,
     tree: PlanTree,
@@ -161,7 +165,7 @@ impl SyncSession {
     // ui/repository/workers/AddonsChecker.java:93-108
     pub async fn check(
         request: CheckRequest,
-        store: &dyn SyncStore,
+        store: Arc<dyn SyncStore>,
         cancel: &CancellationToken,
         events: &EventSender,
     ) -> Result<Self, CheckError> {
@@ -172,12 +176,32 @@ impl SyncSession {
         let name = request.repository_name.clone();
         let event_name = request.event_name.clone();
 
+        // 0. Connection options with the configured proxy.
+        let proxy = {
+            let store = Arc::clone(&store);
+            let name = name.clone();
+            blocking(move || {
+                let mut proxy = None;
+                store
+                    .update(&name, &mut |_, configuration| {
+                        proxy = Some(configuration.proxy.clone());
+                        StoreChanges::default()
+                    })
+                    .map(|()| proxy.unwrap_or_default())
+            })
+            .await
+            .ok_or(CheckError::Cancelled)?
+            .map_err(CheckError::Store)?
+        };
+        let transport_options =
+            transport_options(&request.protocol, &proxy).map_err(CheckError::Proxy)?;
+
         // 1. Metadata.
         let mut metadata = RemoteMetadata::default();
         check_repository(
             &name,
             &request.protocol,
-            &request.transport_options,
+            &transport_options,
             &mut metadata,
             &ctx,
             events,
@@ -191,35 +215,47 @@ impl SyncSession {
         ensure_not_cancelled(cancel)?;
 
         // 3. Repository update and options.
-        let mut options = None;
-        store
-            .update(&name, &mut |repository, configuration| {
-                let update = status::update_repository(repository, configuration, &metadata);
-                let before = repository.clone();
-                options = Some(SyncOptions::from_repository(
-                    repository,
-                    event_name.as_deref(),
-                ));
-                StoreChanges {
-                    repository: update.repository_changed || *repository != before,
-                    configuration: update.configuration_changed,
-                }
+        let options = {
+            let store = Arc::clone(&store);
+            let stored_name = name.clone();
+            let metadata = metadata.clone();
+            blocking(move || {
+                let mut options = None;
+                store
+                    .update(&stored_name, &mut |repository, configuration| {
+                        let update =
+                            status::update_repository(repository, configuration, &metadata);
+                        let before = repository.clone();
+                        options = Some(SyncOptions::from_repository(
+                            repository,
+                            event_name.as_deref(),
+                        ));
+                        StoreChanges {
+                            repository: update.repository_changed || *repository != before,
+                            configuration: update.configuration_changed,
+                        }
+                    })
+                    .map(|()| options)
             })
-            .map_err(CheckError::Store)?;
-        let options = options
+            .await
+            .ok_or(CheckError::Cancelled)?
+            .map_err(CheckError::Store)?
             .ok_or_else(|| CheckError::Store(StoreError::repository_not_found(&name)))?
-            .map_err(CheckError::Options)?;
+            .map_err(CheckError::Options)?
+        };
         ensure_not_cancelled(cancel)?;
 
-        // 4. Plan, with the SHA-1 cache.
-        let mut cache = store.read_sync_cache(&name);
+        // 4. Plan, with the SHA-1 cache, which is persisted afterwards.
         let planned = {
+            let store = Arc::clone(&store);
+            let name = name.clone();
             let metadata = metadata.clone();
             let options = options.clone();
             let addons = Arc::clone(&request.addons);
             let cancel = cancel.clone();
             let events = events.clone();
-            tokio::task::spawn_blocking(move || {
+            blocking(move || {
+                let mut cache = store.read_sync_cache(&name);
                 let tree = plan_repository(
                     &metadata,
                     &options,
@@ -227,25 +263,21 @@ impl SyncSession {
                     &mut cache,
                     &cancel,
                     &events,
-                );
-                (tree, cache)
+                )
+                .map_err(CheckError::Plan)?;
+                store
+                    .write_sync_cache(&name, &cache)
+                    .map_err(CheckError::Store)?;
+                Ok::<_, CheckError>(tree)
             })
             .await
-        };
-        let (planned, cache) = match planned {
-            Ok(planned) => planned,
-            Err(join) if join.is_panic() => std::panic::resume_unwind(join.into_panic()),
-            // The runtime is shutting down.
-            Err(_) => return Err(CheckError::Cancelled),
+            .ok_or(CheckError::Cancelled)?
         };
         let mut tree = match planned {
             Ok(tree) => tree,
-            Err(PlanError::Cancelled) => return Err(CheckError::Cancelled),
-            Err(err) => return Err(CheckError::Plan(err)),
+            Err(CheckError::Plan(PlanError::Cancelled)) => return Err(CheckError::Cancelled),
+            Err(err) => return Err(err),
         };
-        store
-            .write_sync_cache(&name, &cache)
-            .map_err(CheckError::Store)?;
         ensure_not_cancelled(cancel)?;
 
         // 5. Completion.
@@ -255,7 +287,7 @@ impl SyncSession {
         match determine_completion(
             &mut tree,
             &request.protocol,
-            &request.transport_options,
+            &transport_options,
             &server_info,
             &ctx,
             events,
@@ -271,6 +303,7 @@ impl SyncSession {
         let summary = PlanSummary::compute(&tree);
         Ok(Self {
             request,
+            transport_options,
             options,
             metadata,
             tree,
@@ -361,29 +394,17 @@ impl SyncSession {
         // Archives a previous run downloaded but did not uncompress. A zsync-patched leaf is
         // never replaced by a stale archive.
         // Mirrors service/ConnectionService.java:497-511
-        for task in downloaded_compressed(&self.summary.download_tasks) {
-            let DownloadTaskKind::File {
-                size,
-                ref sha1,
-                complete,
-                ..
-            } = task.kind
-            else {
-                continue;
-            };
-            let target = task.local_path();
-            let mut zip_path = target.as_os_str().to_owned();
-            zip_path.push(ZIP_EXTENSION);
-            let zip_path = std::path::PathBuf::from(zip_path);
-            if complete == 0.0 && zip_path.is_file() {
-                pool.submit(DownloadedZip {
-                    relative_path: task.relative_path.clone(),
-                    zip_path,
-                    target_path: target,
-                    sha1: sha1.clone(),
-                    size,
-                });
-            }
+        let leftovers = leftover_archives(&self.summary.download_tasks);
+        let leftovers = blocking(move || {
+            leftovers
+                .into_iter()
+                .filter(|zip| zip.zip_path.is_file())
+                .collect::<Vec<_>>()
+        })
+        .await
+        .unwrap_or_default();
+        for zip in leftovers {
+            pool.submit(zip);
         }
 
         // Mirrors service/synchronization/FilesSynchronizationProcessor.java:186
@@ -394,32 +415,39 @@ impl SyncSession {
             let hidden = self.options.hidden_folder_paths.clone();
             let cancel = cancel.clone();
             let events = events.clone();
-            match tokio::task::spawn_blocking(move || {
+            blocking(move || {
                 delete_extra_files(&tasks, &roots, &protected, &hidden, &cancel, &events)
             })
             .await
-            {
-                Ok(report) => report,
-                Err(join) if join.is_panic() => std::panic::resume_unwind(join.into_panic()),
-                Err(_) => CleanupReport::default(),
-            }
+            .unwrap_or_default()
         };
 
         let request = DownloadRequest::new(
             self.request.protocol.clone(),
-            self.request.transport_options.clone(),
+            self.transport_options.clone(),
             &self.options,
             self.metadata.server_info.as_deref(),
         );
         let sink: Arc<dyn ZipSink> = pool.clone();
-        let report = download::download(
-            &request,
-            &mut self.summary.download_tasks,
-            sink,
-            cancel,
-            events,
-        )
-        .await;
+        let report = {
+            let download = download::download(
+                &request,
+                &mut self.summary.download_tasks,
+                sink,
+                cancel,
+                events,
+            );
+            tokio::pin!(download);
+            // A cancel stops uncompressing at once, while the download winds down.
+            // Mirrors service/ConnectionService.java:551-556
+            tokio::select! {
+                report = &mut download => report,
+                () = cancel.cancelled() => {
+                    pool.cancel();
+                    download.await
+                }
+            }
+        };
         download::apply_statuses(&mut self.tree, &self.summary.download_tasks);
 
         // Mirrors service/synchronization/FilesSynchronizationProcessor.java:263-270,294-297
@@ -428,13 +456,42 @@ impl SyncSession {
             .max_active_connections
             .max(report.max_active_connections);
 
-        let (outcome, unzip) = if matches!(report.end, download::DownloadEnd::Completed) {
-            let unzip = pool.finish(events).await;
-            (report.outcome(unzip.errors.clone()), unzip)
+        // Uncompressing ends with the download, or is cancelled with it.
+        // Mirrors service/ConnectionService.java:551-556,
+        // ui/repository/workers/AddonsDownloader.java:312-336,413-415
+        let finished = if matches!(report.end, download::DownloadEnd::Completed) {
+            tokio::select! {
+                biased;
+                () = cancel.cancelled() => None,
+                summary = pool.finish(events) => Some(summary),
+            }
         } else {
-            // Mirrors ui/repository/workers/AddonsDownloader.java:312-336,413-415
+            None
+        };
+        let (unzip, unzip_cancelled) = if let Some(summary) = finished {
+            (summary, false)
+        } else {
+            // The next run may extract the same archives: wait for this pool to stop.
             pool.cancel();
-            (report.outcome(Vec::new()), UnzipSummary::default())
+            (pool.finish(&EventSender::noop()).await, true)
+        };
+        // A failed archive was deleted: its file is downloaded again by the next run.
+        for error in &unzip.errors {
+            let Some(path) = &error.relative_path else {
+                continue;
+            };
+            for task in &mut self.summary.download_tasks {
+                if task.relative_path == *path {
+                    task.status = DownloadStatus::Pending;
+                }
+            }
+        }
+        download::apply_statuses(&mut self.tree, &self.summary.download_tasks);
+
+        let outcome = if unzip_cancelled && matches!(report.end, download::DownloadEnd::Completed) {
+            Some(Outcome::Cancelled)
+        } else {
+            report.outcome(unzip.errors.clone())
         };
         match outcome {
             Some(outcome) => self.end_run(outcome, Some(report), unzip, cleanup, events),
@@ -484,13 +541,14 @@ impl SyncSession {
     }
 
     /// After a successful synchronization: the stored repository takes the server revision.
-    /// Returns `Ok`.
+    /// Returns `Ok`. Blocking (it writes the store).
     // Mirrors ui/repository/DownloadPanel.java:970-976
     pub fn mark_synced(&self, store: &dyn SyncStore) -> Result<RepositoryStatus, StoreError> {
         mark_synced(store, &self.request.repository_name, &self.metadata)
     }
 
     /// After a failed synchronization: the stored revision is reset to -1. Returns `Error`.
+    /// Blocking (it writes the store).
     // Mirrors ui/repository/DownloadPanel.java:978-984
     pub fn mark_failed(&self, store: &dyn SyncStore) -> Result<RepositoryStatus, StoreError> {
         mark_failed(store, &self.request.repository_name)
@@ -538,6 +596,46 @@ pub(super) fn mark_failed(
         }
     })?;
     Ok(status)
+}
+
+/// The archives of the `Done` compressed files, which a previous run may have left.
+fn leftover_archives(tasks: &[crate::DownloadTask]) -> Vec<DownloadedZip> {
+    downloaded_compressed(tasks)
+        .into_iter()
+        .filter_map(|task| {
+            let DownloadTaskKind::File {
+                size,
+                ref sha1,
+                complete,
+                ..
+            } = task.kind
+            else {
+                return None;
+            };
+            let target = task.local_path();
+            let mut zip_path = target.as_os_str().to_owned();
+            zip_path.push(ZIP_EXTENSION);
+            (complete == 0.0).then(|| DownloadedZip {
+                relative_path: task.relative_path.clone(),
+                zip_path: std::path::PathBuf::from(zip_path),
+                target_path: target,
+                sha1: sha1.clone(),
+                size,
+            })
+        })
+        .collect()
+}
+
+/// Runs blocking work (file system, store, user prompts) off the async threads. `None` when
+/// the runtime is shutting down.
+pub(super) async fn blocking<T: Send + 'static>(
+    work: impl FnOnce() -> T + Send + 'static,
+) -> Option<T> {
+    match tokio::task::spawn_blocking(work).await {
+        Ok(value) => Some(value),
+        Err(join) if join.is_panic() => std::panic::resume_unwind(join.into_panic()),
+        Err(_) => None,
+    }
 }
 
 fn remote_error(err: RemoteError) -> CheckError {

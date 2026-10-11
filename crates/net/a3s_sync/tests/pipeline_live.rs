@@ -27,10 +27,14 @@ async fn live_wog_two_small_files() {
     );
     let dest_dir = tempfile::tempdir().expect("tempdir");
     let dest = dest_dir.path();
-    let store = MemoryStore::new([repository(protocol.clone(), dest, false)]);
+    let store = std::sync::Arc::new(MemoryStore::new([repository(
+        protocol.clone(),
+        dest,
+        false,
+    )]));
     let mut session = SyncSession::check(
         check_request(protocol.clone()),
-        &store,
+        store.clone(),
         &CancellationToken::new(),
         &EventSender::noop(),
     )
@@ -83,7 +87,7 @@ async fn live_wog_two_small_files() {
     // A second check finds both files up to date.
     let session = SyncSession::check(
         check_request(protocol),
-        &store,
+        store.clone(),
         &CancellationToken::new(),
         &EventSender::noop(),
     )

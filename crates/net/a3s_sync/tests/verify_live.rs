@@ -4,7 +4,7 @@
 
 use a3s_foundation::error::ErrorKind;
 use a3s_sync::remote::import_autoconfig;
-use a3s_transport::{TransferCtx, TransportOptions};
+use a3s_transport::TransferCtx;
 use a3s_types::{Protocol, ProtocolType};
 
 fn wog(path: &str) -> Protocol {
@@ -22,7 +22,9 @@ fn wog(path: &str) -> Protocol {
 #[ignore = "network"]
 async fn verify_live_import_autoconfig_wog() {
     let protocol = wog("/Repo/WOG/.a3s");
-    let options = TransportOptions::from_protocol(&protocol);
+    let options =
+        a3s_transport::proxy::transport_options(&protocol, &a3s_types::local::Proxy::default())
+            .expect("no proxy");
     let ctx = TransferCtx::new();
     let auto_config = import_autoconfig(&protocol, &options, &ctx)
         .await

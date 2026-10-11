@@ -13,7 +13,7 @@ use a3s_sync::download::{
     download,
 };
 use a3s_sync::{DownloadStatus, DownloadTask, EventSender, Outcome, SyncEvent, SyncOptions};
-use a3s_transport::{CancellationToken, Throttle, TransportOptions};
+use a3s_transport::{CancellationToken, Throttle};
 use a3s_types::{Protocol, ProtocolType, ServerInfo};
 use a3s_zsync::{ControlFile, Plan};
 use download_support::{
@@ -702,7 +702,9 @@ async fn v_k_bounded_by_server_connections() {
         ..Default::default()
     };
     let protocol = server.protocol();
-    let topts = TransportOptions::from_protocol(&protocol);
+    let topts =
+        a3s_transport::proxy::transport_options(&protocol, &a3s_types::local::Proxy::default())
+            .expect("no proxy");
     let mut req = DownloadRequest::new(protocol, topts, &options, Some(&info));
     req.disk_usage_path = None;
     assert_eq!(req.connections, 2);

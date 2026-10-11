@@ -126,8 +126,10 @@ Wire compatibility is the requirement; these differences are deliberate.
   cache only once its `.zip`/`.zsync` is regenerated or deleted, so the next build never reuses
   stale ones.
 * **Sync safety:** the plan rejects remote names that are empty, `.`, `..`, absolute, contain a
-  separator, end with `.` or a space, or are Windows device names (`CON`, `NUL`, `COM1`, ...), and
-  every write and delete stays inside the destination. An extra local symbolic link is never
+  separator, end with `.` or a space, or are Windows device names (`CON`, `NUL`, `COM1`, ...).
+  Downloads and deletions stay inside the destination or an addon folder that auto-discovery found
+  for the repository's addon of the same name; the `userconfig` copy writes only below
+  `<Arma 3 folder>/<userconfig folder name>`. An extra local symbolic link is never
   followed (it is one file node); deletions remove the link, never its target (a Windows directory
   link or junction with `remove_dir`), and are checked again against the destination and the
   auto-discovered addon folders before anything is removed. Downloads, and the extra-file scan of a
@@ -141,8 +143,11 @@ Wire compatibility is the requirement; these differences are deliberate.
   failed synchronization persists the revision -1 at once (Java only in memory); a cancelled one
   leaves the revision alone (Java re-checks and takes the server revision); the headless
   synchronization updates the revision for the command line too. A silent `userconfig` copy with a
-  missing source does nothing, and copies skip symbolic links. Error reports list messages, never
-  stack traces. `ConnectionLost` is the last event of a download run.
+  missing source does nothing; the copy skips symbolic links in the source and never writes
+  through a symbolic link in the Arma 3 folder (Java follows both). Pausing or cancelling also
+  stops uncompressing, and a run returns only once its extractions stopped; an archive that fails
+  to uncompress is downloaded again by the next run. Error reports list messages, never stack
+  traces. `ConnectionLost` is the last event of a download run.
 * **Autoconfig export and import** (`export.a3s.autoconfig`): an export that Java's own reader
   would reject (a profile tree nested deeper than about 47 groups, or over the reference or size
   limits) is refused instead of written. On import, a profile or repository element that is

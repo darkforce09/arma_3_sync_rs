@@ -103,11 +103,16 @@ fn stored_report_by_outcome() {
         },
     ] {
         let report = report_for(&input, &outcome).expect("error report");
-        assert!(
-            errors.iter().all(|e| report.contains(&e.message)),
-            "{report}"
-        );
-        assert!(report.len() < success.len() + 50, "no statistics block");
+        // The success report's header, a blank line, the headline, then one entry per error
+        // and nothing else: no statistics block.
+        let header: Vec<&str> = success.lines().take(5).collect();
+        let lines: Vec<&str> = report.lines().collect();
+        assert_eq!(lines[..5], header[..]);
+        let error_lines: usize = errors.iter().map(|e| e.message.lines().count()).sum();
+        assert_eq!(lines.len(), 6 + error_lines, "{report}");
+        let entries: Vec<&str> = report.split("\n- ").skip(1).collect();
+        let messages: Vec<&str> = errors.iter().map(|e| e.message.as_str()).collect();
+        assert_eq!(entries, messages);
     }
     let failed = Outcome::Failed {
         error: errors[1].clone(),

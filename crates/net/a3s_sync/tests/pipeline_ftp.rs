@@ -23,7 +23,7 @@ async fn java_built_compressed_repository_over_ftp() {
     let (events, rx) = EventSender::channel();
     let report = sync_repository(
         job(server.protocol()),
-        &store,
+        store.clone(),
         &CancellationToken::new(),
         &events,
     )
@@ -50,7 +50,7 @@ async fn java_built_compressed_repository_over_ftp() {
     // Nothing left to do.
     let mut session = SyncSession::check(
         check_request(server.protocol()),
-        &store,
+        store.clone(),
         &CancellationToken::new(),
         &EventSender::noop(),
     )

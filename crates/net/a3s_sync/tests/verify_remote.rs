@@ -19,7 +19,7 @@ use a3s_sync::{
     EventSender, PlanNode, PlanTree, RemoteError, RemoteMetadata, SyncEvent, SyncOptions,
     TransferProgress,
 };
-use a3s_transport::{TransferCtx, TransportOptions};
+use a3s_transport::TransferCtx;
 use a3s_types::constants::RepositoryStatus;
 use a3s_types::local::{Configuration, Repository};
 use a3s_types::{
@@ -628,7 +628,8 @@ async fn run_check(protocol: &Protocol, metadata: &mut RemoteMetadata) -> Result
     check_repository(
         "WOG",
         protocol,
-        &TransportOptions::from_protocol(protocol),
+        &a3s_transport::proxy::transport_options(protocol, &a3s_types::local::Proxy::default())
+            .expect("no proxy"),
         metadata,
         &TransferCtx::new(),
         &EventSender::noop(),
@@ -832,7 +833,8 @@ async fn verify_ftp_check_repository_fetches_fixtures_in_order() {
     check_repository(
         "WOG",
         &protocol,
-        &TransportOptions::from_protocol(&protocol),
+        &a3s_transport::proxy::transport_options(&protocol, &a3s_types::local::Proxy::default())
+            .expect("no proxy"),
         &mut metadata,
         &TransferCtx::new(),
         &events,
@@ -956,7 +958,11 @@ async fn verify_ftp_cancel_while_retr_stalls() {
         check_repository(
             "WOG",
             &protocol,
-            &TransportOptions::from_protocol(&protocol),
+            &a3s_transport::proxy::transport_options(
+                &protocol,
+                &a3s_types::local::Proxy::default(),
+            )
+            .expect("no proxy"),
             &mut metadata,
             &ctx,
             &EventSender::noop(),
@@ -976,7 +982,9 @@ async fn verify_ftp_import_autoconfig() {
     let stub = ftp_stub(Duration::ZERO, ftp_fixture_rule).await;
     let protocol = ftp(stub.port, "/repo/.a3s");
     let ctx = TransferCtx::new();
-    let options = TransportOptions::from_protocol(&protocol);
+    let options =
+        a3s_transport::proxy::transport_options(&protocol, &a3s_types::local::Proxy::default())
+            .expect("no proxy");
     let auto_config = import_autoconfig(&protocol, &options, &ctx)
         .await
         .expect("import");
@@ -1009,7 +1017,11 @@ async fn verify_check_repositories_ftp_bound_order_and_empty() {
             let protocol = ftp(stub.port, if i == 4 { "/missing" } else { "/repo" });
             CheckJob {
                 repository_name: format!("r{i}"),
-                options: TransportOptions::from_protocol(&protocol),
+                options: a3s_transport::proxy::transport_options(
+                    &protocol,
+                    &a3s_types::local::Proxy::default(),
+                )
+                .expect("no proxy"),
                 protocol,
                 metadata: m,
             }
@@ -1039,7 +1051,11 @@ async fn verify_check_repositories_cancel_stops_all_quickly() {
             let protocol = ftp(stub.port, "/repo");
             CheckJob {
                 repository_name: format!("r{i}"),
-                options: TransportOptions::from_protocol(&protocol),
+                options: a3s_transport::proxy::transport_options(
+                    &protocol,
+                    &a3s_types::local::Proxy::default(),
+                )
+                .expect("no proxy"),
                 protocol,
                 metadata: m,
             }

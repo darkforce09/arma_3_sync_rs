@@ -1,6 +1,7 @@
 //! Headless synchronization: check, select all, download, userconfig, check again.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 use a3s_foundation::error::UserFacing as _;
@@ -8,7 +9,9 @@ use a3s_foundation::format;
 use a3s_transport::CancellationToken;
 use a3s_types::constants::RepositoryStatus;
 
-use super::session::{CheckError, CheckRequest, RunEnd, RunReport, SyncSession, mark_failed};
+use super::session::{
+    CheckError, CheckRequest, RunEnd, RunReport, SyncSession, blocking, mark_failed, mark_synced,
+};
 use super::store::SyncStore;
 use super::userconfig::{UserconfigAction, UserconfigOutcome, UserconfigPolicy, copy_userconfig};
 use crate::events::{EventError, EventSender, Outcome, Phase, SyncEvent};
@@ -98,7 +101,7 @@ pub struct SyncRunReport {
 // console/CommandGeneral.java:234-329, ui/repository/DownloadPanel.java:1181-1269
 pub async fn sync_repository(
     job: SyncJob,
-    store: &dyn SyncStore,
+    store: Arc<dyn SyncStore>,
     cancel: &CancellationToken,
     events: &EventSender,
 ) -> SyncRunReport {
@@ -114,18 +117,19 @@ pub async fn sync_repository(
     };
 
     // 1. Check.
-    let mut session = match SyncSession::check(job.check.clone(), store, cancel, events).await {
-        Ok(session) => session,
-        Err(err) => {
-            let outcome = check_failed(&err);
-            if !matches!(err, CheckError::Cancelled) {
-                result.status = persist_failed(store, &name);
+    let mut session =
+        match SyncSession::check(job.check.clone(), Arc::clone(&store), cancel, events).await {
+            Ok(session) => session,
+            Err(err) => {
+                let outcome = check_failed(&err);
+                if !matches!(err, CheckError::Cancelled) {
+                    result.status = persist_failed(&store, &name).await;
+                }
+                events.emit(SyncEvent::Finished(outcome.clone()));
+                result.end = SyncEnd::Finished(outcome);
+                return result;
             }
-            events.emit(SyncEvent::Finished(outcome.clone()));
-            result.end = SyncEnd::Finished(outcome);
-            return result;
-        }
-    };
+        };
 
     // 2. Select everything.
     session.select_all();
@@ -163,7 +167,7 @@ pub async fn sync_repository(
                 events.emit(SyncEvent::Finished(Outcome::Cancelled));
                 result.end = SyncEnd::Finished(Outcome::Cancelled);
             } else {
-                result.status = persist_failed(store, &name);
+                result.status = persist_failed(&store, &name).await;
                 result.end = SyncEnd::ConnectionLost;
             }
             return result;
@@ -177,7 +181,7 @@ pub async fn sync_repository(
             return result;
         }
         other => {
-            result.status = persist_failed(store, &name);
+            result.status = persist_failed(&store, &name).await;
             result.end = SyncEnd::Finished(other);
             return result;
         }
@@ -188,15 +192,22 @@ pub async fn sync_repository(
 
     // 5. Second check, then the revision.
     // Mirrors ui/repository/workers/AddonsAutoUpdater.java:81-105
-    match SyncSession::check(job.check.clone(), store, cancel, events).await {
+    match SyncSession::check(job.check.clone(), Arc::clone(&store), cancel, events).await {
         Ok(second) => {
             result.remaining_downloads = Some(second.summary().download_tasks.len());
-            result.status = match second.mark_synced(store) {
-                Ok(status) => Some(status),
-                Err(err) => {
+            let metadata = second.metadata().clone();
+            let synced = {
+                let store = Arc::clone(&store);
+                let name = name.clone();
+                blocking(move || mark_synced(store.as_ref(), &name, &metadata)).await
+            };
+            result.status = match synced {
+                Some(Ok(status)) => Some(status),
+                Some(Err(err)) => {
                     tracing::warn!("Failed to save repository {name}: {err}");
                     None
                 }
+                None => None,
             };
             result.end = SyncEnd::Finished(Outcome::Success);
         }
@@ -206,7 +217,7 @@ pub async fn sync_repository(
         }
         Err(err) => {
             let outcome = check_failed(&err);
-            result.status = persist_failed(store, &name);
+            result.status = persist_failed(&store, &name).await;
             events.emit(SyncEvent::Finished(outcome.clone()));
             result.end = SyncEnd::Finished(outcome);
         }
@@ -229,17 +240,16 @@ async fn update_userconfig(
         UserconfigPolicy::Skip => return None,
         UserconfigPolicy::Silent => {}
         UserconfigPolicy::Ask(confirm) => {
-            if !confirm(&copy) {
+            // The callback may block on a dialog.
+            let confirm = Arc::clone(confirm);
+            let question = copy.clone();
+            if !blocking(move || confirm(&question)).await.unwrap_or(false) {
                 return Some(UserconfigOutcome::Declined);
             }
         }
     }
     events.emit(SyncEvent::Phase(Phase::UpdatingUserconfig));
-    match tokio::task::spawn_blocking(move || copy_userconfig(&copy)).await {
-        Ok(outcome) => Some(outcome),
-        Err(join) if join.is_panic() => std::panic::resume_unwind(join.into_panic()),
-        Err(_) => None,
-    }
+    blocking(move || copy_userconfig(&copy)).await
 }
 
 /// The outcome of a failed check.
@@ -253,8 +263,13 @@ fn check_failed(err: &CheckError) -> Outcome {
 }
 
 /// Persists the revision -1; logs and returns `None` if that fails.
-fn persist_failed(store: &dyn SyncStore, name: &str) -> Option<RepositoryStatus> {
-    match mark_failed(store, name) {
+async fn persist_failed(store: &Arc<dyn SyncStore>, name: &str) -> Option<RepositoryStatus> {
+    let failed = {
+        let store = Arc::clone(store);
+        let name = name.to_owned();
+        blocking(move || mark_failed(store.as_ref(), &name)).await?
+    };
+    match failed {
         Ok(status) => Some(status),
         Err(err) => {
             tracing::warn!("Failed to save repository {name}: {err}");

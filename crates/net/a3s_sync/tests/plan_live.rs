@@ -6,7 +6,7 @@ use a3s_sync::completion::determine_completion;
 use a3s_sync::plan::{NoAddons, plan_repository, select_all_except_root};
 use a3s_sync::remote::check_repository;
 use a3s_sync::{EventSender, PlanNode, PlanSummary, RemoteMetadata, SyncOptions};
-use a3s_transport::{TransferCtx, TransportOptions};
+use a3s_transport::TransferCtx;
 use a3s_types::{Protocol, ProtocolType};
 
 fn wog() -> Protocol {
@@ -24,7 +24,9 @@ fn wog() -> Protocol {
 #[ignore = "network"]
 async fn live_wog_plan_and_completion() {
     let protocol = wog();
-    let options = TransportOptions::from_protocol(&protocol);
+    let options =
+        a3s_transport::proxy::transport_options(&protocol, &a3s_types::local::Proxy::default())
+            .expect("no proxy");
     let ctx = TransferCtx::new();
     let mut metadata = RemoteMetadata::default();
     check_repository(

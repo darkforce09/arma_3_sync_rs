@@ -1,14 +1,15 @@
-//! Uncompressing downloaded archives: Java-built `.pbo.zip`/`.ebo.zip`, hostile archives, the
-//! background pool and whole-archive extraction.
+//! Uncompressing downloaded archives: Java-built `.pbo.zip`/`.ebo.zip`, hostile archives and
+//! the background pool.
 
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use a3s_foundation::error::{ErrorKind, UserFacing as _};
 use a3s_sync::download::{DownloadedZip, ZipSink as _};
-use a3s_sync::unzip::{ArchiveProblem, UnzipError, UnzipPool, extract_to_folder, unzip_file};
+use a3s_sync::unzip::{ArchiveProblem, UnzipError, UnzipPool, UnzipStats, unzip_file};
 use a3s_sync::{EventSender, Phase, SyncEvent};
 use zip::write::SimpleFileOptions;
 
@@ -308,8 +309,7 @@ async fn pool_extracts_reports_and_cancels() {
         sha1: None,
         size: 3,
     });
-    let (events, rx) = EventSender::channel();
-    let summary = pool.finish(&events).await;
+    let summary = pool.finish(&EventSender::noop()).await;
     assert!(pool.is_idle());
     assert_eq!(summary.extracted, 6);
     assert_eq!(summary.errors.len(), 1);
@@ -320,23 +320,6 @@ async fn pool_extracts_reports_and_cancels() {
     assert_eq!(summary.errors[0].kind, ErrorKind::InvalidData);
     for (target, content) in &targets {
         assert_eq!(std::fs::read(target).expect("target"), content.as_bytes());
-    }
-    let events: Vec<SyncEvent> = rx.try_iter().collect();
-    if !events.is_empty() {
-        // Work was still pending when `finish` started.
-        assert_eq!(events[0], SyncEvent::Phase(Phase::Uncompressing));
-        let percents: Vec<u8> = events[1..]
-            .iter()
-            .map(|e| match e {
-                SyncEvent::Progress {
-                    phase: Phase::Uncompressing,
-                    percent,
-                } => *percent,
-                other => panic!("{other:?}"),
-            })
-            .collect();
-        assert_eq!(percents.last(), Some(&100), "{percents:?}");
-        assert!(percents.windows(2).all(|w| w[0] < w[1]), "{percents:?}");
     }
 
     // Cancel during a large extraction (256 MiB of zeros, a few hundred KiB compressed).
@@ -381,53 +364,85 @@ async fn pool_extracts_reports_and_cancels() {
     assert!(pool.is_idle());
 }
 
-#[test]
-fn extract_to_folder_keeps_entries_inside() {
-    // Ported from FileAccessMethodsTest: an entry leaving the folder is refused.
-    let base = tempfile::tempdir().expect("tempdir");
-    let folder = base.path().join("out");
-    let zip = base.path().join("a.zip");
-    std::fs::write(&zip, archive(&[("../outside.txt", Some(b"x"))])).expect("zip");
-    assert!(extract_to_folder(&zip, &folder).is_err());
-    assert!(!base.path().join("outside.txt").exists());
+/// Archives handed to a recording extractor that takes 30 ms each.
+struct Recorder {
+    started: parking_lot::Mutex<Vec<String>>,
+    running: AtomicUsize,
+    max_running: AtomicUsize,
+}
 
-    // Ported from FileAccessMethodsTest: a normal entry is extracted.
-    std::fs::write(
-        &zip,
-        archive(&[
-            ("nested/", None),
-            ("nested/file.txt", Some(b"ok")),
-            ("d/", None),
-        ]),
-    )
-    .expect("zip");
-    extract_to_folder(&zip, &folder).expect("extract");
-    assert_eq!(
-        std::fs::read(folder.join("nested/file.txt")).expect("file"),
-        b"ok"
-    );
-    assert!(folder.join("d").is_dir());
-
-    for name in ["/etc/x", "C:\\x", "C:x", "a/../../x", "a\\..\\x", "a/../b"] {
-        std::fs::write(&zip, archive(&[(name, Some(b"x"))])).expect("zip");
-        assert!(extract_to_folder(&zip, &folder).is_err(), "{name}");
+impl Recorder {
+    fn pool(workers: usize) -> (Arc<Self>, Arc<UnzipPool>) {
+        let recorder = Arc::new(Self {
+            started: parking_lot::Mutex::new(Vec::new()),
+            running: AtomicUsize::new(0),
+            max_running: AtomicUsize::new(0),
+        });
+        let seen = Arc::clone(&recorder);
+        let pool = UnzipPool::with_extractor(
+            workers,
+            Arc::new(move |zip: &DownloadedZip, _cancel: &AtomicBool| {
+                seen.started.lock().push(zip.relative_path.clone());
+                let now = seen.running.fetch_add(1, Ordering::SeqCst) + 1;
+                seen.max_running.fetch_max(now, Ordering::SeqCst);
+                std::thread::sleep(Duration::from_millis(30));
+                seen.running.fetch_sub(1, Ordering::SeqCst);
+                Ok(UnzipStats { bytes: 1 })
+            }),
+        );
+        (recorder, pool)
     }
-    assert!(!base.path().join("x").exists());
-    assert!(!base.path().join("b").exists());
+}
 
-    let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
-    writer
-        .add_symlink("link", "/etc", SimpleFileOptions::default())
-        .expect("symlink");
-    std::fs::write(&zip, writer.finish().expect("finish").into_inner()).expect("zip");
-    assert!(extract_to_folder(&zip, &folder).is_err());
-    assert!(std::fs::symlink_metadata(folder.join("link")).is_err());
+fn submit_numbered(pool: &UnzipPool, count: usize) -> Vec<String> {
+    (0..count)
+        .map(|i| {
+            let relative_path = format!("@a/f{i}.pbo");
+            pool.submit(DownloadedZip {
+                relative_path: relative_path.clone(),
+                zip_path: PathBuf::from(format!("/nowhere/f{i}.pbo.zip")),
+                target_path: PathBuf::from(format!("/nowhere/f{i}.pbo")),
+                sha1: None,
+                size: 1,
+            });
+            relative_path
+        })
+        .collect()
+}
 
-    std::fs::write(&zip, archive(&[("", Some(b"x"))])).expect("zip");
-    assert!(extract_to_folder(&zip, &folder).is_err());
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn pool_limits_workers_and_starts_in_submission_order() {
+    // Two workers: never more than two extractions at once, and both are used.
+    let (recorder, pool) = Recorder::pool(2);
+    submit_numbered(&pool, 6);
+    let (events, rx) = EventSender::channel();
+    let summary = pool.finish(&events).await;
+    assert_eq!(summary.extracted, 6);
+    assert_eq!(recorder.max_running.load(Ordering::SeqCst), 2);
 
-    let file = base.path().join("file");
-    std::fs::write(&file, b"x").expect("file");
-    std::fs::write(&zip, archive(&[("a", Some(b"x"))])).expect("zip");
-    assert!(extract_to_folder(&zip, &file).is_err());
+    // Work was pending when `finish` started: the phase, then increasing percentages to 100.
+    let events: Vec<SyncEvent> = rx.try_iter().collect();
+    assert_eq!(
+        events.first(),
+        Some(&SyncEvent::Phase(Phase::Uncompressing))
+    );
+    let percents: Vec<u8> = events[1..]
+        .iter()
+        .map(|e| match e {
+            SyncEvent::Progress {
+                phase: Phase::Uncompressing,
+                percent,
+            } => *percent,
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    assert_eq!(percents.last(), Some(&100), "{percents:?}");
+    assert!(percents.windows(2).all(|w| w[0] < w[1]), "{percents:?}");
+
+    // One worker: archives start exactly in submission order.
+    let (recorder, pool) = Recorder::pool(1);
+    let submitted = submit_numbered(&pool, 5);
+    pool.finish(&EventSender::noop()).await;
+    assert_eq!(*recorder.started.lock(), submitted);
+    assert_eq!(recorder.max_running.load(Ordering::SeqCst), 1);
 }

@@ -237,7 +237,8 @@ pub struct CopyStats {
     /// Files copied.
     pub files: usize,
 
-    /// Symbolic links skipped.
+    /// Symbolic links skipped: in the source, or already in the target where a file or folder
+    /// would be written.
     pub skipped_links: usize,
 }
 
@@ -245,7 +246,8 @@ pub struct CopyStats {
 ///
 /// Missing folders are created one level at a time (`create_dir`), existing files are
 /// overwritten, extra files in `target` are kept and modification times are not preserved.
-/// Symbolic links in `source` are skipped (Java follows them). Stops at the first error.
+/// Symbolic links are never followed: a link in `source` is not copied, and a link in `target`
+/// is never written through (Java follows both). Stops at the first error.
 // Mirrors dao/FileAccessMethods.java:26-45
 pub fn copy_directory(source: &Path, target: &Path) -> io::Result<CopyStats> {
     let mut stats = CopyStats::default();
@@ -258,8 +260,20 @@ fn copy_recursive(source: &Path, target: &Path, stats: &mut CopyStats) -> io::Re
     if file_type.is_symlink() {
         tracing::warn!("Not copying the symbolic link {}", source.display());
         stats.skipped_links += 1;
-    } else if file_type.is_dir() {
-        if !target.exists() {
+        return Ok(());
+    }
+    let existing = match std::fs::symlink_metadata(target) {
+        Ok(metadata) => Some(metadata.file_type()),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => None,
+        Err(err) => return Err(err),
+    };
+    if existing.is_some_and(|t| t.is_symlink()) {
+        tracing::warn!("Not writing through the symbolic link {}", target.display());
+        stats.skipped_links += 1;
+        return Ok(());
+    }
+    if file_type.is_dir() {
+        if existing.is_none() {
             std::fs::create_dir(target)?;
         }
         for entry in std::fs::read_dir(source)? {

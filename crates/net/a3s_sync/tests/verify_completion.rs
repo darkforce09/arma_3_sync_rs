@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use a3s_sync::completion::{completion_percent, determine_completion, local_completion};
 use a3s_sync::plan::{NoAddons, assign_destinations};
 use a3s_sync::{CompletionError, EventSender, Phase, PlanNode, PlanTree, SyncEvent};
-use a3s_transport::{TransferCtx, TransportOptions};
+use a3s_transport::TransferCtx;
 use a3s_types::{
     Protocol, ProtocolType, ServerInfo, SyncTreeDirectory, SyncTreeLeaf, SyncTreeNode,
 };
@@ -266,7 +266,8 @@ async fn verify_determine_completion_real_zsync_matches_oracle() {
     let stats = determine_completion(
         &mut tree,
         &p,
-        &TransportOptions::from_protocol(&p),
+        &a3s_transport::proxy::transport_options(&p, &a3s_types::local::Proxy::default())
+            .expect("no proxy"),
         &info(3),
         &TransferCtx::new(),
         &sender,
@@ -321,7 +322,8 @@ async fn verify_lifo_order_and_stop_after_first_error() {
     determine_completion(
         &mut tree,
         &p,
-        &TransportOptions::from_protocol(&p),
+        &a3s_transport::proxy::transport_options(&p, &a3s_types::local::Proxy::default())
+            .expect("no proxy"),
         &info(1),
         &TransferCtx::new(),
         &EventSender::noop(),
@@ -351,7 +353,8 @@ async fn verify_lifo_order_and_stop_after_first_error() {
     let err = determine_completion(
         &mut tree,
         &p,
-        &TransportOptions::from_protocol(&p),
+        &a3s_transport::proxy::transport_options(&p, &a3s_types::local::Proxy::default())
+            .expect("no proxy"),
         &info(1),
         &TransferCtx::new(),
         &EventSender::noop(),
@@ -402,7 +405,8 @@ async fn verify_cancel_during_matching_large_file() {
     let result = determine_completion(
         &mut tree,
         &p,
-        &TransportOptions::from_protocol(&p),
+        &a3s_transport::proxy::transport_options(&p, &a3s_types::local::Proxy::default())
+            .expect("no proxy"),
         &info(1),
         &ctx,
         &EventSender::noop(),
@@ -436,7 +440,8 @@ async fn verify_local_directory_is_a_read_error() {
     let result = determine_completion(
         &mut tree,
         &p,
-        &TransportOptions::from_protocol(&p),
+        &a3s_transport::proxy::transport_options(&p, &a3s_types::local::Proxy::default())
+            .expect("no proxy"),
         &info(1),
         &TransferCtx::new(),
         &EventSender::noop(),

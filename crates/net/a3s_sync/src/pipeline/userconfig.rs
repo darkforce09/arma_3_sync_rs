@@ -127,18 +127,25 @@ pub fn plan_userconfig_copy(
 ///
 /// A missing source does nothing (Java in silent mode still creates an empty target). The
 /// target folder is created one level deep; existing files are overwritten and extra files
-/// kept.
+/// kept. Symbolic links in the target are never written through.
 // Mirrors ui/repository/workers/UserconfigUpdater.java:80-118
 pub fn copy_userconfig(copy: &UserconfigCopy) -> UserconfigOutcome {
+    let target_type = || std::fs::symlink_metadata(&copy.target).map(|m| m.file_type());
     let outcome = if !copy.source.exists() {
         UserconfigOutcome::SourceMissing(format!("File not found:{}", copy.source.display()))
+    } else if target_type().is_ok_and(|t| t.is_symlink()) {
+        // Never write through a link the user placed in the Arma 3 folder.
+        UserconfigOutcome::CopyFailed(format!(
+            "Not copying into the symbolic link {}",
+            copy.target.display()
+        ))
     } else {
-        if !copy.target.exists()
+        if target_type().is_err()
             && let Err(err) = std::fs::create_dir(&copy.target)
         {
             tracing::debug!("Creating {}: {err}", copy.target.display());
         }
-        if copy.target.is_dir() {
+        if target_type().is_ok_and(|t| t.is_dir()) {
             match copy_directory(&copy.source, &copy.target) {
                 Ok(_) => UserconfigOutcome::Copied(
                     "Userconfig folder have been updated into ArmA 3 installation directory."

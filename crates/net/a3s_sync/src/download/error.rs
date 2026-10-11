@@ -364,7 +364,9 @@ mod tests {
             "",
             false,
         );
-        let options = a3s_transport::TransportOptions::from_protocol(&protocol);
+        let options =
+            a3s_transport::proxy::transport_options(&protocol, &a3s_types::local::Proxy::default())
+                .expect("no proxy");
         let mut transport = a3s_transport::Transport::connect(&protocol, &options)
             .await
             .expect("HTTP connect does no I/O");

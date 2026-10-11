@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use a3s_sync::download::{DownloadRequest, DownloadedZip};
 use a3s_sync::{DownloadStatus, DownloadTask, DownloadTaskKind, SyncEvent};
-use a3s_transport::{Throttle, TransportOptions};
+use a3s_transport::Throttle;
 use a3s_types::{Protocol, ProtocolType};
 use axum::body::{Body, Bytes};
 use axum::extract::{Request, State};
@@ -451,7 +451,9 @@ pub fn random_bytes(len: usize, seed: u64) -> Vec<u8> {
 
 /// A request with `connections` workers, no speed limit and no disk-usage sampling.
 pub fn request(protocol: Protocol, connections: u32) -> DownloadRequest {
-    let mut transport_options = TransportOptions::from_protocol(&protocol);
+    let mut transport_options =
+        a3s_transport::proxy::transport_options(&protocol, &a3s_types::local::Proxy::default())
+            .expect("no proxy");
     transport_options.allow_insecure_tls = false;
     DownloadRequest {
         repository_name: "test".to_owned(),

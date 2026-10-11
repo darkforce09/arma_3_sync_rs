@@ -26,17 +26,17 @@ use pipeline_support::{
 };
 
 /// Runs `sync_repository` and returns its report and events.
-async fn sync(job: SyncJob, store: &MemoryStore) -> (a3s_sync::SyncRunReport, Vec<SyncEvent>) {
+async fn sync(job: SyncJob, store: &Arc<MemoryStore>) -> (a3s_sync::SyncRunReport, Vec<SyncEvent>) {
     let (events, rx) = EventSender::channel();
-    let report = sync_repository(job, store, &CancellationToken::new(), &events).await;
+    let report = sync_repository(job, store.clone(), &CancellationToken::new(), &events).await;
     (report, drain(&rx))
 }
 
 /// A checked session of the test repository with everything selected.
-async fn checked_session(server: &HttpServer, store: &MemoryStore) -> SyncSession {
+async fn checked_session(server: &HttpServer, store: &Arc<MemoryStore>) -> SyncSession {
     let mut session = SyncSession::check(
         check_request(server.protocol()),
-        store,
+        store.clone(),
         &CancellationToken::new(),
         &EventSender::noop(),
     )
@@ -307,7 +307,7 @@ async fn paused_session_resumes() {
     let store = store(repository(server.protocol(), dest, true));
     let mut session = SyncSession::check(
         check_request(server.protocol()),
-        &store,
+        store.clone(),
         &CancellationToken::new(),
         &EventSender::noop(),
     )
@@ -385,7 +385,7 @@ async fn leftover_archive_is_uncompressed_without_a_request() {
     let store = store(repository(server.protocol(), dest, true));
     let mut session = SyncSession::check(
         check_request(server.protocol()),
-        &store,
+        store.clone(),
         &CancellationToken::new(),
         &EventSender::noop(),
     )
@@ -484,7 +484,7 @@ async fn errors_mark_the_repository_failed() {
     let store = self::store(repository(server.protocol(), &dest, true));
     let mut session = SyncSession::check(
         check_request(server.protocol()),
-        &store,
+        store.clone(),
         &CancellationToken::new(),
         &EventSender::noop(),
     )
@@ -541,7 +541,7 @@ async fn connection_lost_without_and_with_reconnect() {
         max_attempts: 1,
         delay: Duration::from_millis(100),
     };
-    let report = sync_repository(job, &store, &CancellationToken::new(), &events).await;
+    let report = sync_repository(job, store.clone(), &CancellationToken::new(), &events).await;
     let events = drain(&rx);
     assert_eq!(
         report.end,
@@ -628,8 +628,7 @@ fn futures_and_pool_are_send() {
     let pool: Arc<dyn a3s_sync::download::ZipSink> = a3s_sync::UnzipPool::with_workers(1);
     drop(pool);
 
-    let store = MemoryStore::default();
-    let store: &dyn SyncStore = &store;
+    let store: Arc<dyn SyncStore> = Arc::new(MemoryStore::default());
     let protocol = a3s_types::Protocol::new(
         a3s_types::ProtocolType::Http,
         "127.0.0.1/repo",
@@ -640,7 +639,12 @@ fn futures_and_pool_are_send() {
     );
     let cancel = CancellationToken::new();
     let events = EventSender::noop();
-    let check = SyncSession::check(check_request(protocol.clone()), store, &cancel, &events);
+    let check = SyncSession::check(
+        check_request(protocol.clone()),
+        store.clone(),
+        &cancel,
+        &events,
+    );
     assert_send(&check);
     let synced = sync_repository(job(protocol), store, &cancel, &events);
     assert_send(&synced);
@@ -652,4 +656,181 @@ fn download_is_send(session: &mut SyncSession, cancel: &CancellationToken, event
     fn assert_send<T: Send>(_: &T) {}
     assert_send(session);
     assert_send(&session.download(cancel, events));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn cancel_while_uncompressing_then_resume_at_once() {
+    let server = HttpServer::start().await;
+    // 128 MiB of zeros: a small archive that takes a while to extract.
+    let big = vec![0u8; 128 * 1024 * 1024];
+    write_repository(
+        &server.root,
+        &[RepoFile {
+            path: "@a/addons/big.pbo",
+            content: &big,
+            compressed: true,
+        }],
+        5,
+    );
+    let leaf_sha1 = sha1(&server.root.join("@a/addons/big.pbo"));
+    drop(big);
+    let dest_dir = tempfile::tempdir().expect("tempdir");
+    let dest = dest_dir.path();
+    let store = store(repository(server.protocol(), dest, true));
+    let mut session = checked_session(&server, &store).await;
+
+    // Cancel as soon as the archive is downloaded: its extraction has just started.
+    let cancel = CancellationToken::new();
+    let pause = cancel.clone();
+    let cancelled_at = Arc::new(parking_lot::Mutex::new(None));
+    let stamp = Arc::clone(&cancelled_at);
+    let events = EventSender::from_fn(move |event| {
+        if matches!(&event, SyncEvent::FileDone { relative_path } if relative_path.ends_with("big.pbo"))
+        {
+            *stamp.lock() = Some(std::time::Instant::now());
+            pause.cancel();
+        }
+    });
+    let run = session.download(&cancel, &events).await;
+    let returned = std::time::Instant::now();
+    assert_eq!(run.end, RunEnd::Finished(Outcome::Cancelled), "{run:?}");
+    let cancelled_at = cancelled_at.lock().expect("file done");
+    assert!(returned.duration_since(cancelled_at) < Duration::from_secs(1));
+    assert!(
+        dest.join("@a/addons/big.pbo.zip").exists(),
+        "the interrupted archive is kept"
+    );
+    assert!(!dest.join("@a/addons/big.pbo.part").exists());
+
+    // Resume immediately: the kept archive is extracted, not downloaded again.
+    server.clear_seen();
+    let run = session
+        .download(&CancellationToken::new(), &EventSender::noop())
+        .await;
+    assert_eq!(run.end, RunEnd::Finished(Outcome::Success), "{run:?}");
+    assert_eq!(run.unzip.extracted, 1);
+    assert!(server.seen().is_empty(), "{:?}", server.seen());
+    assert_eq!(sha1(&dest.join("@a/addons/big.pbo")), leaf_sha1);
+    assert!(!dest.join("@a/addons/big.pbo.zip").exists());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn failed_archive_is_downloaded_again_by_the_next_run() {
+    let server = HttpServer::start().await;
+    let packed = random_bytes(30_000, 31);
+    write_repository(
+        &server.root,
+        &[RepoFile {
+            path: "@a/addons/packed.pbo",
+            content: &packed,
+            compressed: true,
+        }],
+        2,
+    );
+    let zip_path = server.root.join("@a/addons/packed.pbo.zip");
+    let good = std::fs::read(&zip_path).expect("zip");
+    server.put("@a/addons/packed.pbo.zip", &vec![0x42; good.len()]);
+    let dest_dir = tempfile::tempdir().expect("tempdir");
+    let dest = dest_dir.path();
+    let store = store(repository(server.protocol(), dest, true));
+    let mut session = checked_session(&server, &store).await;
+
+    let run = session
+        .download(&CancellationToken::new(), &EventSender::noop())
+        .await;
+    assert!(
+        matches!(&run.end, RunEnd::Finished(Outcome::CompletedWithErrors { errors }) if errors.len() == 1),
+        "{run:?}"
+    );
+    assert_eq!(run.unzip.errors.len(), 1);
+    let packed_task = session
+        .summary()
+        .download_tasks
+        .iter()
+        .find(|t| t.relative_path == "@a/addons/packed.pbo")
+        .expect("task");
+    assert_eq!(packed_task.status, DownloadStatus::Pending);
+
+    server.put("@a/addons/packed.pbo.zip", &good);
+    server.clear_seen();
+    let run = session
+        .download(&CancellationToken::new(), &EventSender::noop())
+        .await;
+    assert_eq!(run.end, RunEnd::Finished(Outcome::Success), "{run:?}");
+    assert!(
+        server
+            .paths()
+            .iter()
+            .any(|p| p == "@a/addons/packed.pbo.zip")
+    );
+    assert_eq!(
+        std::fs::read(dest.join("@a/addons/packed.pbo")).expect("file"),
+        packed
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn synchronization_goes_through_the_configured_proxy() {
+    // The repository host does not resolve: only the proxy (the local server, which answers
+    // absolute-form requests) can serve it.
+    let server = HttpServer::start().await;
+    write_repository(
+        &server.root,
+        &[RepoFile {
+            path: "@a/addons/a.pbo",
+            content: b"through the proxy",
+            compressed: false,
+        }],
+        4,
+    );
+    let protocol = a3s_types::Protocol::new(
+        a3s_types::ProtocolType::Http,
+        "a3s-proxy-test.invalid/repo",
+        "80",
+        "anonymous",
+        "",
+        false,
+    );
+    let dest_dir = tempfile::tempdir().expect("tempdir");
+    let dest = dest_dir.path();
+    let store = store(repository(protocol.clone(), dest, true));
+    let mut configuration = store.configuration();
+    configuration.proxy = a3s_types::local::Proxy {
+        enable_proxy: true,
+        proxy_protocol: Some(a3s_types::Protocol::new(
+            a3s_types::ProtocolType::Http,
+            "127.0.0.1",
+            server.port.to_string(),
+            "anonymous",
+            "",
+            false,
+        )),
+    };
+    store.set_configuration(configuration.clone());
+
+    let (report, _) = sync(job(protocol.clone()), &store).await;
+    assert_eq!(
+        report.end,
+        SyncEnd::Finished(Outcome::Success),
+        "{report:?}"
+    );
+    assert_eq!(
+        std::fs::read(dest.join("@a/addons/a.pbo")).expect("file"),
+        b"through the proxy"
+    );
+    assert!(server.paths().iter().any(|p| p == "@a/addons/a.pbo"));
+
+    // An unusable proxy fails the check before any connection.
+    if let Some(proxy) = configuration.proxy.proxy_protocol.as_mut() {
+        proxy.port = "0".to_owned();
+    }
+    store.set_configuration(configuration);
+    let checked = SyncSession::check(
+        check_request(protocol),
+        store.clone(),
+        &CancellationToken::new(),
+        &EventSender::noop(),
+    )
+    .await;
+    assert!(matches!(checked, Err(a3s_sync::CheckError::Proxy(_))));
 }

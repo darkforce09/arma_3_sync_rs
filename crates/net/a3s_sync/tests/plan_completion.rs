@@ -15,7 +15,7 @@ use a3s_sync::plan::{NoAddons, assign_destinations};
 use a3s_sync::{
     CompletionError, CompletionStats, EventSender, Phase, PlanNode, PlanTree, SyncEvent,
 };
-use a3s_transport::{TransferCtx, TransportOptions};
+use a3s_transport::TransferCtx;
 use a3s_types::{
     Protocol, ProtocolType, ServerInfo, SyncTreeDirectory, SyncTreeLeaf, SyncTreeNode,
 };
@@ -232,7 +232,8 @@ async fn run(
     determine_completion(
         tree,
         protocol,
-        &TransportOptions::from_protocol(protocol),
+        &a3s_transport::proxy::transport_options(protocol, &a3s_types::local::Proxy::default())
+            .expect("no proxy"),
         info,
         &TransferCtx::new(),
         events,
@@ -513,7 +514,8 @@ async fn completion_cancel_stalled() {
     let err = determine_completion(
         &mut tree,
         &protocol,
-        &TransportOptions::from_protocol(&protocol),
+        &a3s_transport::proxy::transport_options(&protocol, &a3s_types::local::Proxy::default())
+            .expect("no proxy"),
         &server_info(1),
         &ctx,
         &EventSender::noop(),
@@ -575,7 +577,9 @@ fn completion_future_and_errors_are_send() {
         "",
         false,
     );
-    let options = TransportOptions::from_protocol(&protocol);
+    let options =
+        a3s_transport::proxy::transport_options(&protocol, &a3s_types::local::Proxy::default())
+            .expect("no proxy");
     let info = ServerInfo::default();
     let ctx = TransferCtx::new();
     let events = EventSender::noop();

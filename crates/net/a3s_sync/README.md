@@ -7,8 +7,9 @@ write the download report.
 
 Use `SyncSession` to check a repository, change the selection and run downloads (a paused run
 resumes on the next call), or `sync_repository` for an unattended synchronization (automatic
-updates, command line). Client data is read and written only through the caller's `SyncStore`;
-`MemoryStore` serves tests and dry runs.
+updates, command line). Client data (repository, configuration with the proxy, SHA-1 cache) is
+read and written only through the caller's `SyncStore`; `MemoryStore` serves tests and dry
+runs. Every connection uses the configured proxy (`a3s_transport::proxy`).
 
 Boundaries: depends on the store crates and `a3s_transport`; no UI and no client-data files.
 Live tests against the public WOG repository are `#[ignore]`d and read only metadata and small

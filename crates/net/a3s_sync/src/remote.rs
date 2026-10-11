@@ -546,7 +546,11 @@ mod tests {
             // HTTP and WebDAV transports connect lazily: no network needed.
             let protocol =
                 Protocol::new(protocol_type, "127.0.0.1/repo", "80", "anonymous", "", true);
-            let options = TransportOptions::from_protocol(&protocol);
+            let options = a3s_transport::proxy::transport_options(
+                &protocol,
+                &a3s_types::local::Proxy::default(),
+            )
+            .expect("no proxy");
             let transport = Transport::connect(&protocol, &options)
                 .await
                 .expect("lazy transport");

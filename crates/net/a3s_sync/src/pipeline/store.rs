@@ -106,6 +106,11 @@ impl MemoryStore {
         self.state.lock().repositories.get(name).cloned()
     }
 
+    /// Replaces the configuration.
+    pub fn set_configuration(&self, configuration: Configuration) {
+        self.state.lock().configuration = configuration;
+    }
+
     /// A copy of the configuration.
     pub fn configuration(&self) -> Configuration {
         self.state.lock().configuration.clone()

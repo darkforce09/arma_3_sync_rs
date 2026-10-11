@@ -1,6 +1,5 @@
 //! Uncompressing downloaded `.zip` files: [`unzip_file`] for one file, [`UnzipPool`] to run
-//! them in the background while the download goes on, and [`extract_to_folder`] for whole
-//! archives.
+//! them in the background while the download goes on.
 //!
 //! A compressed leaf `<name>` is published as `<name>.zip` with one DEFLATE entry. Only the bytes
 //! of the first entry are used, written to `<name>` (the entry name is ignored, as in Java), so an
@@ -11,12 +10,13 @@
 use std::collections::VecDeque;
 use std::fs::File;
 use std::io::{self, BufReader, Read as _, Write as _};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use a3s_foundation::error::{ErrorKind, UserFacing};
-use parking_lot::Mutex;
+use parking_lot::{Condvar, Mutex};
 use sha1::{Digest as _, Sha1};
 
 use crate::download::{DownloadedZip, ZIP_EXTENSION, ZipSink};
@@ -199,6 +199,11 @@ pub fn unzip_file(zip: &DownloadedZip, cancel: &AtomicBool) -> Result<UnzipStats
         });
     }
 
+    // Another extraction of the same target (a cancelled run still winding down) shares the
+    // `.part` file: wait for it to end.
+    let Some(_claim) = TargetClaim::acquire(&zip.target_path, cancel) else {
+        return Err(UnzipError::Cancelled);
+    };
     let part = append_to_name(&zip.target_path, PART_EXTENSION);
     let result = extract_first_entry(zip, &part, cancel);
     match result {
@@ -221,6 +226,35 @@ pub fn unzip_file(zip: &DownloadedZip, cancel: &AtomicBool) -> Result<UnzipStats
             tracing::warn!("{error}");
             Err(error)
         }
+    }
+}
+
+/// Targets being extracted in this process.
+static EXTRACTING: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
+static EXTRACTION_ENDED: Condvar = Condvar::new();
+
+/// Exclusive use of a target (and its `.part`) by one extraction, released on drop.
+struct TargetClaim(PathBuf);
+
+impl TargetClaim {
+    /// Waits until no other extraction uses `target`; `None` if `cancel` is set meanwhile.
+    fn acquire(target: &Path, cancel: &AtomicBool) -> Option<Self> {
+        let mut extracting = EXTRACTING.lock();
+        while extracting.iter().any(|t| t == target) {
+            if cancel.load(Ordering::Relaxed) {
+                return None;
+            }
+            EXTRACTION_ENDED.wait_for(&mut extracting, Duration::from_millis(50));
+        }
+        extracting.push(target.to_path_buf());
+        Some(Self(target.to_path_buf()))
+    }
+}
+
+impl Drop for TargetClaim {
+    fn drop(&mut self) {
+        EXTRACTING.lock().retain(|t| *t != self.0);
+        EXTRACTION_ENDED.notify_all();
     }
 }
 
@@ -316,6 +350,9 @@ fn extract_first_entry(
             }));
         }
     }
+    if cancel.load(Ordering::Relaxed) {
+        return Err(Failure::Cancelled);
+    }
     out.sync_all().map_err(Failure::Io)?;
     drop(out);
     if cancel.load(Ordering::Relaxed) {
@@ -366,8 +403,14 @@ pub struct UnzipPool {
     inner: Arc<PoolInner>,
 }
 
+/// Extracts one archive; [`unzip_file`] unless a pool is built with
+/// [`UnzipPool::with_extractor`].
+pub type Extractor =
+    Arc<dyn Fn(&DownloadedZip, &AtomicBool) -> Result<UnzipStats, UnzipError> + Send + Sync>;
+
 struct PoolInner {
     workers: usize,
+    extract: Extractor,
     state: Mutex<PoolState>,
     /// Signalled whenever an extraction ends.
     changed: tokio::sync::Notify,
@@ -402,9 +445,15 @@ impl UnzipPool {
 
     /// A pool with at most `workers` (at least 1) concurrent extractions.
     pub fn with_workers(workers: usize) -> Arc<Self> {
+        Self::with_extractor(workers, Arc::new(unzip_file))
+    }
+
+    /// A pool running `extract` for each archive, at most `workers` (at least 1) at a time.
+    pub fn with_extractor(workers: usize, extract: Extractor) -> Arc<Self> {
         Arc::new(Self {
             inner: Arc::new(PoolInner {
                 workers: workers.max(1),
+                extract,
                 state: Mutex::new(PoolState::default()),
                 changed: tokio::sync::Notify::new(),
             }),
@@ -545,7 +594,7 @@ fn worker(inner: &PoolInner) {
             state.running.push(Arc::clone(&flag));
             (zip, flag)
         };
-        let result = unzip_file(&zip, &flag);
+        let result = (inner.extract)(&zip, &flag);
         let mut state = inner.state.lock();
         state.running.retain(|f| !Arc::ptr_eq(f, &flag));
         state.ended += 1;
@@ -557,140 +606,4 @@ fn worker(inner: &PoolInner) {
         drop(state);
         inner.changed.notify_one();
     }
-}
-
-/// Extracting a whole archive failed.
-#[derive(Debug, thiserror::Error)]
-#[error("{message}")]
-pub struct ExtractError {
-    /// What failed.
-    pub message: String,
-
-    /// The I/O error, if any.
-    #[source]
-    pub source: Option<io::Error>,
-}
-
-impl ExtractError {
-    fn new(message: impl Into<String>) -> Self {
-        Self {
-            message: message.into(),
-            source: None,
-        }
-    }
-
-    fn io(message: impl Into<String>, source: io::Error) -> Self {
-        Self {
-            message: message.into(),
-            source: Some(source),
-        }
-    }
-}
-
-/// Extracts every entry of `zip` below `folder` (created if missing), overwriting existing
-/// files.
-///
-/// An entry whose name is empty, absolute, has a drive prefix, a `\`, a `..` component, or is a
-/// symbolic link is refused before anything of it is written: nothing is ever written outside
-/// `folder`.
-// Mirrors dao/FileAccessMethods.java:109-161
-pub fn extract_to_folder(zip: &Path, folder: &Path) -> Result<(), ExtractError> {
-    if !folder.exists() {
-        std::fs::create_dir_all(folder).map_err(|e| {
-            ExtractError::io(
-                format!("Unable to create extraction folder: {}", folder.display()),
-                e,
-            )
-        })?;
-    }
-    let root = folder.canonicalize().map_err(|e| {
-        ExtractError::io(
-            format!("Unable to create extraction folder: {}", folder.display()),
-            e,
-        )
-    })?;
-    if !root.is_dir() {
-        return Err(ExtractError::new(format!(
-            "Extraction target is not a directory: {}",
-            root.display()
-        )));
-    }
-    let file = File::open(zip)
-        .map_err(|e| ExtractError::io(format!("File not found on disk: {}", zip.display()), e))?;
-    let mut archive = zip::ZipArchive::new(BufReader::new(file))
-        .map_err(|e| ExtractError::new(format!("Failed to unzip file: {}\n{e}", zip.display())))?;
-    for index in 0..archive.len() {
-        let mut entry = archive.by_index(index).map_err(|e| {
-            ExtractError::new(format!("Failed to unzip file: {}\n{e}", zip.display()))
-        })?;
-        let name = entry.name().map(|n| n.into_owned()).unwrap_or_default();
-        if name.is_empty() {
-            return Err(ExtractError::new("ZIP entry has no name."));
-        }
-        let unsafe_entry = || ExtractError::new(format!("Unsafe ZIP entry: {name}"));
-        if entry.is_symlink() || entry.unix_mode().is_some_and(|m| m & S_IFMT == S_IFLNK) {
-            return Err(unsafe_entry());
-        }
-        let relative = safe_entry_path(&name).ok_or_else(unsafe_entry)?;
-        if entry.enclosed_name().is_none() {
-            return Err(unsafe_entry());
-        }
-        let path = root.join(&relative);
-        if entry.is_dir() {
-            std::fs::create_dir_all(&path).map_err(|e| {
-                ExtractError::io(
-                    format!("Unable to create extracted directory: {}", path.display()),
-                    e,
-                )
-            })?;
-            continue;
-        }
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                ExtractError::io(
-                    format!(
-                        "Unable to create extracted file parent: {}",
-                        parent.display()
-                    ),
-                    e,
-                )
-            })?;
-        }
-        let written = File::create(&path).and_then(|mut out| {
-            io::copy(&mut entry, &mut out)?;
-            out.flush()
-        });
-        if let Err(err) = written {
-            remove_quietly(&path);
-            return Err(ExtractError::io(
-                format!("Failed to unzip file: {}\n{err}", zip.display()),
-                err,
-            ));
-        }
-    }
-    Ok(())
-}
-
-/// The entry name as a relative path of plain components, or `None` if it could leave the
-/// extraction folder (absolute, drive prefix, `..`, `\`) or names the folder itself.
-fn safe_entry_path(name: &str) -> Option<PathBuf> {
-    if name.contains(['\\', '\0']) || name.starts_with('/') {
-        return None;
-    }
-    let mut out = PathBuf::new();
-    for segment in name.split('/') {
-        if segment.is_empty() || segment == "." {
-            continue;
-        }
-        // A drive prefix (`C:`) or a `..` anywhere is refused, even when it would stay inside.
-        if segment == ".." || segment.contains(':') {
-            return None;
-        }
-        let mut components = Path::new(segment).components();
-        match (components.next(), components.next()) {
-            (Some(Component::Normal(_)), None) => out.push(segment),
-            _ => return None,
-        }
-    }
-    (!out.as_os_str().is_empty()).then_some(out)
 }

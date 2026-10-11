@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use a3s_sync::download::{DownloadEnd, DownloadRequest, NoZipSink, download};
 use a3s_sync::{DownloadStatus, DownloadTask, EventSender, PlanNode, PlanTree};
-use a3s_transport::{CancellationToken, Throttle, TransferCtx, Transport, TransportOptions};
+use a3s_transport::{CancellationToken, Throttle, TransferCtx, Transport};
 use a3s_types::{Protocol, ProtocolType, SyncTreeDirectory};
 
 const MAX_FILE: u64 = 1_000_000;
@@ -28,7 +28,9 @@ fn wog() -> Protocol {
 #[ignore = "network"]
 async fn live_wog_download() {
     let protocol = wog();
-    let options = TransportOptions::from_protocol(&protocol);
+    let options =
+        a3s_transport::proxy::transport_options(&protocol, &a3s_types::local::Proxy::default())
+            .expect("no proxy");
     let mut transport = Transport::connect(&protocol, &options)
         .await
         .expect("connect");

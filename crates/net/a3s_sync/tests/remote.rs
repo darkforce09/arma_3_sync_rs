@@ -17,7 +17,7 @@ use a3s_sync::{
     EventSender, PartialTransferSupport, Phase, RemoteConnection, RemoteError, RemoteMetadata,
     SyncEvent,
 };
-use a3s_transport::{TransferCtx, TransportOptions};
+use a3s_transport::TransferCtx;
 use a3s_types::{AutoConfig, Changelogs, Event, Events, Protocol, ProtocolType, ServerInfo};
 use a3s_types::{FavoriteServer, SyncTreeDirectory};
 use axum::body::Body;
@@ -219,7 +219,8 @@ async fn check(protocol: &Protocol, metadata: &mut RemoteMetadata) -> Result<(),
     check_repository(
         "WOG",
         protocol,
-        &TransportOptions::from_protocol(protocol),
+        &a3s_transport::proxy::transport_options(protocol, &a3s_types::local::Proxy::default())
+            .expect("no proxy"),
         metadata,
         &TransferCtx::new(),
         &EventSender::noop(),
@@ -264,7 +265,8 @@ async fn check_repository_fetches_all_five_files_in_order() {
     check_repository(
         "WOG",
         &protocol,
-        &TransportOptions::from_protocol(&protocol),
+        &a3s_transport::proxy::transport_options(&protocol, &a3s_types::local::Proxy::default())
+            .expect("no proxy"),
         &mut metadata,
         &TransferCtx::new(),
         &events,
@@ -403,10 +405,14 @@ async fn d_cancel_while_stalled() {
     });
     let previous = previous_metadata();
     let mut metadata = previous.clone();
-    let mut connection =
-        RemoteConnection::connect(&protocol, &TransportOptions::from_protocol(&protocol), &ctx)
-            .await
-            .expect("connect");
+    let mut connection = RemoteConnection::connect(
+        &protocol,
+        &a3s_transport::proxy::transport_options(&protocol, &a3s_types::local::Proxy::default())
+            .expect("no proxy"),
+        &ctx,
+    )
+    .await
+    .expect("connect");
     let result = connection
         .check_repository("WOG", &mut metadata, &ctx, &EventSender::noop())
         .await;
@@ -428,7 +434,8 @@ async fn d_cancel_while_stalled() {
     let result = check_repository(
         "WOG",
         &protocol,
-        &TransportOptions::from_protocol(&protocol),
+        &a3s_transport::proxy::transport_options(&protocol, &a3s_types::local::Proxy::default())
+            .expect("no proxy"),
         &mut metadata,
         &ctx,
         &EventSender::noop(),
@@ -485,10 +492,14 @@ async fn e_basic_auth() {
 async fn probe(server: &TestServer) -> Result<PartialTransferSupport, RemoteError> {
     let protocol = server.protocol("/repo");
     let ctx = TransferCtx::new();
-    let mut connection =
-        RemoteConnection::connect(&protocol, &TransportOptions::from_protocol(&protocol), &ctx)
-            .await
-            .expect("connect");
+    let mut connection = RemoteConnection::connect(
+        &protocol,
+        &a3s_transport::proxy::transport_options(&protocol, &a3s_types::local::Proxy::default())
+            .expect("no proxy"),
+        &ctx,
+    )
+    .await
+    .expect("connect");
     let result = connection.probe_partial_transfer(&ctx).await;
     connection.close().await;
     result
@@ -571,10 +582,14 @@ async fn probe_is_not_applicable_on_ftp() {
         false,
     );
     let ctx = TransferCtx::new();
-    let mut connection =
-        RemoteConnection::connect(&protocol, &TransportOptions::from_protocol(&protocol), &ctx)
-            .await
-            .expect("connect");
+    let mut connection = RemoteConnection::connect(
+        &protocol,
+        &a3s_transport::proxy::transport_options(&protocol, &a3s_types::local::Proxy::default())
+            .expect("no proxy"),
+        &ctx,
+    )
+    .await
+    .expect("connect");
     assert_eq!(connection.protocol(), &protocol);
     assert_eq!(connection.transport_mut().protocol_name(), "FTP");
     assert_eq!(
@@ -599,22 +614,30 @@ async fn connect_errors() {
         false,
     );
     let ctx = TransferCtx::new();
-    let err =
-        RemoteConnection::connect(&protocol, &TransportOptions::from_protocol(&protocol), &ctx)
-            .await
-            .err()
-            .expect("invalid protocol");
+    let err = RemoteConnection::connect(
+        &protocol,
+        &a3s_transport::proxy::transport_options(&protocol, &a3s_types::local::Proxy::default())
+            .expect("no proxy"),
+        &ctx,
+    )
+    .await
+    .err()
+    .expect("invalid protocol");
     assert_eq!(err.kind(), ErrorKind::InvalidInput);
     assert!(matches!(err, RemoteError::Connect { .. }));
 
     // Cancelled before connecting.
     protocol.protocol_type = ProtocolType::Http;
     ctx.cancel.cancel();
-    let err =
-        RemoteConnection::connect(&protocol, &TransportOptions::from_protocol(&protocol), &ctx)
-            .await
-            .err()
-            .expect("cancelled");
+    let err = RemoteConnection::connect(
+        &protocol,
+        &a3s_transport::proxy::transport_options(&protocol, &a3s_types::local::Proxy::default())
+            .expect("no proxy"),
+        &ctx,
+    )
+    .await
+    .err()
+    .expect("cancelled");
     assert!(matches!(err, RemoteError::Cancelled));
 }
 
@@ -633,7 +656,8 @@ async fn ftp_missing_directory_message() {
     );
     let err = import_autoconfig(
         &protocol,
-        &TransportOptions::from_protocol(&protocol),
+        &a3s_transport::proxy::transport_options(&protocol, &a3s_types::local::Proxy::default())
+            .expect("no proxy"),
         &TransferCtx::new(),
     )
     .await
@@ -647,7 +671,9 @@ async fn import_autoconfig_cases() {
     let server = TestServer::fixtures().await;
     let protocol = server.protocol("/repo/.a3s");
     let ctx = TransferCtx::new();
-    let options = TransportOptions::from_protocol(&protocol);
+    let options =
+        a3s_transport::proxy::transport_options(&protocol, &a3s_types::local::Proxy::default())
+            .expect("no proxy");
     let auto_config = import_autoconfig(&protocol, &options, &ctx)
         .await
         .expect("import");
@@ -681,7 +707,11 @@ async fn check_repositories_is_bounded_and_ordered() {
             let protocol = server.protocol(if i == 2 { "/missing" } else { "/repo" });
             CheckJob {
                 repository_name: format!("job{i}"),
-                options: TransportOptions::from_protocol(&protocol),
+                options: a3s_transport::proxy::transport_options(
+                    &protocol,
+                    &a3s_types::local::Proxy::default(),
+                )
+                .expect("no proxy"),
                 protocol,
                 metadata: m,
             }

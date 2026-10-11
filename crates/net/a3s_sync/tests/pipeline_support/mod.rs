@@ -9,7 +9,6 @@ use std::sync::Arc;
 use a3s_sync::pipeline::{CheckRequest, ReconnectPolicy, SyncJob, UserconfigPolicy};
 use a3s_sync::plan::NoAddons;
 use a3s_sync::{MemoryStore, SyncEvent};
-use a3s_transport::TransportOptions;
 use a3s_types::local::Repository;
 use a3s_types::{Protocol, ServerInfo, SyncTreeDirectory, SyncTreeLeaf, SyncTreeNode};
 
@@ -110,8 +109,8 @@ pub fn repository(protocol: Protocol, destination: &Path, exact_match: bool) -> 
 }
 
 /// A store holding `repository`.
-pub fn store(repository: Repository) -> MemoryStore {
-    MemoryStore::new([repository])
+pub fn store(repository: Repository) -> Arc<MemoryStore> {
+    Arc::new(MemoryStore::new([repository]))
 }
 
 /// The check of the test repository.
@@ -119,7 +118,6 @@ pub fn check_request(protocol: Protocol) -> CheckRequest {
     CheckRequest {
         repository_name: REPOSITORY.to_owned(),
         event_name: None,
-        transport_options: TransportOptions::from_protocol(&protocol),
         protocol,
         addons: Arc::new(NoAddons),
     }

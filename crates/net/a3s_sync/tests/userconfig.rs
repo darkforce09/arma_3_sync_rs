@@ -106,4 +106,26 @@ fn copy_userconfig_outcomes() {
         UserconfigOutcome::CreateFailed(_)
     ));
     assert_eq!(UserconfigOutcome::Declined.message(), None);
+
+    // A target that is a link is not written through.
+    #[cfg(unix)]
+    {
+        let elsewhere = base.path().join("elsewhere");
+        std::fs::create_dir(&elsewhere).expect("mkdir");
+        let linked = UserconfigCopy {
+            source: copy.source.clone(),
+            target: base.path().join("arma3/LinkedConfig"),
+        };
+        std::os::unix::fs::symlink(&elsewhere, &linked.target).expect("symlink");
+        assert!(matches!(
+            copy_userconfig(&linked),
+            UserconfigOutcome::CopyFailed(_)
+        ));
+        assert!(
+            std::fs::read_dir(&elsewhere)
+                .expect("read")
+                .next()
+                .is_none()
+        );
+    }
 }

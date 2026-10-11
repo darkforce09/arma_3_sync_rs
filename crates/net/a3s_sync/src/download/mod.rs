@@ -354,7 +354,9 @@ mod tests {
             "",
             false,
         );
-        let options_t = TransportOptions::from_protocol(&protocol);
+        let options_t =
+            a3s_transport::proxy::transport_options(&protocol, &a3s_types::local::Proxy::default())
+                .expect("no proxy");
         let request = DownloadRequest::new(protocol, options_t, &options, Some(&server));
         assert_eq!(request.connections, 3);
         assert_eq!(request.max_errors, 10);

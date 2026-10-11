@@ -5,7 +5,7 @@
 use a3s_sync::remote::RemoteConnection;
 use a3s_sync::status::determine_sync_status;
 use a3s_sync::{EventSender, PartialTransferSupport, PlanTree, RemoteMetadata};
-use a3s_transport::{TransferCtx, TransportOptions};
+use a3s_transport::TransferCtx;
 use a3s_types::constants::RepositoryStatus;
 use a3s_types::{Protocol, ProtocolType};
 
@@ -24,7 +24,9 @@ fn wog() -> Protocol {
 #[ignore = "network"]
 async fn live_wog_check() {
     let protocol = wog();
-    let options = TransportOptions::from_protocol(&protocol);
+    let options =
+        a3s_transport::proxy::transport_options(&protocol, &a3s_types::local::Proxy::default())
+            .expect("no proxy");
     let ctx = TransferCtx::new();
     let mut connection = RemoteConnection::connect(&protocol, &options, &ctx)
         .await

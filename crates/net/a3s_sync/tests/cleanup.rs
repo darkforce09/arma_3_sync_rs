@@ -407,5 +407,20 @@ fn copy_directory_cases() {
         assert_eq!(stats.skipped_links, 1);
         assert_eq!(files_below(&fresh).len(), 2);
         assert!(!fresh.join("link").exists());
+
+        // Links already in the target are never written through.
+        std::fs::remove_file(source.join("link")).expect("unlink");
+        let linked = base.path().join("linked");
+        std::fs::create_dir(&linked).expect("mkdir");
+        std::os::unix::fs::symlink(&outside, linked.join("sub")).expect("symlink");
+        std::os::unix::fs::symlink(outside.join("secret.txt"), linked.join("a.txt"))
+            .expect("symlink");
+        let stats = copy_directory(&source, &linked).expect("copy");
+        assert_eq!((stats.files, stats.skipped_links), (0, 2));
+        assert_eq!(files_below(&outside), [outside.join("secret.txt")]);
+        assert_eq!(
+            std::fs::read(outside.join("secret.txt")).expect("secret"),
+            b"x"
+        );
     }
 }
