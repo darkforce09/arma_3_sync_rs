@@ -11,6 +11,7 @@ Blockers: none
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-10-11 | a3s_sync (WP07 branch) | a19_live_wog_check, import_autoconfig WOG | PASS |
 | WP09 | a3s_sync download | IMPL | 0 | impl=ab815ed7 | 1 | (worktree) | | | 2026-10-11 |
+| WP11 | a3s_admin build | IMPL | 0 | impl=a39b7a5c | 3 | (worktree) | | | 2026-10-11 |
 | WP08 | a3s_sync plan | FIX round 1 (D-15 path safety, symlinks, overflow; verifier 7 fails; live PASS) | 1 | impl=a1349fd3 ver=a34e0b61 rev=aab55615 | 2 | worktree-agent-a1349fd36b09e8a4b | .claude/worktrees/agent-a1349fd36b09e8a4b | 68c648e | 2026-10-11 |
 
 ## Done before orchestration
@@ -43,7 +44,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 | 1 | WP04 | a3s_repo_files local/legacy | WP02, WP03 | SPEC_OK | | |
 | 1 | WP05 | autoconfig url/export | WP03 | SPEC_OK | | |
 | 1 | WP07 | a3s_sync model/remote/status | WP02, WP03 | MERGED | (git log) | | critical path |
-| 1 | WP11 | a3s_admin build | WP03 | SPEC_OK | | wire-touching |
+| 1 | WP11 | a3s_admin build | WP03 | IMPL | | wire-touching |
 | 1 | WP13 | a3s_addons | WP03 | SPEC_OK | | |
 | 1 | WP15 | a3s_platform | WP02 | SPEC_OK | | |
 | 2 | WP08 | a3s_sync plan | WP07 | VERIFY | | |
@@ -101,7 +102,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 - F-12 WP06 re-review MINORs: fix webdav.rs:207 Mirrors comment (deviation); CWD-back refusal discards listing (ftp.rs:564); Unusable listing makes refused DELE look Ok (ftp.rs:765/815); skip CWD before STOR when dir unchanged (perf); MLST fallback trailing slash.
 - F-13 WP07 parity MINORs: Java texts for FTP missing remote dir and unsupported protocol on connect; HTTP status text 'Server response code is N Reason'; cancel during sync decode keeps decoded slot.
 - F-14 a3s_transport: FTP control replies (retr_as_stream / completion) are not cancel-aware; make every FTP command race the CancellationToken (WP07 verifier).
-- F-15 WP03 PROVISIONAL UID markers can be lifted (WP01 verifier: all 25 descriptors + 3 computed UIDs match JDK 25).
+- F-15 (fixtures now on main) WP03 PROVISIONAL UID markers can be lifted (WP01 verifier: all 25 descriptors + 3 computed UIDs match JDK 25).
 - F-16 a3s_ui dialog focus MINORs: popup press steals dialog focus; focus not handed back when focused dialog closes; Escape not gated by egui_wants_keyboard_input when focus moved by Tab; modal keys only from 2nd frame (document).
 - F-17 a3s_sync: expose RemoteConnection::fetch_file (poisons + B13 error) and use it from completion.rs; run classify_leaves off the async thread.
 - F-2 CI: add mesa Vulkan drivers to rust.yml for egui_kittest snapshot tests (WP20 Q10).
