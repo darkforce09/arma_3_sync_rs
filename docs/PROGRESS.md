@@ -13,7 +13,7 @@ Blockers: none
 | 2026-10-11 | a3s_sync (WP07 branch) | a19_live_wog_check, import_autoconfig WOG | PASS |
 | WP09 | a3s_sync download | FIX round 1 (BLOCKER cancel spin, deadline, D-16, overflow; live PASS) | 1 | impl=ab815ed7 ver=ae84c937 rev=a6ecc9b9 | 1 | worktree-agent-ab815ed72afe7c2df | .claude/worktrees/agent-ab815ed72afe7c2df | 02619c7 | 2026-10-11 |
 | WP04 | a3s_repo_files local/legacy | VERIFY ∥ REVIEW | 0 | impl=a20b9ae5 ver=aab7bf75 rev=a18f8f57 | 2 | worktree-agent-a20b9ae5ecc809758 | .claude/worktrees/agent-a20b9ae5ecc809758 | c7513a5 | 2026-10-11 |
-| WP11 | a3s_admin build | IMPL | 0 | impl=a39b7a5c | 3 | (worktree) | | | 2026-10-11 |
+| WP11 | a3s_admin build | VERIFY(+JDK) ∥ REVIEW — golden byte-identical vs Java builds | 0 | impl=a39b7a5c ver=aee386a7 rev=a4b331ee | 3 | worktree-agent-a39b7a5c85d46a5e2 | .claude/worktrees/agent-a39b7a5c85d46a5e2 | 504cd66 | 2026-10-11 |
 
 ## Done before orchestration
 
@@ -45,7 +45,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 | 1 | WP04 | a3s_repo_files local/legacy | WP02, WP03 | VERIFY | | |
 | 1 | WP05 | autoconfig url/export | WP03 | SPEC_OK | | |
 | 1 | WP07 | a3s_sync model/remote/status | WP02, WP03 | MERGED | (git log) | | critical path |
-| 1 | WP11 | a3s_admin build | WP03 | IMPL | | wire-touching |
+| 1 | WP11 | a3s_admin build | WP03 | VERIFY | | wire-touching |
 | 1 | WP13 | a3s_addons | WP03 | SPEC_OK | | |
 | 1 | WP15 | a3s_platform | WP02 | SPEC_OK | | |
 | 2 | WP08 | a3s_sync plan | WP07 | MERGED | | |
