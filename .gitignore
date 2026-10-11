@@ -1,22 +1,27 @@
 # Java reference implementation (has its own git repository).
 /java_version/
 
-# Rust
+# Build output, machine-local state, linked worktrees.
 /target/
+/.workstation/
+/.worktrees/*
+!/.worktrees/README.md
 **/*.rs.bk
+
+# Java fixture harness build output.
+/tools/java_fixture_harness/build/
+
+# egui_kittest snapshot comparison output.
+/crates/**/tests/snapshots/*.new.png
+/crates/**/tests/snapshots/*.diff.png
+/crates/**/tests/snapshots/*.old.png
+
+# Local agent configuration.
+/.claude/
+/.codex/
 
 # Editors / OS
 .idea/
 .vscode/
 *.swp
 .DS_Store
-
-# Local scratch
-/scratch/
-*.log
-
-# Agent orchestration
-/.claude/worktrees/
-/.claude/logs/
-/.claude/settings.local.json
-.a3s-slot
