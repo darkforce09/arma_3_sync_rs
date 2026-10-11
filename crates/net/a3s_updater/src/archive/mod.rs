@@ -1,27 +1,33 @@
-//! Update archives: validation, flat staging and installation with managed-file tracking.
+//! Update archives: verification, flat staging and installation with managed-file tracking.
 //!
-//! The archive is untrusted. Every entry name is checked before anything is extracted, every
-//! entry is read once to verify its CRC, and the installation is written only after the whole
+//! The archive is untrusted. [`validate_archive`] copies it once into a private unnamed
+//! temporary file while hashing it, then checks every entry (names, conflicts, links, CRC, size
+//! limits) from that copy; [`stage_archive`] extracts from the same copy, so the bytes that were
+//! verified are the bytes that are installed. The installation is written only after the whole
 //! archive has been staged.
 
 mod install;
+mod names;
 
+use std::collections::HashSet;
 use std::fs::File;
-use std::io::{self, Read};
+use std::io::{self, Read, Seek as _, Write as _};
 use std::path::{Path, PathBuf};
 
+use sha2::{Digest as _, Sha256};
+
 pub use install::{
-    CopyReplacer, FileReplacer, InstallReport, MANAGED_FILES_NAME, install_archive, install_staged,
-    install_tree, is_user_managed,
+    CopyReplacer, FileReplacer, InstallReport, MANAGED_FILES_NAME, install_staged, is_user_managed,
 };
+pub(crate) use names::{is_portable_file_name, normalize_entry_name};
 
 use crate::UpdateError;
 
 /// Most entries an update archive may have.
-pub const MAX_ENTRIES: usize = 65_536;
+pub(crate) const MAX_ENTRIES: usize = 65_536;
 
-/// Largest total uncompressed size of an update archive (4 GiB).
-pub const MAX_UNCOMPRESSED_BYTES: u64 = 4 << 30;
+/// Largest update archive, compressed (download) or uncompressed (all entries together): 4 GiB.
+pub(crate) const MAX_ARCHIVE_BYTES: u64 = 4 << 30;
 
 /// Unix file-type bits of an entry's mode.
 const FILE_TYPE_MASK: u32 = 0o170_000;
@@ -37,25 +43,65 @@ pub struct StagedEntry {
     /// Normalized `/`-separated path inside the installation.
     pub relative: String,
 
-    /// Permission bits (`0o777` at most) to give the installed file on Unix.
+    /// Permission bits to give the installed file on Unix; they are sanitized when applied
+    /// (`(mode & 0o755) | 0o600`, `0o644` when `None`).
     pub unix_mode: Option<u32>,
 }
 
-/// Checks the whole archive before anything is extracted: every entry name (directories
-/// included), no symbolic links, the CRC of every file entry, and the size limits.
+/// A verified update archive: a private copy whose SHA-256 matched and whose entries all passed
+/// validation. Stage it with [`stage_archive`].
+#[derive(Debug)]
+pub struct VerifiedArchive {
+    zip: zip::ZipArchive<File>,
+    sha256: String,
+}
+
+impl VerifiedArchive {
+    /// Lowercase hex SHA-256 of the archive bytes that were validated.
+    pub fn sha256(&self) -> &str {
+        &self.sha256
+    }
+}
+
+/// Verifies an update archive before anything is extracted.
+///
+/// The file is opened once and copied, while being hashed, into an unnamed temporary file that
+/// no other process can open; replacing or rewriting `archive` afterwards has no effect. With
+/// `expected_sha256`, a different hash fails with [`UpdateError::Integrity`]. Then every entry
+/// is checked from the copy: names (no escape, absolute, drive, device or `:` names), no two
+/// paths that collide ignoring case or as file and directory, no symbolic links, the CRC of
+/// every file, at most 65 536 entries and 4 GiB in total.
 // Mirrors a3sUpdater/dao/FtpDAO.java:122-145
-pub fn validate_archive(archive: &Path) -> Result<(), UpdateError> {
-    let mut zip = open_archive(archive)?;
+pub fn validate_archive(
+    archive: &Path,
+    expected_sha256: Option<&str>,
+) -> Result<VerifiedArchive, UpdateError> {
+    let (copy, sha256) = private_copy(archive)?;
+    if let Some(expected) = expected_sha256
+        && !sha256.eq_ignore_ascii_case(expected.trim())
+    {
+        return Err(UpdateError::Integrity);
+    }
+    let mut zip = zip::ZipArchive::new(copy).map_err(|e| invalid(&e))?;
+    if zip.len() > MAX_ENTRIES {
+        return Err(UpdateError::ArchiveInvalid(format!(
+            "more than {MAX_ENTRIES} entries"
+        )));
+    }
+    let mut paths = PathSet::default();
     let mut files = 0usize;
     let mut total = 0u64;
     for index in 0..zip.len() {
         let mut entry = zip.by_index(index).map_err(|e| invalid(&e))?;
         let name = entry_name(&entry)?;
-        if classify(&entry, &name)?.is_none() {
+        let Some(relative) = classify(&entry, &name)? else {
+            let directory = normalize_entry_name(&name)?;
+            paths.add_directory(&directory)?;
             continue;
-        }
+        };
+        paths.add_file(&relative)?;
         files += 1;
-        let limit = MAX_UNCOMPRESSED_BYTES - total;
+        let limit = MAX_ARCHIVE_BYTES - total;
         let read = io::copy(&mut (&mut entry).take(limit + 1), &mut io::sink())
             .map_err(|e| UpdateError::ArchiveInvalid(format!("{name}: {e}")))?;
         total += read;
@@ -66,20 +112,59 @@ pub fn validate_archive(archive: &Path) -> Result<(), UpdateError> {
     if files == 0 {
         return Err(UpdateError::ArchiveEmpty);
     }
-    Ok(())
+    Ok(VerifiedArchive { zip, sha256 })
 }
 
-/// Extracts every file entry, in archive order, into its own flat `entry-*.tmp` file in `dir`.
+/// Copies `archive` into a private unnamed temporary file, returning it rewound with the hash of
+/// the copied bytes.
+fn private_copy(archive: &Path) -> Result<(File, String), UpdateError> {
+    let source = File::open(archive).map_err(|e| {
+        if e.kind() == io::ErrorKind::NotFound {
+            UpdateError::ArchiveNotFound(archive.to_path_buf())
+        } else {
+            UpdateError::io(format!("Could not open {}", archive.display()), e)
+        }
+    })?;
+    let copy_error = |e| UpdateError::io(format!("Could not copy {}", archive.display()), e);
+    let mut copy = tempfile::tempfile().map_err(copy_error)?;
+    let mut hasher = Sha256::new();
+    let mut reader = source.take(MAX_ARCHIVE_BYTES + 1);
+    let mut buffer = vec![0u8; 64 * 1024];
+    let mut copied = 0u64;
+    loop {
+        let read = reader.read(&mut buffer).map_err(copy_error)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+        copy.write_all(&buffer[..read]).map_err(copy_error)?;
+        copied += read as u64;
+    }
+    if copied > MAX_ARCHIVE_BYTES {
+        return Err(too_large());
+    }
+    copy.rewind().map_err(copy_error)?;
+    Ok((copy, crate::http::to_hex(&hasher.finalize())))
+}
+
+/// Extracts every file entry of a verified archive, in archive order, into its own flat
+/// `entry-*.tmp` file in `dir`.
 ///
-/// `dir` is created if needed. Directory entries produce nothing. On Unix the entry's permission bits
-/// (without setuid, setgid and sticky) are applied to the staged file.
+/// `dir` is created if needed. Directory entries produce nothing. On Unix the entry's sanitized
+/// permission bits are applied to the staged file.
+///
+/// [`install_staged`] reopens the staged files by path, so `dir` must be a directory that no
+/// less-privileged user can write: an elevated installer passes a directory it created itself
+/// in a location only it may modify.
 // Mirrors a3sUpdater/dao/FtpDAO.java:200-229
-pub fn stage_archive(archive: &Path, dir: &Path) -> Result<Vec<StagedEntry>, UpdateError> {
+pub fn stage_archive(
+    archive: &mut VerifiedArchive,
+    dir: &Path,
+) -> Result<Vec<StagedEntry>, UpdateError> {
     std::fs::create_dir_all(dir)
         .map_err(|e| UpdateError::io(format!("Could not create {}", dir.display()), e))?;
-    let mut zip = open_archive(archive)?;
+    let zip = &mut archive.zip;
     let mut staged = Vec::new();
-    let mut total = 0u64;
     for index in 0..zip.len() {
         let mut entry = zip.by_index(index).map_err(|e| invalid(&e))?;
         let name = entry_name(&entry)?;
@@ -87,14 +172,9 @@ pub fn stage_archive(archive: &Path, dir: &Path) -> Result<Vec<StagedEntry>, Upd
             continue;
         };
         let unix_mode = entry_permissions(&entry);
-        let limit = MAX_UNCOMPRESSED_BYTES - total;
-        let (source, written) = stage_entry(&mut (&mut entry).take(limit + 1), dir, unix_mode)
+        // Validation bounded the total size of this same copy.
+        let source = stage_entry(&mut entry, dir, unix_mode)
             .map_err(|e| UpdateError::io(format!("Could not stage ZIP entry '{name}'."), e))?;
-        total += written;
-        if written > limit {
-            // The entry's temporary file is part of `dir`; the caller removes `dir`.
-            return Err(too_large());
-        }
         staged.push(StagedEntry {
             source,
             relative,
@@ -105,31 +185,15 @@ pub fn stage_archive(archive: &Path, dir: &Path) -> Result<Vec<StagedEntry>, Upd
 }
 
 /// Writes one entry to a new temporary file in `dir`; the file is removed on failure.
-fn stage_entry(
-    reader: &mut impl Read,
-    dir: &Path,
-    unix_mode: Option<u32>,
-) -> io::Result<(PathBuf, u64)> {
+fn stage_entry(reader: &mut impl Read, dir: &Path, unix_mode: Option<u32>) -> io::Result<PathBuf> {
     let mut temp = tempfile::Builder::new()
         .prefix("entry-")
         .suffix(".tmp")
         .tempfile_in(dir)?;
-    let written = io::copy(reader, temp.as_file_mut())?;
+    io::copy(reader, temp.as_file_mut())?;
     set_permissions(temp.as_file(), unix_mode)?;
     let (_file, path) = temp.keep().map_err(|e| e.error)?;
-    Ok((path, written))
-}
-
-fn open_archive(archive: &Path) -> Result<zip::ZipArchive<File>, UpdateError> {
-    let file = File::open(archive)
-        .map_err(|e| UpdateError::io(format!("Could not open {}", archive.display()), e))?;
-    let zip = zip::ZipArchive::new(file).map_err(|e| invalid(&e))?;
-    if zip.len() > MAX_ENTRIES {
-        return Err(UpdateError::ArchiveInvalid(format!(
-            "more than {MAX_ENTRIES} entries"
-        )));
-    }
-    Ok(zip)
+    Ok(path)
 }
 
 fn invalid(err: &zip::result::ZipError) -> UpdateError {
@@ -137,9 +201,7 @@ fn invalid(err: &zip::result::ZipError) -> UpdateError {
 }
 
 fn too_large() -> UpdateError {
-    UpdateError::ArchiveInvalid(format!(
-        "more than {MAX_UNCOMPRESSED_BYTES} bytes uncompressed"
-    ))
+    UpdateError::ArchiveInvalid(format!("more than {MAX_ARCHIVE_BYTES} bytes"))
 }
 
 fn entry_name(entry: &zip::read::ZipFile<'_, File>) -> Result<String, UpdateError> {
@@ -162,10 +224,7 @@ fn classify(
     if entry.is_dir() || file_type == Some(FILE_TYPE_DIRECTORY) {
         return Ok(None);
     }
-    if !matches!(file_type, None | Some(0 | FILE_TYPE_REGULAR)) {
-        return Err(UpdateError::UnsafeEntry(name.to_owned()));
-    }
-    if relative.is_empty() {
+    if !matches!(file_type, None | Some(0 | FILE_TYPE_REGULAR)) || relative.is_empty() {
         return Err(UpdateError::UnsafeEntry(name.to_owned()));
     }
     Ok(Some(relative))
@@ -176,46 +235,69 @@ fn entry_permissions(entry: &zip::read::ZipFile<'_, File>) -> Option<u32> {
     if entry.system() != zip::System::Unix {
         return None;
     }
-    entry.unix_mode().map(|mode| mode & 0o777)
+    entry.unix_mode().map(|mode| sanitize_mode(Some(mode)))
 }
 
-/// Normalizes an archive entry name to a `/`-separated path strictly inside the extraction
-/// root; `""` is the root itself.
-///
-/// `\` counts as a separator; `.` components are dropped and `a/../b` becomes `b`. Rejected: a
-/// blank name, NUL, a rooted name (`/x`, `//server/x`), a `:` in any component (drive letters,
-/// alternate data streams) and any `..` that leaves the root.
-// Mirrors a3sUpdater/dao/FtpDAO.java:246-260
-pub(crate) fn normalize_entry_name(name: &str) -> Result<String, UpdateError> {
-    if name.trim().is_empty() {
-        return Err(UpdateError::EmptyEntryName);
+/// Installed permission bits: the owner can always read and write, nobody else can write, and
+/// setuid, setgid and sticky are dropped (`(mode & 0o755) | 0o600`); `None` gives `0o644`.
+pub(crate) fn sanitize_mode(unix_mode: Option<u32>) -> u32 {
+    unix_mode.map_or(0o644, |mode| (mode & 0o755) | 0o600)
+}
+
+/// Paths of one archive or one installation: no two may collide ignoring case, and no file may
+/// also be the parent directory of another path.
+#[derive(Default)]
+pub(crate) struct PathSet {
+    files: HashSet<String>,
+    directories: HashSet<String>,
+}
+
+impl PathSet {
+    fn conflict(relative: &str) -> UpdateError {
+        UpdateError::PathConflict(relative.to_owned())
     }
-    let unsafe_entry = || UpdateError::UnsafeEntry(name.to_owned());
-    let portable = name.replace('\\', "/");
-    if portable.contains('\0') || portable.starts_with('/') {
-        return Err(unsafe_entry());
-    }
-    let mut parts: Vec<&str> = Vec::new();
-    for component in portable.split('/') {
-        match component {
-            "" | "." => {}
-            ".." => {
-                parts.pop().ok_or_else(unsafe_entry)?;
-            }
-            _ if component.contains(':') => return Err(unsafe_entry()),
-            _ => parts.push(component),
+
+    /// Adds a file path (normalized, non-empty).
+    pub(crate) fn add_file(&mut self, relative: &str) -> Result<(), UpdateError> {
+        let key = relative.to_lowercase();
+        if self.files.contains(&key) || self.directories.contains(&key) {
+            return Err(Self::conflict(relative));
         }
+        self.add_parents(relative, &key)?;
+        self.files.insert(key);
+        Ok(())
     }
-    Ok(parts.join("/"))
+
+    /// Adds a directory path (normalized; empty is the root).
+    pub(crate) fn add_directory(&mut self, relative: &str) -> Result<(), UpdateError> {
+        if relative.is_empty() {
+            return Ok(());
+        }
+        let key = relative.to_lowercase();
+        if self.files.contains(&key) {
+            return Err(Self::conflict(relative));
+        }
+        self.add_parents(relative, &key)?;
+        self.directories.insert(key);
+        Ok(())
+    }
+
+    fn add_parents(&mut self, relative: &str, key: &str) -> Result<(), UpdateError> {
+        for (index, _) in key.match_indices('/') {
+            let parent = &key[..index];
+            if self.files.contains(parent) {
+                return Err(Self::conflict(relative));
+            }
+            self.directories.insert(parent.to_owned());
+        }
+        Ok(())
+    }
 }
 
 #[cfg(unix)]
 pub(crate) fn set_permissions(file: &File, unix_mode: Option<u32>) -> io::Result<()> {
     use std::os::unix::fs::PermissionsExt as _;
-    /// Permission bits of files whose entry carries none.
-    const DEFAULT_FILE_MODE: u32 = 0o644;
-    let mode = unix_mode.unwrap_or(DEFAULT_FILE_MODE) & 0o777;
-    file.set_permissions(std::fs::Permissions::from_mode(mode))
+    file.set_permissions(std::fs::Permissions::from_mode(sanitize_mode(unix_mode)))
 }
 
 #[cfg(not(unix))]

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use a3s_updater::{ConfigOverrides, DEFAULT_ASSET_PATTERN, UpdateConfig, UpdateError};
+use a3s_updater::{ConfigOverrides, UpdateConfig, UpdateError};
 
 fn parse(toml: &str, overrides: &ConfigOverrides) -> UpdateConfig {
     UpdateConfig::from_toml_str(toml, overrides).expect("config")
@@ -32,7 +32,10 @@ fn defaults_without_a_file() {
             config.github_api_url(dev),
             "https://api.github.com/repos/vpzbrig21/Arma3Sync/releases/latest"
         );
-        assert_eq!(config.github_asset_pattern(dev), DEFAULT_ASSET_PATTERN);
+        assert_eq!(
+            config.github_asset_pattern(dev),
+            "Arma3Sync-{version}-{target}.zip"
+        );
     }
     assert!(config.github_enabled());
     assert!(!config.allow_http());

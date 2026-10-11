@@ -62,6 +62,11 @@ pub enum UpdateError {
     #[error("Unsafe ZIP entry: {0}")]
     UnsafeEntry(String),
 
+    /// Two update paths collide ignoring case, a file would also be a directory, or an existing
+    /// directory or unmanaged file of the installation stands where the update puts a file.
+    #[error("Conflicting update path: {0}")]
+    PathConflict(String),
+
     /// `.a3s-updater-files` exists but is not a regular file.
     #[error("Updater state is not a file: {}", .0.display())]
     StateNotFile(PathBuf),
@@ -109,15 +114,6 @@ impl UpdateError {
         Self::Io {
             context: context.into(),
             source,
-        }
-    }
-
-    /// Wraps `self` as the failure of an installation stage.
-    // Mirrors a3sUpdater/dao/FtpDAO.java:327-332
-    pub(crate) fn in_stage(self, stage: &'static str) -> Self {
-        Self::Stage {
-            stage,
-            source: Box::new(self),
         }
     }
 }

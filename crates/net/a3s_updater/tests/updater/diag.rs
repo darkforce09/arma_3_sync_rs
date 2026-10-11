@@ -62,7 +62,7 @@ fn enabled_log_appends_lines() {
     };
     header(lines[0], "INFO", "first");
     header(lines[1], "ERROR", "second");
-    assert!(lines[2].contains("503"));
+    assert_eq!(lines[2], inner.to_string());
     let third = header(lines[3], "ERROR", "third");
     assert!(third.starts_with("[updater-worker]"), "{third}");
     assert_eq!(lines[4], "copy failed");

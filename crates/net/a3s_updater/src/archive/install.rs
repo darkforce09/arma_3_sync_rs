@@ -5,11 +5,13 @@ use std::fs::File;
 use std::io::{self, Write as _};
 use std::path::Path;
 
-use super::{StagedEntry, normalize_entry_name, set_permissions, stage_archive, validate_archive};
+use a3s_foundation::paths::{PORTABLE_DATA_DIR, PORTABLE_MARKER};
+
+use super::{PathSet, StagedEntry, normalize_entry_name, set_permissions};
 use crate::UpdateError;
 
 /// State file listing the files the updater installed, one `/`-separated path per line.
-// Mirrors a3sUpdater/dao/FtpDAO.java:30
+// Mirrors a3sUpdater/dao/FtpDAO.java:29
 pub const MANAGED_FILES_NAME: &str = ".a3s-updater-files";
 
 /// Line separator of the state file (Java `Files.write` uses the platform separator).
@@ -34,10 +36,16 @@ const USER_MANAGED_FILES: [&str; 11] = [
 /// User-data folders whose whole content is never written or deleted (ASCII case-insensitive).
 const USER_MANAGED_DIRECTORIES: [&str; 3] = ["profiles/", "resources/ftp/", "resources/temp/"];
 
+/// Whether `portable` is this application's portable-mode marker or data folder (or inside it).
+fn is_portable_data(portable: &str) -> bool {
+    let top = portable.split('/').next().unwrap_or_default();
+    portable.eq_ignore_ascii_case(PORTABLE_MARKER) || top.eq_ignore_ascii_case(PORTABLE_DATA_DIR)
+}
+
 /// Replaces one installed file with a staged one.
 pub trait FileReplacer {
-    /// Makes `target` a copy of `source` with permission bits `unix_mode` (Unix only; `None`
-    /// means `0o644`). The parent directory of `target` exists.
+    /// Makes `target` a copy of `source` with permission bits `unix_mode` (Unix only; applied as
+    /// `(mode & 0o755) | 0o600`, `0o644` when `None`). The parent directory of `target` exists.
     fn replace(&self, source: &Path, target: &Path, unix_mode: Option<u32>) -> io::Result<()>;
 }
 
@@ -50,7 +58,7 @@ impl FileReplacer for CopyReplacer {
     fn replace(&self, source: &Path, target: &Path, unix_mode: Option<u32>) -> io::Result<()> {
         let parent = target.parent().unwrap_or_else(|| Path::new("."));
         let mut temp = tempfile::Builder::new()
-            .prefix(".a3s-update-")
+            .prefix(".a3s-new-")
             .suffix(".tmp")
             .tempfile_in(parent)?;
         io::copy(&mut File::open(source)?, temp.as_file_mut())?;
@@ -74,13 +82,15 @@ pub struct InstallReport {
     pub skipped_user_files: Vec<String>,
 }
 
-/// Whether `relative` (an installation-relative path, `\` or `/` separated) is user data.
+/// Whether `relative` (an installation-relative path, `\` or `/` separated) is user data: the
+/// Java client's files and folders, and this application's portable-mode marker and data folder.
 // Mirrors a3sUpdater/dao/FtpDAO.java:396-412
 pub fn is_user_managed(relative: &str) -> bool {
     let portable = relative.replace('\\', "/");
-    USER_MANAGED_FILES
-        .iter()
-        .any(|name| portable.eq_ignore_ascii_case(name))
+    is_portable_data(&portable)
+        || USER_MANAGED_FILES
+            .iter()
+            .any(|name| portable.eq_ignore_ascii_case(name))
         || USER_MANAGED_DIRECTORIES.iter().any(|prefix| {
             portable
                 .get(..prefix.len())
@@ -91,12 +101,19 @@ pub fn is_user_managed(relative: &str) -> bool {
 /// Installs staged files into `dest`.
 ///
 /// 1. Reads the previous `.a3s-updater-files`; any invalid line fails before a file is touched.
-/// 2. Copies every staged entry with `replacer`, except user data and the state file itself.
-/// 3. Deletes previously managed files that this update no longer contains (user data is
-///    kept; a non-empty directory fails the installation).
-/// 4. Writes the new state file atomically.
+/// 2. Checks every entry before writing: the staged source exists, the path is safe, no two
+///    entries collide, no target is an existing directory and no parent is an existing file.
+///    A parent that is a file the previous update installed and this one drops is deleted
+///    first; any other conflict fails before the installation is touched.
+/// 3. Copies every staged entry with `replacer`, except user data and the state file itself.
+/// 4. Deletes previously managed files that this update no longer contains, except user data
+///    and files that are the same file as an installed target (case-insensitive file systems).
+///    A non-empty directory fails the installation.
+/// 5. Writes the new state file atomically.
 ///
-/// A failure in steps 2 or 3 leaves a partially updated installation.
+/// A failure in steps 3 or 4 leaves a partially updated installation. The staged files are
+/// reopened by path: they must sit in a directory no less-privileged user can write (see
+/// [`super::stage_archive`]).
 // Mirrors a3sUpdater/dao/FtpDAO.java:287-320
 pub fn install_staged(
     dest: &Path,
@@ -107,24 +124,25 @@ pub fn install_staged(
         .map_err(|e| UpdateError::io(format!("Could not create {}", dest.display()), e))?;
     let previous = read_managed_files(dest)?;
     let mut report = InstallReport::default();
+    let plan = plan_install(entries, &mut report)?;
     let mut current = ManagedSet::default();
+    for (relative, _) in &plan {
+        current.insert(relative);
+    }
+    let stale: Vec<&String> = previous
+        .iter()
+        .filter(|file| !current.contains(file) && !is_user_managed(file))
+        .collect();
 
-    for entry in entries {
-        if !entry.source.is_file() {
-            return Err(UpdateError::MissingSource(entry.source.clone()));
+    for parent in blocking_parents(dest, &plan, &stale)? {
+        if remove_managed(&dest.join(&parent))? {
+            report.removed.push(parent);
         }
-        let relative = normalize_entry_name(&entry.relative)?;
-        if relative.is_empty() {
-            return Err(UpdateError::UnsafeEntry(entry.relative.clone()));
-        }
-        if is_user_managed(&relative) {
-            report.skipped_user_files.push(relative);
-            continue;
-        }
-        if relative.eq_ignore_ascii_case(MANAGED_FILES_NAME) {
-            continue;
-        }
-        let target = dest.join(&relative);
+    }
+
+    let mut installed_files = HashSet::new();
+    for (relative, entry) in &plan {
+        let target = dest.join(relative);
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
                 UpdateError::io(format!("Could not create {}", parent.display()), e)
@@ -133,17 +151,21 @@ pub fn install_staged(
         replacer
             .replace(&entry.source, &target, entry.unix_mode)
             .map_err(|e| UpdateError::io(format!("Could not install {relative}"), e))?;
-        if current.insert(&relative) {
-            report.installed.push(relative);
-        }
+        installed_files.extend(file_identity(&target));
+        report.installed.push(relative.clone());
     }
 
-    for file in previous {
-        if current.contains(&file) || is_user_managed(&file) {
+    for file in stale {
+        if report.removed.contains(file) {
             continue;
         }
-        if remove_managed(&dest.join(&file))? {
-            report.removed.push(file);
+        let target = dest.join(file);
+        // On a case-insensitive file system an old spelling is the file just installed.
+        if file_identity(&target).is_some_and(|id| installed_files.contains(&id)) {
+            continue;
+        }
+        if remove_managed(&target)? {
+            report.removed.push(file.clone());
         }
     }
 
@@ -151,87 +173,92 @@ pub fn install_staged(
     Ok(report)
 }
 
-/// Installs every file below `source_dir` into `dest` (see [`install_staged`]).
-// Mirrors a3sUpdater/dao/FtpDAO.java:262-285
-pub fn install_tree(
-    source_dir: &Path,
-    dest: &Path,
-    replacer: &dyn FileReplacer,
-) -> Result<InstallReport, UpdateError> {
-    if !source_dir.exists() {
-        return Err(UpdateError::MissingSource(source_dir.to_path_buf()));
-    }
-    let mut entries = Vec::new();
-    collect_tree(source_dir, "", &mut entries)?;
-    install_staged(dest, &entries, replacer)
-}
-
-fn collect_tree(dir: &Path, prefix: &str, out: &mut Vec<StagedEntry>) -> Result<(), UpdateError> {
-    let read_error = |e| UpdateError::io(format!("Could not list {}", dir.display()), e);
-    let mut children: Vec<_> = std::fs::read_dir(dir)
-        .map_err(read_error)?
-        .collect::<Result<_, _>>()
-        .map_err(read_error)?;
-    children.sort_by_key(std::fs::DirEntry::file_name);
-    for child in children {
-        let path = child.path();
-        let name = child.file_name().to_string_lossy().into_owned();
-        let relative = if prefix.is_empty() {
-            name
-        } else {
-            format!("{prefix}/{name}")
-        };
-        if path.is_dir() {
-            collect_tree(&path, &relative, out)?;
-        } else {
-            out.push(StagedEntry {
-                unix_mode: file_permissions(&path),
-                source: path,
-                relative,
-            });
+/// The entries to install, with their normalized paths; user data is reported as skipped.
+fn plan_install<'a>(
+    entries: &'a [StagedEntry],
+    report: &mut InstallReport,
+) -> Result<Vec<(String, &'a StagedEntry)>, UpdateError> {
+    let mut paths = PathSet::default();
+    let mut plan = Vec::new();
+    for entry in entries {
+        if !entry.source.is_file() {
+            return Err(UpdateError::MissingSource(entry.source.clone()));
+        }
+        let relative = normalize_entry_name(&entry.relative)?;
+        if relative.is_empty() {
+            return Err(UpdateError::UnsafeEntry(entry.relative.clone()));
+        }
+        paths.add_file(&relative)?;
+        if is_user_managed(&relative) {
+            report.skipped_user_files.push(relative);
+        } else if !relative.eq_ignore_ascii_case(MANAGED_FILES_NAME) {
+            plan.push((relative, entry));
         }
     }
-    Ok(())
+    Ok(plan)
 }
 
+/// Existing files in `dest` that are parents of a planned path. Each must be a stale managed
+/// file, which is returned for deletion; any other file, or a planned target that is an
+/// existing directory, is a conflict.
+fn blocking_parents(
+    dest: &Path,
+    plan: &[(String, &StagedEntry)],
+    stale: &[&String],
+) -> Result<Vec<String>, UpdateError> {
+    let mut blocking = Vec::new();
+    for (relative, _) in plan {
+        if std::fs::metadata(dest.join(relative)).is_ok_and(|meta| meta.is_dir()) {
+            return Err(UpdateError::PathConflict(relative.clone()));
+        }
+        for (index, _) in relative.match_indices('/') {
+            let parent = &relative[..index];
+            let path = dest.join(parent);
+            let is_file = match std::fs::metadata(&path) {
+                Ok(meta) => !meta.is_dir(),
+                // A dangling link or an unreadable entry cannot be a directory either.
+                Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                    std::fs::symlink_metadata(&path).is_ok()
+                }
+                Err(_) => true,
+            };
+            if !is_file || blocking.iter().any(|b: &String| b == parent) {
+                continue;
+            }
+            let managed = stale
+                .iter()
+                .find(|file| same_managed_file(dest, file, parent))
+                .ok_or_else(|| UpdateError::PathConflict(relative.clone()))?;
+            blocking.push((*managed).clone());
+        }
+    }
+    Ok(blocking)
+}
+
+/// Whether the managed path `file` names the existing file at `relative`.
+fn same_managed_file(dest: &Path, file: &str, relative: &str) -> bool {
+    if file == relative {
+        return true;
+    }
+    if cfg!(windows) {
+        return file.eq_ignore_ascii_case(relative);
+    }
+    let id = file_identity(&dest.join(relative));
+    id.is_some() && id == file_identity(&dest.join(file))
+}
+
+/// Device and inode of a path (not following a final link); `None` where unavailable.
 #[cfg(unix)]
-fn file_permissions(path: &Path) -> Option<u32> {
-    use std::os::unix::fs::PermissionsExt as _;
-    std::fs::metadata(path)
+fn file_identity(path: &Path) -> Option<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt as _;
+    std::fs::symlink_metadata(path)
         .ok()
-        .map(|meta| meta.permissions().mode() & 0o777)
+        .map(|meta| (meta.dev(), meta.ino()))
 }
 
 #[cfg(not(unix))]
-fn file_permissions(_path: &Path) -> Option<u32> {
+fn file_identity(_path: &Path) -> Option<(u64, u64)> {
     None
-}
-
-/// Validates, stages and installs an update archive into `dest`.
-///
-/// Extraction goes to a temporary `arma3sync-update-extracted-*` directory, which is always
-/// removed. Failures are wrapped in [`UpdateError::Stage`] (`archive validation`,
-/// `archive extraction`, `installation copy`).
-// Mirrors a3sUpdater/dao/HttpDAO.java:98-124
-pub fn install_archive(
-    archive: &Path,
-    dest: &Path,
-    replacer: &dyn FileReplacer,
-) -> Result<InstallReport, UpdateError> {
-    if !archive.is_file() {
-        return Err(UpdateError::ArchiveNotFound(archive.to_path_buf()));
-    }
-    validate_archive(archive).map_err(|e| e.in_stage("archive validation"))?;
-    let extracted = tempfile::Builder::new()
-        .prefix("arma3sync-update-extracted-")
-        .tempdir()
-        .map_err(|e| {
-            UpdateError::io("Could not create the extraction directory", e)
-                .in_stage("archive extraction")
-        })?;
-    let entries =
-        stage_archive(archive, extracted.path()).map_err(|e| e.in_stage("archive extraction"))?;
-    install_staged(dest, &entries, replacer).map_err(|e| e.in_stage("installation copy"))
 }
 
 /// Insertion-ordered set of managed paths; ASCII case-insensitive on Windows.

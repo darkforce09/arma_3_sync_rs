@@ -200,14 +200,21 @@ Wire compatibility is the requirement; these differences are deliberate.
   asset is `Arma3Sync-{version}-{target}.zip` (`{target}` = Rust target triple) and `a3s.json`
   may carry a per-target `targets` table; a legacy XML without `<file>` derives the archive name
   from that pattern. Releases without SHA-256 (legacy XML) are not downloaded unless the caller
-  allows it, and a download larger or smaller than the announced `size` fails. A remote XML
-  without `<nom>` falls through to the installation's `a3s.xml` (Java stops). Archives are
-  rejected for symbolic-link entries, absolute, drive or `:` names, more than 65 536 entries or
-  more than 4 GiB uncompressed; Unix permission bits are kept (without setuid, setgid, sticky).
-  Installed files are written to a temporary sibling and renamed over the target (Java copies in
-  place). TOML is parsed strictly by the `toml` crate; user-data prefixes match case-insensitively;
-  the legacy FTP update transport is dropped; the diagnostic log defaults to
-  `<data dir>/logs/arma3sync-updater-debug.log` of the Rust application.
+  allows it; a download larger or smaller than the announced `size`, or above 4 GiB, fails, and
+  it is written to `<name>.part` and renamed only after its hash matched. A remote XML without
+  `<nom>` falls through to the installation's `a3s.xml` (Java stops). The archive is hashed and
+  validated from one private copy that staging also reads. Archives are rejected for
+  symbolic-link entries; absolute, drive, device, `:`, trailing-dot or trailing-space names;
+  paths that collide ignoring case or as file and directory; more than 65 536 entries or more
+  than 4 GiB. Unix permission bits are kept as `(mode & 0o755) | 0o600`. Installation checks
+  every target before writing: a stale managed file standing where a directory is needed is
+  deleted first, any other conflict fails. Installed files are written to a temporary sibling
+  and renamed over the target (Java copies in place); a stale managed path that is the same file
+  as an installed one (case-insensitive file systems) is kept. The portable-mode marker and data
+  folder of this application are user data too. TOML is parsed strictly by the `toml` crate;
+  user-data prefixes match case-insensitively; the legacy FTP update transport is dropped; the
+  diagnostic log defaults to `<data dir>/logs/arma3sync-updater-debug.log` of the Rust
+  application.
 * **Insecure TLS override** is the environment variable `A3S_ALLOW_INSECURE_SSL=1` instead of
   Java's `-Da3s.allowInsecureSsl=true`.
 * **Game tools:** each bikey extraction has its own cancel token (Java's flag is never reset, so

@@ -99,13 +99,12 @@ pub(crate) fn expand_asset_pattern(
         .replace("{target}", target)
 }
 
-/// A non-blank `.zip` file name without path separators that is not `.` or `..`.
+/// A `.zip` file name that is one portable path component (no separator, `:`, device name or
+/// trailing dot or space).
 // Mirrors a3sUpdater/dao/JsonManifestDAO.java:91-94
 pub(crate) fn is_safe_zip_name(name: &str) -> bool {
     !name.trim().is_empty()
-        && !name.contains(['/', '\\'])
-        && name != "."
-        && name != ".."
+        && crate::archive::is_portable_file_name(name)
         && name
             .get(name.len().saturating_sub(4)..)
             .is_some_and(|ext| ext.eq_ignore_ascii_case(".zip"))

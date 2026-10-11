@@ -7,16 +7,16 @@ use crate::UpdateError;
 
 /// Base URL of the default JSON manifest and legacy XML.
 // Mirrors a3sUpdater/dao/DataAccessConstants.java:23
-pub const DEFAULT_BASE_URL: &str = "https://arma3sync.vpzbrig21.de/updates";
+pub(crate) const DEFAULT_BASE_URL: &str = "https://arma3sync.vpzbrig21.de/updates";
 
 /// Default GitHub "latest release" API endpoint.
 // Mirrors a3sUpdater/config/UpdateConfig.java:80-81
-pub const DEFAULT_GITHUB_API_URL: &str =
+pub(crate) const DEFAULT_GITHUB_API_URL: &str =
     "https://api.github.com/repos/vpzbrig21/Arma3Sync/releases/latest";
 
 /// Default release asset name. `{target}` selects the archive built for this platform; the Java
 /// default (`Arma3Sync-{version}.zip`) names the Java release, which this application cannot run.
-pub const DEFAULT_ASSET_PATTERN: &str = "Arma3Sync-{version}-{target}.zip";
+pub(crate) const DEFAULT_ASSET_PATTERN: &str = "Arma3Sync-{version}-{target}.zip";
 
 const CONFIG_FILE_NAME: &str = "updater.toml";
 const DEFAULT_TIMEOUT_MS: i64 = 30_000;

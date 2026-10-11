@@ -1,12 +1,13 @@
-//! In-process HTTP server and ZIP builders for the updater tests.
+//! In-process HTTP(S) server, ZIP builders and staging helpers for the updater tests.
 
 use std::collections::HashMap;
 use std::io::Write as _;
+use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use a3s_updater::{ConfigOverrides, UpdateConfig};
+use a3s_updater::{ConfigOverrides, StagedEntry, UpdateConfig};
 use axum::body::Body;
 use axum::extract::{Request, State};
 use axum::http::{HeaderMap, StatusCode, header};
@@ -71,20 +72,54 @@ pub struct Server {
 }
 
 impl Server {
+    /// A plain HTTP server.
     pub async fn start() -> Self {
-        let state = Arc::new(ServerState::default());
-        let app = axum::Router::new()
-            .fallback(handle)
-            .with_state(state.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind");
         let addr = listener.local_addr().expect("addr");
+        Self::serve(listener, &format!("http://{addr}/"))
+    }
+
+    /// An HTTPS server with a new self-signed certificate for `127.0.0.1`, returned as PEM.
+    pub async fn start_tls() -> (Self, String) {
+        let certified =
+            rcgen::generate_simple_self_signed(vec!["127.0.0.1".to_owned()]).expect("certificate");
+        let key =
+            rustls::pki_types::PrivateKeyDer::Pkcs8(certified.signing_key.serialize_der().into());
+        let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+        let config = rustls::ServerConfig::builder_with_provider(provider)
+            .with_safe_default_protocol_versions()
+            .expect("protocols")
+            .with_no_client_auth()
+            .with_single_cert(vec![certified.cert.der().clone()], key)
+            .expect("server config");
+        let tcp = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = tcp.local_addr().expect("addr");
+        let listener = TlsListener {
+            tcp,
+            acceptor: tokio_rustls::TlsAcceptor::from(Arc::new(config)),
+        };
+        let server = Self::serve(listener, &format!("https://{addr}/"));
+        (server, certified.cert.pem())
+    }
+
+    fn serve<L>(listener: L, base: &str) -> Self
+    where
+        L: axum::serve::Listener,
+        L::Addr: std::fmt::Debug,
+    {
+        let state = Arc::new(ServerState::default());
+        let app = axum::Router::new()
+            .fallback(handle)
+            .with_state(state.clone());
         tokio::spawn(async move {
             axum::serve(listener, app).await.expect("serve");
         });
         Self {
-            base: Url::parse(&format!("http://{addr}/")).expect("base url"),
+            base: Url::parse(base).expect("base url"),
             state,
         }
     }
@@ -104,6 +139,32 @@ impl Server {
 
     pub fn hits(&self, path: &str) -> usize {
         self.requests().iter().filter(|r| r.path == path).count()
+    }
+}
+
+/// TCP listener that completes a TLS handshake before handing out a connection.
+struct TlsListener {
+    tcp: tokio::net::TcpListener,
+    acceptor: tokio_rustls::TlsAcceptor,
+}
+
+impl axum::serve::Listener for TlsListener {
+    type Io = tokio_rustls::server::TlsStream<tokio::net::TcpStream>;
+    type Addr = SocketAddr;
+
+    async fn accept(&mut self) -> (Self::Io, Self::Addr) {
+        loop {
+            let Ok((stream, addr)) = self.tcp.accept().await else {
+                continue;
+            };
+            if let Ok(tls) = self.acceptor.accept(stream).await {
+                return (tls, addr);
+            }
+        }
+    }
+
+    fn local_addr(&self) -> std::io::Result<Self::Addr> {
+        self.tcp.local_addr()
     }
 }
 
@@ -215,3 +276,34 @@ pub fn sha256_hex(data: &[u8]) -> String {
 }
 
 pub const HASH: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+/// Stages every file below `dir` as it is (sorted, `/`-separated relative paths).
+pub fn stage_tree(dir: &Path) -> Vec<StagedEntry> {
+    fn walk(root: &Path, dir: &Path, out: &mut Vec<StagedEntry>) {
+        let mut children: Vec<_> = std::fs::read_dir(dir)
+            .expect("list")
+            .map(|e| e.expect("entry").path())
+            .collect();
+        children.sort();
+        for path in children {
+            if path.is_dir() {
+                walk(root, &path, out);
+            } else {
+                let relative = path.strip_prefix(root).expect("inside");
+                let relative = relative
+                    .components()
+                    .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                    .collect::<Vec<_>>()
+                    .join("/");
+                out.push(StagedEntry {
+                    source: path,
+                    relative,
+                    unix_mode: None,
+                });
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(dir, dir, &mut out);
+    out
+}

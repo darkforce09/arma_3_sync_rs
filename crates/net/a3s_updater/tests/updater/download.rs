@@ -74,6 +74,10 @@ async fn checksum_and_size_mismatches() {
     let server = Server::start().await;
     let body = vec![7u8; 1000];
     server.route("/a.zip", Reply::ok(body.clone()));
+    server.route(
+        "/chunked.zip",
+        Reply::Chunked(vec![body[..500].to_vec(), body[500..].to_vec()]),
+    );
     let http = HttpClient::new(&local_config("")).expect("client");
     let cancel = CancellationToken::new();
     let staging = StagingDir::new().expect("staging");
@@ -99,11 +103,29 @@ async fn checksum_and_size_mismatches() {
         .await
         .expect_err("sha");
     assert!(matches!(err, UpdateError::Integrity), "{err:?}");
+    // A failed download never appears under the final name.
+    assert!(!staging.path().join("Arma3Sync-2026.1.1.zip").exists());
+    assert!(staging.path().join("Arma3Sync-2026.1.1.zip.part").is_file());
 
     let hash = Some(sha256_hex(&body));
-    let err = download(release(&server, "/a.zip", hash.clone(), 999))
+    // Larger than announced: refused from `Content-Length` before any byte is written, and
+    // while streaming when there is no `Content-Length`.
+    let early = StagingDir::new().expect("staging");
+    let err = download_release(
+        &http,
+        &release(&server, "/a.zip", hash.clone(), 999),
+        &early,
+        DownloadOptions::default(),
+        &|_| {},
+        &cancel,
+    )
+    .await
+    .expect_err("larger");
+    assert!(matches!(err, UpdateError::Manifest(_)), "{err:?}");
+    assert_eq!(std::fs::read_dir(early.path()).expect("list").count(), 0);
+    let err = download(release(&server, "/chunked.zip", hash.clone(), 999))
         .await
-        .expect_err("larger");
+        .expect_err("larger, streamed");
     assert!(matches!(err, UpdateError::Manifest(_)), "{err:?}");
     let err = download(release(&server, "/a.zip", hash.clone(), 1001))
         .await
@@ -174,7 +196,8 @@ async fn cancellation_is_prompt_and_keeps_the_staging_directory() {
     assert!(returned.duration_since(cancelled_at) < Duration::from_secs(1));
 
     let dir = staging.path().to_path_buf();
-    assert!(dir.join("Arma3Sync-2026.1.1.zip").is_file());
+    assert!(dir.join("Arma3Sync-2026.1.1.zip.part").is_file());
+    assert!(!dir.join("Arma3Sync-2026.1.1.zip").exists());
     drop(staging);
     assert!(!dir.exists());
 }

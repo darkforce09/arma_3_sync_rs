@@ -3,9 +3,18 @@
 use std::path::Path;
 
 use a3s_updater::{
-    CopyReplacer, MANAGED_FILES_NAME, StagedEntry, UpdateError, install_staged, install_tree,
+    CopyReplacer, InstallReport, MANAGED_FILES_NAME, StagedEntry, UpdateError, install_staged,
     is_user_managed,
 };
+
+use crate::support::stage_tree;
+
+const LINE_SEPARATOR: &str = if cfg!(windows) { "\r\n" } else { "\n" };
+
+/// Installs every file below `source` into `dest`.
+fn install(source: &Path, dest: &Path) -> Result<InstallReport, UpdateError> {
+    install_staged(dest, &stage_tree(source), &CopyReplacer)
+}
 
 fn write(path: &Path, text: &str) {
     std::fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
@@ -37,7 +46,7 @@ fn removes_previously_managed_files_but_keeps_user_data() {
     );
     write(&source.join("Profiles/me/a.profile"), "shipped");
 
-    let report = install_tree(&source, &dest, &CopyReplacer).expect("install");
+    let report = install(&source, &dest).expect("install");
     assert!(!dest.join("bin/old-launcher.exe").exists());
     assert_eq!(read(&dest.join("bin/new-launcher.exe")), "new");
     assert!(dest.join("user-file.txt").exists());
@@ -68,7 +77,7 @@ fn replaces_changed_files_and_drops_renamed_entries_from_the_state() {
     write(&dest.join(MANAGED_FILES_NAME), "ArmA3Sync.jar\n");
     write(&source.join("Arma3Sync.jar"), "new-content");
 
-    install_tree(&source, &dest, &CopyReplacer).expect("install");
+    install(&source, &dest).expect("install");
     assert_eq!(read(&dest.join("Arma3Sync.jar")), "new-content");
     let state = read(&dest.join(MANAGED_FILES_NAME));
     assert!(state.contains("Arma3Sync.jar"));
@@ -89,7 +98,7 @@ fn keeps_legacy_root_configuration() {
     );
     write(&source.join("bin/new-launcher.exe"), "new");
 
-    install_tree(&source, &dest, &CopyReplacer).expect("install");
+    install(&source, &dest).expect("install");
     assert!(dest.join("a3s.cfg").exists());
     assert!(dest.join("a3s.prefs").exists());
     assert!(!dest.join("bin/old-launcher.exe").exists());
@@ -110,7 +119,7 @@ fn unsafe_state_is_rejected_before_anything_changes() {
         write(&source.join("keep.txt"), "replaced");
         write(&temp.path().join("outside.txt"), "outside");
 
-        let err = install_tree(&source, &dest, &CopyReplacer).expect_err(line);
+        let err = install(&source, &dest).expect_err(line);
         assert!(
             matches!(err, UpdateError::UnsafeStatePath(_)),
             "{line}: {err:?}"
@@ -129,10 +138,6 @@ fn unsafe_state_is_rejected_before_anything_changes() {
 fn missing_sources_are_reported() {
     let temp = tempfile::tempdir().expect("tempdir");
     let dest = temp.path().join("installation");
-    let source = temp.path().join("extracted/runtime/legal/java.base");
-    let err = install_tree(&source, &dest, &CopyReplacer).expect_err("missing tree");
-    assert!(err.to_string().contains("source entry is missing"), "{err}");
-
     let entries = [StagedEntry {
         source: temp.path().join("gone.tmp"),
         relative: "bin/x".to_owned(),
@@ -154,7 +159,7 @@ fn non_empty_directory_in_the_state_fails_and_keeps_the_state() {
     write(&source.join("bin/new.exe"), "new");
     write(&source.join(".A3S-UPDATER-FILES"), "bogus");
 
-    let err = install_tree(&source, &dest, &CopyReplacer).expect_err("non-empty dir");
+    let err = install(&source, &dest).expect_err("non-empty dir");
     assert!(matches!(err, UpdateError::Io { .. }), "{err:?}");
     assert_eq!(read(&dest.join(MANAGED_FILES_NAME)), "empty\nplugins\n");
     assert!(dest.join("plugins/user.dll").exists());
@@ -162,7 +167,7 @@ fn non_empty_directory_in_the_state_fails_and_keeps_the_state() {
     // Without the non-empty directory the install completes; the archive's own copy of the
     // state file is never installed.
     write(&dest.join(MANAGED_FILES_NAME), "empty\n");
-    let report = install_tree(&source, &dest, &CopyReplacer).expect("install");
+    let report = install(&source, &dest).expect("install");
     assert!(!dest.join("empty").exists());
     assert_eq!(report.installed, ["bin/new.exe"]);
     let state = read(&dest.join(MANAGED_FILES_NAME));
@@ -170,19 +175,23 @@ fn non_empty_directory_in_the_state_fails_and_keeps_the_state() {
     assert!(!state.contains("bogus"));
 }
 
-#[cfg(windows)]
+/// On a case-insensitive file system the old spelling is the file just installed and must
+/// survive; on a case-sensitive one it does not exist.
 #[test]
-fn previous_paths_match_case_insensitively_on_windows() {
+fn previous_spelling_of_an_installed_file_is_kept() {
     let temp = tempfile::tempdir().expect("tempdir");
     let dest = temp.path().join("installation");
     let source = temp.path().join("extracted");
     write(&dest.join("ArmA3Sync.exe"), "old");
     write(&dest.join(MANAGED_FILES_NAME), "ARMA3SYNC.EXE\r\n");
     write(&source.join("ArmA3Sync.exe"), "new");
-    let report = install_tree(&source, &dest, &CopyReplacer).expect("install");
+    let report = install(&source, &dest).expect("install");
     assert!(report.removed.is_empty());
     assert_eq!(read(&dest.join("ArmA3Sync.exe")), "new");
-    assert_eq!(read(&dest.join(MANAGED_FILES_NAME)), "ArmA3Sync.exe\r\n");
+    assert_eq!(
+        read(&dest.join(MANAGED_FILES_NAME)),
+        format!("ArmA3Sync.exe{LINE_SEPARATOR}")
+    );
 }
 
 #[test]
@@ -201,10 +210,20 @@ fn user_managed_paths() {
         "resources/ftp",
         "resources/FTP/cache",
         "resources/temp/x",
+        "arma3sync-rs.portable",
+        "Arma3sync-RS-data",
+        "arma3sync-rs-data/config/settings.toml",
     ] {
         assert!(is_user_managed(path), "{path}");
     }
-    for path in ["bin/a3s.cfg", "profilesx", "resources/ftpx", "a3s.cfg.bak"] {
+    for path in [
+        "bin/a3s.cfg",
+        "profilesx",
+        "resources/ftpx",
+        "a3s.cfg.bak",
+        "arma3sync-rs-datax/x",
+        "bin/arma3sync-rs.portable",
+    ] {
         assert!(!is_user_managed(path), "{path}");
     }
 }
@@ -238,4 +257,92 @@ fn copy_replacer_renames_over_the_target() {
         .map(|e| e.expect("entry").file_name())
         .collect();
     assert_eq!(siblings, ["app"]);
+}
+
+#[test]
+fn hostile_staged_paths_are_rejected_before_writing() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let dest = temp.path().join("installation");
+    let source = temp.path().join("staged.tmp");
+    write(&source, "payload");
+    for relative in [
+        "../x",
+        "/etc/x",
+        "a/../../x",
+        "C:/x",
+        "nul",
+        "x/..",
+        "bin/a:b",
+    ] {
+        let entries = [StagedEntry {
+            source: source.clone(),
+            relative: relative.to_owned(),
+            unix_mode: None,
+        }];
+        let err = install_staged(&dest, &entries, &CopyReplacer).expect_err(relative);
+        assert!(
+            matches!(err, UpdateError::UnsafeEntry(_)),
+            "{relative}: {err:?}"
+        );
+    }
+    assert!(!temp.path().join("x").exists());
+    assert_eq!(std::fs::read_dir(&dest).expect("list").count(), 0);
+
+    let colliding = [
+        StagedEntry {
+            source: source.clone(),
+            relative: "bin/App".to_owned(),
+            unix_mode: None,
+        },
+        StagedEntry {
+            source,
+            relative: "bin/app".to_owned(),
+            unix_mode: None,
+        },
+    ];
+    let err = install_staged(&dest, &colliding, &CopyReplacer).expect_err("collision");
+    assert!(matches!(err, UpdateError::PathConflict(_)), "{err:?}");
+    assert!(!dest.join("bin").exists());
+}
+
+#[test]
+fn managed_file_replaced_by_a_directory() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let dest = temp.path().join("installation");
+    let first = temp.path().join("first");
+    let second = temp.path().join("second");
+    write(&first.join("x"), "file");
+    write(&first.join("keep.txt"), "1");
+    install(&first, &dest).expect("first version");
+
+    write(&second.join("x/y"), "nested");
+    write(&second.join("keep.txt"), "2");
+    let report = install(&second, &dest).expect("second version");
+    assert_eq!(read(&dest.join("x/y")), "nested");
+    assert_eq!(report.removed, ["x"]);
+    let state = read(&dest.join(MANAGED_FILES_NAME));
+    assert_eq!(state.lines().collect::<Vec<_>>(), ["keep.txt", "x/y"]);
+}
+
+#[test]
+fn unmanaged_conflicts_fail_before_writing() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let dest = temp.path().join("installation");
+    let source = temp.path().join("extracted");
+    write(&dest.join("x"), "user file");
+    write(&dest.join("dir/inside.txt"), "user");
+    write(&source.join("a.txt"), "new");
+    write(&source.join("x/y"), "nested");
+    let err = install(&source, &dest).expect_err("file in the way");
+    assert!(matches!(err, UpdateError::PathConflict(_)), "{err:?}");
+    assert!(!dest.join("a.txt").exists());
+    assert_eq!(read(&dest.join("x")), "user file");
+
+    let source = temp.path().join("extracted-2");
+    write(&source.join("a.txt"), "new");
+    write(&source.join("dir"), "file over a directory");
+    let err = install(&source, &dest).expect_err("directory in the way");
+    assert!(matches!(err, UpdateError::PathConflict(_)), "{err:?}");
+    assert!(!dest.join("a.txt").exists());
+    assert!(dest.join("dir/inside.txt").exists());
 }

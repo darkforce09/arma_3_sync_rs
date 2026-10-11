@@ -11,16 +11,17 @@ use tokio::io::AsyncWriteExt as _;
 use tokio_util::sync::CancellationToken;
 use url::Url;
 
+use crate::archive::MAX_ARCHIVE_BYTES;
 use crate::release::is_safe_zip_name;
 use crate::{Release, UpdateConfig, UpdateError};
 
 /// `User-Agent` of every updater request.
 // Mirrors a3sUpdater/dao/HttpDAO.java:146
-pub const USER_AGENT: &str = "ArmA3Sync-Updater";
+pub(crate) const USER_AGENT: &str = "ArmA3Sync-Updater";
 
 /// Largest accepted metadata document.
 // Mirrors a3sUpdater/dao/HttpDAO.java:87-90
-pub const MAX_METADATA_BYTES: u64 = 1_048_576;
+pub(crate) const MAX_METADATA_BYTES: u64 = 1_048_576;
 
 const MAX_REDIRECTS: usize = 10;
 
@@ -33,9 +34,24 @@ pub struct HttpClient {
 }
 
 impl HttpClient {
-    /// Builds the client.
-    // Mirrors a3sUpdater/dao/HttpDAO.java:135-148
+    /// Builds the client; server certificates are checked against the platform's trust store.
     pub fn new(config: &UpdateConfig) -> Result<Self, UpdateError> {
+        Self::build(config, None)
+    }
+
+    /// Builds a client that trusts only the CA certificates in `pem` (one or more PEM blocks),
+    /// for an update server signed by a private CA.
+    pub fn with_root_certificates(config: &UpdateConfig, pem: &[u8]) -> Result<Self, UpdateError> {
+        let certificates = reqwest::Certificate::from_pem_bundle(pem)
+            .map_err(|e| UpdateError::Transport(format_chain(&e)))?;
+        Self::build(config, Some(certificates))
+    }
+
+    // Mirrors a3sUpdater/dao/HttpDAO.java:135-148
+    fn build(
+        config: &UpdateConfig,
+        roots: Option<Vec<reqwest::Certificate>>,
+    ) -> Result<Self, UpdateError> {
         let allow_http = config.allow_http();
         let redirect = reqwest::redirect::Policy::custom(move |attempt| {
             let previous_https = attempt
@@ -54,11 +70,15 @@ impl HttpClient {
                 attempt.follow()
             }
         });
-        let client = reqwest::Client::builder()
+        let mut builder = reqwest::Client::builder()
             .user_agent(USER_AGENT)
             .connect_timeout(config.connect_timeout())
             .read_timeout(config.read_timeout())
-            .redirect(redirect)
+            .redirect(redirect);
+        if let Some(roots) = roots {
+            builder = builder.tls_certs_only(roots);
+        }
+        let client = builder
             .build()
             .map_err(|e| UpdateError::Transport(format_chain(&e)))?;
         Ok(Self { client, allow_http })
@@ -208,6 +228,15 @@ impl StagingDir {
         Ok(Self { dir })
     }
 
+    /// Creates a new directory inside `parent`. An installer that runs with more privileges
+    /// than the downloading user passes a `parent` that user cannot write.
+    pub fn new_in(parent: &Path) -> std::io::Result<Self> {
+        let dir = tempfile::Builder::new()
+            .prefix("arma3sync-update-")
+            .tempdir_in(parent)?;
+        Ok(Self { dir })
+    }
+
     pub fn path(&self) -> &Path {
         self.dir.path()
     }
@@ -239,9 +268,13 @@ pub struct DownloadedArchive {
 
 /// Downloads the release archive into `staging`.
 ///
-/// `progress` receives the total number of bytes written after every chunk. When the release
-/// announces a size, more bytes than announced abort the download and fewer fail it. A release
-/// without SHA-256 is refused unless [`DownloadOptions::allow_unverified`] is set.
+/// The bytes go to `<file_name>.part`, which is renamed to `<file_name>` only once the
+/// download is complete and its SHA-256 matched, so a failed or cancelled download never
+/// leaves a file under the final name. `progress` receives the total number of bytes written
+/// after every chunk. A `Content-Length` above the announced size or the 4 GiB limit fails
+/// before anything is written; when the release announces a size, more bytes than announced
+/// abort the download and fewer fail it. A release without SHA-256 is refused unless
+/// [`DownloadOptions::allow_unverified`] is set.
 // Mirrors a3sUpdater/dao/HttpDAO.java:38-65,154-171
 pub async fn download_release(
     http: &HttpClient,
@@ -260,14 +293,29 @@ pub async fn download_release(
             release.file_name
         )));
     }
-    let path = staging.path().join(&release.file_name);
+    let limit = if release.size > 0 {
+        release.size.min(MAX_ARCHIVE_BYTES)
+    } else {
+        MAX_ARCHIVE_BYTES
+    };
+    let too_large = || {
+        UpdateError::Manifest(format!(
+            "Update archive is larger than the allowed {limit} bytes."
+        ))
+    };
     let response = http
         .send(Method::GET, &release.download_url, HeaderMap::new(), cancel)
         .await?;
-    let mut file = tokio::fs::File::create(&path)
+    if header_content_length(&response).is_some_and(|length| length > limit) {
+        return Err(too_large());
+    }
+
+    let path = staging.path().join(&release.file_name);
+    let part = staging.path().join(format!("{}.part", release.file_name));
+    let mut file = tokio::fs::File::create(&part)
         .await
-        .map_err(|e| UpdateError::io(format!("Could not create {}", path.display()), e))?;
-    let write_error = |e| UpdateError::io(format!("Could not write {}", path.display()), e);
+        .map_err(|e| UpdateError::io(format!("Could not create {}", part.display()), e))?;
+    let write_error = |e| UpdateError::io(format!("Could not write {}", part.display()), e);
 
     let mut hasher = Sha256::new();
     let mut total = 0u64;
@@ -275,11 +323,8 @@ pub async fn download_release(
     while let Some(chunk) = cancellable(cancel, stream.next()).await? {
         let chunk = chunk.map_err(|e| transport_error(&e))?;
         total += chunk.len() as u64;
-        if release.size > 0 && total > release.size {
-            return Err(UpdateError::Manifest(format!(
-                "Update archive is larger than the announced {} bytes.",
-                release.size
-            )));
+        if total > limit {
+            return Err(too_large());
         }
         hasher.update(&chunk);
         cancellable(cancel, file.write_all(&chunk))
@@ -306,6 +351,9 @@ pub async fn download_release(
         }
         None => false,
     };
+    tokio::fs::rename(&part, &path)
+        .await
+        .map_err(|e| UpdateError::io(format!("Could not create {}", path.display()), e))?;
     Ok(DownloadedArchive {
         path,
         bytes: total,
@@ -313,7 +361,7 @@ pub async fn download_release(
     })
 }
 
-fn to_hex(bytes: &[u8]) -> String {
+pub(crate) fn to_hex(bytes: &[u8]) -> String {
     use std::fmt::Write as _;
     bytes.iter().fold(String::with_capacity(64), |mut out, b| {
         let _ignored = write!(out, "{b:02x}");

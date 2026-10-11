@@ -1,9 +1,6 @@
 //! Request headers, status handling, scheme rules, redirects and the metadata size cap.
 
-use a3s_updater::{
-    CancellationToken, ConfigOverrides, HttpClient, MAX_METADATA_BYTES, USER_AGENT, UpdateConfig,
-    UpdateError,
-};
+use a3s_updater::{CancellationToken, ConfigOverrides, HttpClient, UpdateConfig, UpdateError};
 
 use crate::support::{Reply, Server, local_config};
 
@@ -29,7 +26,7 @@ async fn headers_and_status() {
         .expect("text");
     assert_eq!(text, "héllo");
     let request = &server.requests()[0];
-    assert_eq!(request.headers["user-agent"], USER_AGENT);
+    assert_eq!(request.headers["user-agent"], "ArmA3Sync-Updater");
     assert_eq!(request.headers["x-github-api-version"], "2022-11-28");
 
     let err = http
@@ -56,7 +53,7 @@ async fn plain_http_needs_allow_http() {
 #[tokio::test]
 async fn metadata_size_cap() {
     let server = Server::start().await;
-    let limit = usize::try_from(MAX_METADATA_BYTES).expect("limit");
+    let limit = 1_048_576;
     server.route("/exact", Reply::ok(vec![b'a'; limit]));
     server.route("/over", Reply::ok(vec![b'a'; limit + 1]));
     server.route(
@@ -138,4 +135,30 @@ async fn head_content_length() {
         .await
         .expect_err("404");
     assert!(matches!(err, UpdateError::Http { status: 404 }), "{err:?}");
+}
+
+#[tokio::test]
+async fn https_to_http_redirect_is_refused() {
+    let (secure, certificate) = Server::start_tls().await;
+    let plain = Server::start().await;
+    plain.route("/target", Reply::ok("downgraded"));
+    secure.route("/ok", Reply::ok("secure"));
+    secure.route("/hop", Reply::Redirect(plain.url("/target").to_string()));
+    // `allow_http` is on: only the downgrade itself is refused.
+    let http = HttpClient::with_root_certificates(&local_config(""), certificate.as_bytes())
+        .expect("client");
+    let cancel = CancellationToken::new();
+
+    let text = http
+        .read_text(&secure.url("/ok"), &[], &cancel)
+        .await
+        .expect("https");
+    assert_eq!(text, "secure");
+
+    let err = http
+        .read_text(&secure.url("/hop"), &[], &cancel)
+        .await
+        .expect_err("downgrade");
+    assert!(matches!(err, UpdateError::InsecureScheme(_)), "{err:?}");
+    assert_eq!(plain.hits("/target"), 0);
 }

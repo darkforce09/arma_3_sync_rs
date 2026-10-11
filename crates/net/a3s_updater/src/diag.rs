@@ -8,7 +8,7 @@ use a3s_foundation::paths::{AppDirs, PlatformEnv};
 use parking_lot::Mutex;
 
 /// File name of the default diagnostic log.
-pub const LOG_FILE_NAME: &str = "arma3sync-updater-debug.log";
+pub(crate) const LOG_FILE_NAME: &str = "arma3sync-updater-debug.log";
 
 /// Serializes appends from every [`DiagnosticLog`] of the process.
 static APPEND_LOCK: Mutex<()> = Mutex::new(());
