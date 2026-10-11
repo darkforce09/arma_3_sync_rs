@@ -3,6 +3,16 @@
 version = 4
 
 [[package]]
+name = "a3s_addons"
+version = "0.1.0-alpha.1"
+dependencies = [
+ "a3s_repo_files",
+ "a3s_types",
+ "tempfile",
+ "tracing",
+]
+
+[[package]]
 name = "a3s_admin"
 version = "0.1.0-alpha.1"
 dependencies = [

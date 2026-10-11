@@ -31,6 +31,7 @@ A crate may depend on crates from its own group or a group listed above it in th
 | `a3s_sync` | Client check → plan → download. | `service/synchronization/*`, `service/connection/*` |
 | `a3s_admin` | Repository build (check and upload to come). | `service/administration/*`, `dao/repository/RepositoryBuildProcessor` |
 | **game** | | |
+| `a3s_addons` | Addon discovery and registry (mods and CDLCs under their symbolic keys), launch priorities, modset groups from repositories and events, missing/duplicate checks on addon groups. | `service/AddonService`, `dao/AddonDAO`, addon parts of `ProfileService`, `RepositoryService`, `ui/main/AddonsPanel` |
 | `a3s_tools` | Bikey extraction, RPT log tailing, TFAR and ACRE 2 installer logic. | `dao/CommonDAO`, `ui/tools/*` |
 | **viewer** | | |
 | `a3s_ui` | Theme tokens (port of `ui/theme`), Geist fonts, SVG icons, widgets. | `ui/theme`, `ui/icon`, `ui/components` |
@@ -39,7 +40,7 @@ A crate may depend on crates from its own group or a group listed above it in th
 | **development** | | |
 | `a3s_dev_tools` | Java fixture harness wrapper: fixture regeneration, Java cross-checks. Dev-dependency only. | – |
 
-Planned parts (addons, launch, platform integration, the viewer application, the updater)
+Planned parts (launch, platform integration, the viewer application, the updater)
 get a crate when their ttm ticket starts, inside the group that fits.
 
 ## Repository wire format
@@ -156,6 +157,11 @@ Wire compatibility is the requirement; these differences are deliberate.
   waits for a missing file, detects rotation by file identity as well as shrinkage, and reports
   read errors once instead of swallowing them. Installer paths join with the platform separator
   and an empty field never resolves against the filesystem root.
+* **Addon discovery** lists each folder in name order (ignoring case, ties in byte order) where
+  Java takes the filesystem's order, which decides which of two same-named mods keeps the plain
+  key; a lookup that several addons match (a duplicate inside a download location, a Workshop id,
+  a DLC) takes the first in scan order instead of Java's hash order; a symbolic-link loop is
+  scanned once instead of recursing until the stack overflows.
 * **Local-only fixes** (no wire effect) are allowed where Java has a bug or a security hole, for
   example control characters rejected in local file names, and UI tokens adjusted for readability
   in the dark theme. UI and error text need not match Java.
