@@ -10,7 +10,6 @@ Blockers: none
 | WP | Crate | State | Round | Agents | Slot | Branch | Worktree | HEAD | Since |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-10-11 | a3s_sync (WP07 branch) | a19_live_wog_check, import_autoconfig WOG | PASS |
-| WP20 | a3s_ui | RE-REVIEW after fix round 1 | 1 | impl=a2a77fc3 rev=a5a4a92d | 1 | worktree-agent-a2a77fc3ddf0cff52 | .claude/worktrees/agent-a2a77fc3ddf0cff52 | 55b4e16 | 2026-10-10 |
 | WP08 | a3s_sync plan | VERIFY(+live) ∥ REVIEW | 0 | impl=a1349fd3 ver=a34e0b61 rev=aab55615 | 2 | worktree-agent-a1349fd36b09e8a4b | .claude/worktrees/agent-a1349fd36b09e8a4b | 68c648e | 2026-10-11 |
 | WP01 | java_fixture_harness | FIX round 1 (review 1 MAJOR scenario mtimes; verifier locale) | 1 | impl=ae232646 | 3 | worktree-agent-ae2326461a583e177 | .claude/worktrees/agent-ae2326461a583e177 | 022f896 | 2026-10-11 |
 
@@ -39,7 +38,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 | 0 | WP03 | a3s_types local | — | MERGED | cea732e | wire-touching |
 | 0 | WP06 | a3s_transport upload | transport-commit | MERGED | 9dc241f | |
 | 0 | WP17 | a3s_tools bikey/rpt/radio | — | SPEC_OK | | |
-| 0 | WP20 | a3s_ui | — | VERIFY | | |
+| 0 | WP20 | a3s_ui | — | MERGED | | |
 | 0 | WP31 | a3s_updater core | — | SPEC_OK | | |
 | 1 | WP04 | a3s_repo_files local/legacy | WP02, WP03 | SPEC_OK | | |
 | 1 | WP05 | autoconfig url/export | WP03 | SPEC_OK | | |
@@ -83,6 +82,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 - D-12 2026-10-10: deny.toml ignores RUSTSEC-2023-0071 (rsa Marvin, private-key ops only; we only verify SFTP host keys). Re-evaluate if SFTP public-key auth is added.
 - D-13 2026-10-11: a3s_ui indeterminate mark = accent_primary, unchecked border = text_disabled, mode-aware JAVA_BLUE helper (readability on dark; local-only).
 - D-14 2026-10-11: Rust builder excludes .ebo.zip (and any compression-stage .zip) from the sync tree; Java only excludes .pbo.zip (user).
+- D-15 2026-10-11: sync plan rejects unsafe remote names (path traversal, absolute paths, separators) and never follows symlinked dirs in the extra-file scan (security hardening; Java is vulnerable).
 - D-10 2026-10-10: JDK = user-local Temurin 25.0.4.1 (Bazzite, no dnf); harness sources scripts/java_env.sh; no Gradle — compile with javac.
 - D-9 2026-10-10: custom agent types need a session restart; until then spawn general-purpose/opus with a ROLE header. (Now registered in this session.)
 
@@ -102,6 +102,8 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 - F-13 WP07 parity MINORs: Java texts for FTP missing remote dir and unsupported protocol on connect; HTTP status text 'Server response code is N Reason'; cancel during sync decode keeps decoded slot.
 - F-14 a3s_transport: FTP control replies (retr_as_stream / completion) are not cancel-aware; make every FTP command race the CancellationToken (WP07 verifier).
 - F-15 WP03 PROVISIONAL UID markers can be lifted (WP01 verifier: all 25 descriptors + 3 computed UIDs match JDK 25).
+- F-16 a3s_ui dialog focus MINORs: popup press steals dialog focus; focus not handed back when focused dialog closes; Escape not gated by egui_wants_keyboard_input when focus moved by Tab; modal keys only from 2nd frame (document).
+- F-17 a3s_sync: expose RemoteConnection::fetch_file (poisons + B13 error) and use it from completion.rs; run classify_leaves off the async thread.
 - F-2 CI: add mesa Vulkan drivers to rust.yml for egui_kittest snapshot tests (WP20 Q10).
 
 ## Live test log
