@@ -11,9 +11,9 @@ Blockers: none
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-10-11 | a3s_sync (WP09 branch) | a17_live_wog_download (≤3 files, ≤1 MB) | PASS |
 | 2026-10-11 | a3s_sync (WP07 branch) | a19_live_wog_check, import_autoconfig WOG | PASS |
-| WP09 | a3s_sync download | FIX round 1 (BLOCKER cancel spin, deadline, D-16, overflow; live PASS) | 1 | impl=ab815ed7 ver=ae84c937 rev=a6ecc9b9 | 1 | worktree-agent-ab815ed72afe7c2df | .claude/worktrees/agent-ab815ed72afe7c2df | 02619c7 | 2026-10-11 |
-| WP04 | a3s_repo_files local/legacy | FIX round 1 (credentials in errors, import overwrite; Java seal cross-check PASS) | 1 | impl=a20b9ae5 ver=aab7bf75 rev=a18f8f57 | 2 | worktree-agent-a20b9ae5ecc809758 | .claude/worktrees/agent-a20b9ae5ecc809758 | c7513a5 | 2026-10-11 |
-| WP11 | a3s_admin build | VERIFY(+JDK); review REQUEST_CHANGES (MAJOR leftover temp files published) → fix after verifier | 0 | impl=a39b7a5c ver=aee386a7 rev=a4b331ee | 3 | worktree-agent-a39b7a5c85d46a5e2 | .claude/worktrees/agent-a39b7a5c85d46a5e2 | 504cd66 | 2026-10-11 |
+| WP09 | a3s_sync download | RE-REVIEW after fix round 1 | 1 | impl=ab815ed7 ver=ae84c937 rev=a6ecc9b9 | 1 | worktree-agent-ab815ed72afe7c2df | .claude/worktrees/agent-ab815ed72afe7c2df | 02619c7 | 2026-10-11 |
+| WP04 | a3s_repo_files local/legacy | RE-REVIEW after fix round 1 | 1 | impl=a20b9ae5 ver=aab7bf75 rev=a18f8f57 | 2 | worktree-agent-a20b9ae5ecc809758 | .claude/worktrees/agent-a20b9ae5ecc809758 | c7513a5 | 2026-10-11 |
+| WP11 | a3s_admin build | FIX round 1 (Java ref-count limit, cache commit, umask, temp names, D-17; Java reads Rust PASS) | 1 | impl=a39b7a5c ver=aee386a7 rev=a4b331ee | 3 | worktree-agent-a39b7a5c85d46a5e2 | .claude/worktrees/agent-a39b7a5c85d46a5e2 | 504cd66 | 2026-10-11 |
 
 ## Done before orchestration
 
@@ -86,6 +86,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 - D-14 2026-10-11: Rust builder excludes .ebo.zip (and any compression-stage .zip) from the sync tree; Java only excludes .pbo.zip (user).
 - D-15 2026-10-11: sync plan rejects unsafe remote names (path traversal, absolute paths, separators) and never follows symlinked dirs in the extra-file scan (security hardening; Java is vulnerable).
 - D-16 2026-10-11: downloads follow user-created symlinks inside the destination; only remote names are validated (no .., absolute, separators). Deletions never follow links.
+- D-17 2026-10-11: symlinked repository root → real totalFilesSize (user).
 - D-10 2026-10-10: JDK = user-local Temurin 25.0.4.1 (Bazzite, no dnf); harness sources scripts/java_env.sh; no Gradle — compile with javac.
 - D-9 2026-10-10: custom agent types need a session restart; until then spawn general-purpose/opus with a ROLE header. (Now registered in this session.)
 
