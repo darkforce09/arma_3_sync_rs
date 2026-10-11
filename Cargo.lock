@@ -97,6 +97,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "a3s_tools"
+version = "0.1.0-alpha.1"
+dependencies = [
+ "tempfile",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "a3s_transport"
 version = "0.1.0-alpha.1"
 dependencies = [

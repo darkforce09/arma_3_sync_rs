@@ -30,6 +30,8 @@ A crate may depend on crates from its own group or a group listed above it in th
 | `a3s_transport` | HTTP(S), FTP(S), SFTP, WebDAV; proxies, timeouts, throttling, cancel. | `dao/connection/*` |
 | `a3s_sync` | Client check → plan → download. | `service/synchronization/*`, `service/connection/*` |
 | `a3s_admin` | Repository build (check and upload to come). | `service/administration/*`, `dao/repository/RepositoryBuildProcessor` |
+| **game** | | |
+| `a3s_tools` | Bikey extraction, RPT log tailing, TFAR and ACRE 2 installer logic. | `dao/CommonDAO`, `ui/tools/*` |
 | **viewer** | | |
 | `a3s_ui` | Theme tokens (port of `ui/theme`), Geist fonts, SVG icons, widgets. | `ui/theme`, `ui/icon`, `ui/components` |
 | **application** | | |
@@ -37,7 +39,7 @@ A crate may depend on crates from its own group or a group listed above it in th
 | **development** | | |
 | `a3s_dev_tools` | Java fixture harness wrapper: fixture regeneration, Java cross-checks. Dev-dependency only. | – |
 
-Planned parts (addons, launch, tools, platform integration, the viewer application, the updater)
+Planned parts (addons, launch, platform integration, the viewer application, the updater)
 get a crate when their ttm ticket starts, inside the group that fits.
 
 ## Repository wire format
@@ -145,6 +147,15 @@ Wire compatibility is the requirement; these differences are deliberate.
   SOCKS4 proxy speaks SOCKS4 (Java's default made it SOCKS5).
 * **Insecure TLS override** is the environment variable `A3S_ALLOW_INSECURE_SSL=1` instead of
   Java's `-Da3s.allowInsecureSsl=true`.
+* **Game tools:** each bikey extraction has its own cancel token (Java's flag is never reset, so
+  every later extraction finds nothing), cancellation also stops the copies, a key that already is
+  its own target is not copied onto itself (Java truncates it to 0 bytes), the walk is sorted by
+  name and survives symbolic-link cycles, and a target that is a file is "not writable". The RPT
+  tail stops and joins its thread (Java's never stops), continues exactly where the preload ended,
+  holds back a partial last line until it ends or the file stops growing, decodes lines as UTF-8,
+  waits for a missing file, detects rotation by file identity as well as shrinkage, and reports
+  read errors once instead of swallowing them. Installer paths join with the platform separator
+  and an empty field never resolves against the filesystem root.
 * **Local-only fixes** (no wire effect) are allowed where Java has a bug or a security hole, for
   example control characters rejected in local file names, and UI tokens adjusted for readability
   in the dark theme. UI and error text need not match Java.

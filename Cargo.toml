@@ -4,6 +4,7 @@ members = [
   "crates/foundation/*",
   "crates/store/*",
   "crates/net/*",
+  "crates/game/*",
   "crates/viewer/*",
   "crates/application/*",
   "crates/development/*",
@@ -33,6 +34,8 @@ a3s_zsync = { path = "crates/store/a3s_zsync", version = "=0.1.0-alpha.1", defau
 a3s_admin = { path = "crates/net/a3s_admin", version = "=0.1.0-alpha.1", default-features = false }
 a3s_sync = { path = "crates/net/a3s_sync", version = "=0.1.0-alpha.1", default-features = false }
 a3s_transport = { path = "crates/net/a3s_transport", version = "=0.1.0-alpha.1", default-features = false }
+
+a3s_tools = { path = "crates/game/a3s_tools", version = "=0.1.0-alpha.1", default-features = false }
 
 a3s_ui = { path = "crates/viewer/a3s_ui", version = "=0.1.0-alpha.1", default-features = false }
 
