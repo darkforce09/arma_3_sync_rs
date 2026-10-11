@@ -145,6 +145,7 @@ fn leaf<'a>(dir: &'a SyncTreeDirectory, path: &str) -> &'a SyncTreeLeaf {
 }
 
 /// Whether the current user can read files whose permissions forbid it (e.g. root).
+#[cfg(unix)]
 fn permissions_enforced(dir: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt as _;
     let probe = write(dir, "probe", b"x");
@@ -230,6 +231,7 @@ fn scan_order_exclusions_addons_and_pruning() {
     assert_eq!(info.number_of_files, 8);
 }
 
+#[cfg(unix)]
 #[test]
 fn symbolic_links_are_followed_and_loops_fail() {
     let tmp = tempfile::tempdir().unwrap();
@@ -332,6 +334,7 @@ fn sha1_cache_hits_misses_and_stale_entries() {
     assert_eq!(third.rehashed, ["abc.txt"]);
 }
 
+#[cfg(unix)]
 #[test]
 fn unreadable_file_fails_without_touching_a3s() {
     use std::os::unix::fs::PermissionsExt as _;
@@ -735,6 +738,7 @@ fn cancel_during_sha1_writes_nothing() {
     assert_eq!(a3s_bytes(&root), before);
 }
 
+#[cfg(unix)]
 #[test]
 fn zip_failure_writes_nothing() {
     use std::os::unix::fs::PermissionsExt as _;

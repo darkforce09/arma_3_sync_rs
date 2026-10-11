@@ -9,8 +9,7 @@ use std::time::{Duration, Instant};
 
 use a3s_foundation::error::ErrorKind;
 use a3s_sync::download::{
-    CollectZips, DownloadEnd, DownloadReport, DownloadRequest, DownloadedZip, NoZipSink, ZipSink,
-    download,
+    DownloadEnd, DownloadReport, DownloadRequest, DownloadedZip, NoZipSink, ZipSink, download,
 };
 use a3s_sync::{DownloadStatus, DownloadTask, EventSender, Outcome, SyncEvent, SyncOptions};
 use a3s_transport::{CancellationToken, Throttle};
@@ -1197,6 +1196,8 @@ async fn v_hostile_names_are_refused() {
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn v_symlinked_part_and_target_not_followed() {
+    use a3s_sync::download::CollectZips;
+
     let server = HttpServer::start().await;
     let outer = tempfile::tempdir().expect("tempdir");
     let dest = outer.path().join("dest");

@@ -8,7 +8,6 @@ use std::collections::HashMap;
 use std::io::Cursor;
 use std::path::Path;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 use a3s_sync::completion::{completion_percent, determine_completion, local_completion};
 use a3s_sync::plan::{NoAddons, assign_destinations};
@@ -370,6 +369,8 @@ async fn verify_lifo_order_and_stop_after_first_error() {
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn verify_cancel_during_matching_large_file() {
+    use std::time::{Duration, Instant};
+
     let content = pseudo_random(64 * BLOCK_SIZE, 21);
     let base = tempfile::tempdir().expect("tempdir");
     std::fs::create_dir_all(base.path().join("@a")).expect("mkdir");

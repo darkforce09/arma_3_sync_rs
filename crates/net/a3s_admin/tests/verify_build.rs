@@ -7,7 +7,6 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::Read as _;
-use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -348,8 +347,10 @@ fn verify_cancel_mid_zip_and_mid_zsync_leaves_no_partial_files() {
 /// Every file a build publishes gets the process umask permissions (typically 0644), so a web
 /// server running as another user can serve it: `.zsync` and `.zip` like Java's
 /// `FileOutputStream`, and the `.a3s` metadata files too (Java leaves those 0600).
+#[cfg(unix)]
 #[test]
 fn verify_generated_files_have_umask_permissions() {
+    use std::os::unix::fs::PermissionsExt as _;
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().join("repo");
     write(&root, "@m/addons/a.pbo", &vec![1u8; 10_000]);
@@ -447,6 +448,7 @@ fn verify_zip64_margin_below_4_gib() {
 /// A repository whose path is a symbolic link to a folder reports the real `totalFilesSize` of
 /// the linked folder. Java reports 0 here (`Files.walk` does not follow a link given as its
 /// start); the real size is an intentional difference.
+#[cfg(unix)]
 #[test]
 fn verify_symlinked_root_total_files_size_is_real() {
     let tmp = tempfile::tempdir().unwrap();
@@ -464,6 +466,7 @@ fn verify_symlinked_root_total_files_size_is_real() {
 
 /// Inside the repository, linked folders are scanned but not counted by `totalFilesSize`; linked
 /// files are counted with their target's size. A cycle through two sibling links fails cleanly.
+#[cfg(unix)]
 #[test]
 fn verify_inner_symlinks_and_sibling_cycles() {
     let tmp = tempfile::tempdir().unwrap();
@@ -499,9 +502,19 @@ fn verify_inner_symlinks_and_sibling_cycles() {
     assert!(!cyc.join(".a3s").exists());
 }
 
+/// Whether the filesystem holding `dir` treats names that differ only in case as one name (the
+/// default on Windows and macOS).
+fn case_insensitive_filesystem(dir: &Path) -> bool {
+    let probe = write(dir, "case-probe", b"");
+    let insensitive = dir.join("CASE-PROBE").exists();
+    fs::remove_file(probe).unwrap();
+    insensitive
+}
+
 /// Unicode (incl. supplementary characters), spaces, names that differ only in case, several
 /// empty files (some cached, some new), a hidden folder and an excluded file. Rebuilds without
-/// a change keep the revision and the streams.
+/// a change keep the revision and the streams. On a case-insensitive filesystem the names that
+/// differ only in case are one file or folder, named as first created.
 fn unicode_repo(root: &Path) -> Repository {
     write(root, "@Mod/addons/Ünïcødé ✓.pbo", &vec![3u8; 3000]);
     write(root, "@Mod/addons/🎮 game.pbo", &vec![4u8; 2000]);
@@ -516,7 +529,9 @@ fn unicode_repo(root: &Path) -> Repository {
     let mut repo = repository(root, ProtocolType::Http);
     repo.compressed = true;
     repo.excluded_files_from_build = [root
-        .join("deep/e/excluded.txt")
+        .join("deep")
+        .join("e")
+        .join("excluded.txt")
         .to_string_lossy()
         .into_owned()]
     .into();
@@ -527,12 +542,18 @@ fn unicode_repo(root: &Path) -> Repository {
 #[test]
 fn verify_unicode_case_and_empty_files_rebuild_idempotent() {
     let tmp = tempfile::tempdir().unwrap();
+    let case_insensitive = case_insensitive_filesystem(tmp.path());
     let root = tmp.path().join("répo ✓");
     let repo = unicode_repo(&root);
     let mut cache = Sha1Cache::default();
     let first = build(&repo, &mut cache);
     assert_eq!(first.server_info.revision, 1);
-    assert_eq!(first.server_info.number_of_files, 9);
+    let (files, addons): (i64, &[&str]) = if case_insensitive {
+        (8, &["@Mod"])
+    } else {
+        (9, &["@Mod", "@mod"])
+    };
+    assert_eq!(first.server_info.number_of_files, files);
     assert_eq!(
         first
             .server_info
@@ -542,12 +563,40 @@ fn verify_unicode_case_and_empty_files_rebuild_idempotent() {
         ["hidden"]
     );
     let names: Vec<&str> = first.sync.children.iter().map(SyncTreeNode::name).collect();
-    assert_eq!(names, ["@Mod", "@mod", "deep", "hidden", "with space"]);
+    assert_eq!(names[..addons.len()], *addons);
+    assert_eq!(names[addons.len()..], ["deep", "hidden", "with space"]);
     for path in ["with space/empty1", "with space/empty2", "deep/e/empty3"] {
         assert_eq!(leaf_sha1(&first.sync, path).as_deref(), Some("0"));
     }
+    let mut leaf_paths = Vec::new();
+    first.sync.walk(&mut |path, node| {
+        if matches!(node, SyncTreeNode::Leaf(_)) {
+            leaf_paths.push(path.to_owned());
+        }
+    });
+    let case_variants: &[&str] = if case_insensitive {
+        &["@Mod/addons/x.EBO", "with space/Case.txt"]
+    } else {
+        &[
+            "@mod/Addons/x.EBO",
+            "with space/Case.txt",
+            "with space/case.txt",
+        ]
+    };
+    for path in [
+        "@mod/Addons/x.EBO",
+        "@Mod/addons/x.EBO",
+        "with space/Case.txt",
+        "with space/case.txt",
+    ] {
+        assert_eq!(
+            leaf_paths.iter().any(|p| p == path),
+            case_variants.contains(&path),
+            "{path}: {leaf_paths:?}"
+        );
+    }
     assert_eq!(first.changelogs.list.len(), 1);
-    assert_eq!(first.changelogs.list[0].addons, ["@Mod", "@mod"]);
+    assert_eq!(first.changelogs.list[0].addons, addons);
     let s1 = streams(&root);
     for (name, raw) in &s1 {
         a3s_jserial::read_with_limits(raw, a3s_jserial::Limits::JAVA_A3S)
@@ -572,7 +621,7 @@ fn verify_unicode_case_and_empty_files_rebuild_idempotent() {
     write(&root, "deep/empty5", b"");
     let fourth = build(&repo, &mut cache);
     assert_eq!(fourth.server_info.revision, 2);
-    assert_eq!(fourth.server_info.number_of_files, 11);
+    assert_eq!(fourth.server_info.number_of_files, files + 2);
     let raw = gunzip(&root.join(".a3s/sync"));
     let decoded: SyncTreeDirectory = a3s_types::decode_stream(&raw).unwrap();
     assert_eq!(decoded, fourth.sync);
