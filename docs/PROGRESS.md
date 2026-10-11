@@ -10,9 +10,9 @@ Blockers: none
 | WP | Crate | State | Round | Agents | Slot | Branch | Worktree | HEAD | Since |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-10-11 | a3s_sync (WP07 branch) | a19_live_wog_check, import_autoconfig WOG | PASS |
-| WP20 | a3s_ui | FIX round 1 (review 5 MAJOR, verifier 4 fails) | 1 | impl=a2a77fc3 ver=aa213ac8 rev=aed0e51b | 1 | worktree-agent-a2a77fc3ddf0cff52 | .claude/worktrees/agent-a2a77fc3ddf0cff52 | 09b9b71 | 2026-10-10 |
-| WP08 | a3s_sync plan | IMPL | 0 | impl=a1349fd3 | 2 | (worktree) | | | 2026-10-11 |
-| WP01 | java_fixture_harness | IMPL | 0 | impl=ae232646 | 3 | (worktree) | | | 2026-10-11 |
+| WP20 | a3s_ui | RE-REVIEW after fix round 1 | 1 | impl=a2a77fc3 rev=a5a4a92d | 1 | worktree-agent-a2a77fc3ddf0cff52 | .claude/worktrees/agent-a2a77fc3ddf0cff52 | 55b4e16 | 2026-10-10 |
+| WP08 | a3s_sync plan | VERIFY(+live) ∥ REVIEW | 0 | impl=a1349fd3 ver=a34e0b61 rev=aab55615 | 2 | worktree-agent-a1349fd36b09e8a4b | .claude/worktrees/agent-a1349fd36b09e8a4b | 68c648e | 2026-10-11 |
+| WP01 | java_fixture_harness | FIX round 1 (review 1 MAJOR scenario mtimes; verifier locale) | 1 | impl=ae232646 | 3 | worktree-agent-ae2326461a583e177 | .claude/worktrees/agent-ae2326461a583e177 | 022f896 | 2026-10-11 |
 
 ## Done before orchestration
 
@@ -34,7 +34,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 | 0 | infra | .claude, scripts, docs | — | MERGED | 14d51f0 | |
 | 0 | transport-commit | a3s_transport | — | MERGED | 7770850 | download side, live WOG test |
 | 0 | descriptor-lock | a3s_types tests | — | MERGED | 575c386 | |
-| 0 | WP01 | java_fixture_harness | — | IMPL | | JDK 25 via scripts/java_env.sh; javac only, commons-io stub |
+| 0 | WP01 | java_fixture_harness | — | FIX | | JDK 25 via scripts/java_env.sh; javac only, commons-io stub |
 | 0 | WP02 | utils crates | — | MERGED | (see git log) | |
 | 0 | WP03 | a3s_types local | — | MERGED | cea732e | wire-touching |
 | 0 | WP06 | a3s_transport upload | transport-commit | MERGED | 9dc241f | |
@@ -47,7 +47,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 | 1 | WP11 | a3s_admin build | WP03 | SPEC_OK | | wire-touching |
 | 1 | WP13 | a3s_addons | WP03 | SPEC_OK | | |
 | 1 | WP15 | a3s_platform | WP02 | SPEC_OK | | |
-| 2 | WP08 | a3s_sync plan | WP07 | IMPL | | |
+| 2 | WP08 | a3s_sync plan | WP07 | VERIFY | | |
 | 2 | WP09 | a3s_sync download | WP07 | SPEC_OK | | |
 | 2 | WP12 | a3s_admin upload/check/events | WP06, WP07, WP11 | SPEC_OK | | split WP12a → WP12b |
 | 2 | WP14 | app services | WP04, WP05 | SPEC_OK | | |
@@ -101,6 +101,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 - F-12 WP06 re-review MINORs: fix webdav.rs:207 Mirrors comment (deviation); CWD-back refusal discards listing (ftp.rs:564); Unusable listing makes refused DELE look Ok (ftp.rs:765/815); skip CWD before STOR when dir unchanged (perf); MLST fallback trailing slash.
 - F-13 WP07 parity MINORs: Java texts for FTP missing remote dir and unsupported protocol on connect; HTTP status text 'Server response code is N Reason'; cancel during sync decode keeps decoded slot.
 - F-14 a3s_transport: FTP control replies (retr_as_stream / completion) are not cancel-aware; make every FTP command race the CancellationToken (WP07 verifier).
+- F-15 WP03 PROVISIONAL UID markers can be lifted (WP01 verifier: all 25 descriptors + 3 computed UIDs match JDK 25).
 - F-2 CI: add mesa Vulkan drivers to rust.yml for egui_kittest snapshot tests (WP20 Q10).
 
 ## Live test log
