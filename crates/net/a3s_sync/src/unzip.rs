@@ -307,7 +307,9 @@ fn extract_first_entry(
         if entry.is_dir() {
             return Err(Failure::Archive(ArchiveProblem::Directory));
         }
-        if entry.is_symlink() || entry.unix_mode().is_some_and(|m| m & S_IFMT == S_IFLNK) {
+        // A Unix link mode in the high attribute word counts whatever system the entry claims
+        // to come from: the zip crate reads it only for Unix entries.
+        if entry.is_symlink() || (entry.external_attributes() >> 16) & S_IFMT == S_IFLNK {
             return Err(Failure::Archive(ArchiveProblem::Symlink));
         }
         // One byte more than expected reveals an oversized entry without inflating it all.

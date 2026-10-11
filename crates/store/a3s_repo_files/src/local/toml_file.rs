@@ -172,7 +172,13 @@ pub(crate) fn write_bytes(path: &Path, bytes: &[u8]) -> Result<(), Error> {
 pub(crate) fn list_toml_files(dir: &Path) -> io::Result<Vec<PathBuf>> {
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
-        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {
+            return if below_a_file(dir) {
+                Err(io::Error::from(io::ErrorKind::NotADirectory))
+            } else {
+                Ok(Vec::new())
+            };
+        }
         Err(err) => return Err(err),
     };
     let mut files = Vec::new();
@@ -187,6 +193,15 @@ pub(crate) fn list_toml_files(dir: &Path) -> io::Result<Vec<PathBuf>> {
     }
     files.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
     Ok(files)
+}
+
+/// Whether the nearest existing ancestor of `dir` is not a directory. Windows reports a path
+/// below a regular file as missing, which must not read as an empty folder.
+fn below_a_file(dir: &Path) -> bool {
+    dir.ancestors()
+        .skip(1)
+        .find_map(|ancestor| std::fs::metadata(ancestor).ok())
+        .is_some_and(|metadata| !metadata.is_dir())
 }
 
 /// The file name of `path`, for messages and failure maps.

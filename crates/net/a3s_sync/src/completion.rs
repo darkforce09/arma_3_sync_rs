@@ -190,7 +190,12 @@ pub fn local_completion(
     cancel: Option<&AtomicBool>,
 ) -> Result<f64, a3s_zsync::Error> {
     let file = File::open(local)?;
-    if file.metadata()?.len() == 0 {
+    let metadata = file.metadata()?;
+    // Some systems open a directory as a file; its length is no file length.
+    if metadata.is_dir() {
+        return Err(std::io::Error::from(std::io::ErrorKind::IsADirectory).into());
+    }
+    if metadata.len() == 0 {
         return Ok(0.0);
     }
     let matches = a3s_zsync::match_blocks(control, file, cancel)?;
@@ -433,8 +438,11 @@ async fn file_completion(
     let local =
         std::path::absolute(&candidate.local_path).unwrap_or_else(|_| candidate.local_path.clone());
     // The file may have vanished since classification: Java reads `exists() && length() > 0`.
-    let len = tokio::fs::metadata(&local).await.map_or(0, |m| m.len());
-    if len == 0 {
+    // A directory is no empty file (Windows reports its length as 0): reading it fails below.
+    let empty = !tokio::fs::metadata(&local)
+        .await
+        .is_ok_and(|m| m.is_dir() || m.len() > 0);
+    if empty {
         return Ok(0.0);
     }
     tracing::info!("Determining file completion: {}", local.display());

@@ -11,6 +11,7 @@ use a3s_foundation::error::{ErrorKind, UserFacing as _};
 use a3s_sync::download::{DownloadedZip, ZipSink as _};
 use a3s_sync::unzip::{ArchiveProblem, UnzipError, UnzipPool, UnzipStats, unzip_file};
 use a3s_sync::{EventSender, Phase, SyncEvent};
+use zip::System;
 use zip::write::SimpleFileOptions;
 
 fn fixture_repo() -> PathBuf {
@@ -163,14 +164,18 @@ fn hostile_and_broken_archives_are_rejected() {
     let err = rejected(&link, b"/etc/passwd", |_| {});
     assert_eq!(problem(&err), &ArchiveProblem::Symlink);
 
-    // A raw `S_IFLNK` mode on a regular entry is a link too.
-    let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
-    let options = SimpleFileOptions::default().external_attributes(0o120_777 << 16);
-    writer.start_file("x", options).expect("start");
-    writer.write_all(b"target").expect("write");
-    let raw_link = writer.finish().expect("finish").into_inner();
-    let err = rejected(&raw_link, b"target", |_| {});
-    assert_eq!(problem(&err), &ArchiveProblem::Symlink);
+    // A raw `S_IFLNK` mode on a regular entry is a link too, whatever system made the entry.
+    for system in [System::Unix, System::Dos] {
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        let options = SimpleFileOptions::default()
+            .system(system)
+            .external_attributes(0o120_777 << 16);
+        writer.start_file("x", options).expect("start");
+        writer.write_all(b"target").expect("write");
+        let raw_link = writer.finish().expect("finish").into_inner();
+        let err = rejected(&raw_link, b"target", |_| {});
+        assert_eq!(problem(&err), &ArchiveProblem::Symlink, "{system:?}");
+    }
 
     let err = rejected(&archive(&[("d/", None)]), b"x", |_| {});
     assert_eq!(problem(&err), &ArchiveProblem::Directory);
