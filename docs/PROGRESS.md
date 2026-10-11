@@ -11,6 +11,7 @@ Blockers: none
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-10-11 | a3s_sync (WP07 branch) | a19_live_wog_check, import_autoconfig WOG | PASS |
 | WP09 | a3s_sync download | IMPL | 0 | impl=ab815ed7 | 1 | (worktree) | | | 2026-10-11 |
+| WP04 | a3s_repo_files local/legacy | IMPL | 0 | impl=a20b9ae5 | 2 | (worktree) | | | 2026-10-11 |
 | WP11 | a3s_admin build | IMPL | 0 | impl=a39b7a5c | 3 | (worktree) | | | 2026-10-11 |
 | WP08 | a3s_sync plan | RE-REVIEW (security delta) | 1 | impl=a1349fd3 ver=a34e0b61 rev=aab55615 | 2 | worktree-agent-a1349fd36b09e8a4b | .claude/worktrees/agent-a1349fd36b09e8a4b | 68c648e | 2026-10-11 |
 
@@ -41,7 +42,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 | 0 | WP17 | a3s_tools bikey/rpt/radio | — | SPEC_OK | | |
 | 0 | WP20 | a3s_ui | — | MERGED | | |
 | 0 | WP31 | a3s_updater core | — | SPEC_OK | | |
-| 1 | WP04 | a3s_repo_files local/legacy | WP02, WP03 | SPEC_OK | | |
+| 1 | WP04 | a3s_repo_files local/legacy | WP02, WP03 | IMPL | | |
 | 1 | WP05 | autoconfig url/export | WP03 | SPEC_OK | | |
 | 1 | WP07 | a3s_sync model/remote/status | WP02, WP03 | MERGED | (git log) | | critical path |
 | 1 | WP11 | a3s_admin build | WP03 | IMPL | | wire-touching |
