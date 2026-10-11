@@ -10,7 +10,7 @@ Blockers: none
 | WP | Crate | State | Round | Agents | Slot | Branch | Worktree | HEAD | Since |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-10-11 | a3s_sync (WP07 branch) | a19_live_wog_check, import_autoconfig WOG | PASS |
-| WP09 | a3s_sync download | IMPL | 0 | impl=ab815ed7 | 1 | (worktree) | | | 2026-10-11 |
+| WP09 | a3s_sync download | VERIFY(+live) ∥ REVIEW | 0 | impl=ab815ed7 ver=ae84c937 rev=a6ecc9b9 | 1 | worktree-agent-ab815ed72afe7c2df | .claude/worktrees/agent-ab815ed72afe7c2df | 02619c7 | 2026-10-11 |
 | WP04 | a3s_repo_files local/legacy | IMPL | 0 | impl=a20b9ae5 | 2 | (worktree) | | | 2026-10-11 |
 | WP11 | a3s_admin build | IMPL | 0 | impl=a39b7a5c | 3 | (worktree) | | | 2026-10-11 |
 
@@ -48,14 +48,14 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 | 1 | WP13 | a3s_addons | WP03 | SPEC_OK | | |
 | 1 | WP15 | a3s_platform | WP02 | SPEC_OK | | |
 | 2 | WP08 | a3s_sync plan | WP07 | MERGED | | |
-| 2 | WP09 | a3s_sync download | WP07 | IMPL | | |
+| 2 | WP09 | a3s_sync download | WP07 | VERIFY | | |
 | 2 | WP12 | a3s_admin upload/check/events | WP06, WP07, WP11 | SPEC_OK | | split WP12a → WP12b |
 | 2 | WP14 | app services | WP04, WP05 | SPEC_OK | | |
 | 2 | WP16 | a3s_launch | WP13, WP15 | SPEC_OK | | |
 | 2 | WP18 | presets | WP13, WP02, WP04 | SPEC_OK | | |
 | 2 | WP32 | updater apply | WP31, WP15 | SPEC_OK | | |
-| 3 | WP10 | sync pipeline | WP08, WP09 | TODO | | |
-| 3 | WP21 | a3s_viewer_context | WP14, WP07 | TODO | | |
+| 3 | WP10 | sync pipeline | WP08, WP09 | SPEC | | |
+| 3 | WP21 | a3s_viewer_context | WP14, WP07 | SPEC | | |
 | 4 | WP19 | CLI | WP10, WP11, WP12, WP14, WP17 | TODO | | |
 | 4 | WP22 | viewer shell | WP20, WP21, WP15, WP16 | TODO | | serial |
 | 5 | WP23 | addons tab | WP22, WP13, WP18 | TODO | | |
