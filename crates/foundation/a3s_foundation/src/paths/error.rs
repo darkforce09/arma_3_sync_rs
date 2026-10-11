@@ -17,7 +17,7 @@ pub enum Error {
     /// A directory could not be created.
     #[error("{}", messages::cannot_create_directory(path))]
     CreateDir {
-        /// The directory that could not be created.
+        /// The directory that could not be created, made absolute.
         path: PathBuf,
 
         /// The underlying I/O error.

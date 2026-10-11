@@ -564,3 +564,35 @@ fn verify_current_env_non_utf8_values() {
         "ok portable=false config=\"/x\\xFF/cfg/arma3sync-rs\" data=\"/d\\xFE\" cache=\"/h/.cache/arma3sync-rs\""
     );
 }
+
+/// A directory that cannot be created is reported with its absolute path, also when it was
+/// configured relative to the working directory (the crate folder under `cargo test`).
+#[test]
+fn verify_create_dir_error_names_an_absolute_path() {
+    let relative = p("Cargo.toml/below-a-file");
+    let dirs = AppDirs::from_roots(relative.clone(), relative.clone(), relative.clone());
+    match dirs.ensure_created() {
+        Err(Error::CreateDir { path, .. }) => {
+            assert!(path.is_absolute(), "{}", path.display());
+            assert!(path.ends_with(&relative), "{}", path.display());
+        }
+        other => panic!("expected CreateDir, got {other:?}"),
+    }
+}
+
+/// Two spellings of one installation, through a symbolic link, are one location, even when its
+/// configuration folder does not exist.
+#[cfg(unix)]
+#[test]
+fn verify_discovery_dedups_missing_configuration_dir_through_symlink() {
+    use std::os::unix::fs::symlink;
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let install = tmp.path().join("real/install");
+    write(&install.join("profiles/Default.a3s.profile"), "p");
+    let alias = tmp.path().join("alias");
+    symlink(tmp.path().join("real"), &alias).expect("symlink");
+    let env = PlatformEnv::for_tests(Os::Linux, None, &[], None);
+    let found = discover_legacy_java(&env, &[install, alias.join("install")]);
+    assert_eq!(found.len(), 1, "{found:#?}");
+}

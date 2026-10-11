@@ -131,7 +131,7 @@ impl AppDirs {
 
 fn create_dir_all(path: &Path) -> Result<(), Error> {
     std::fs::create_dir_all(path).map_err(|source: io::Error| Error::CreateDir {
-        path: path.to_path_buf(),
+        path: std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf()),
         source,
     })
 }

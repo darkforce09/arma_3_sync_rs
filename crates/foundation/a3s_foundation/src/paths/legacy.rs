@@ -243,24 +243,37 @@ fn existing_dir(path: PathBuf) -> Option<PathBuf> {
     path.is_dir().then_some(path)
 }
 
-/// Canonical path when it exists, else a lexical normalization (`.` removed, `..` applied).
+/// Comparable form of `path`: lexically normalized (`.` removed, `..` applied), then its longest
+/// existing ancestor replaced by its canonical path. Existing and missing paths thus compare
+/// alike, also when they are spelled through different symbolic links.
 fn normalize(path: &Path) -> PathBuf {
-    if let Ok(canonical) = std::fs::canonicalize(path) {
-        return canonical;
-    }
-    let mut out = PathBuf::new();
+    let mut lexical = PathBuf::new();
     for component in path.components() {
         match component {
             Component::CurDir => {}
             Component::ParentDir => {
-                if !out.pop() {
-                    out.push(component);
+                if !lexical.pop() {
+                    lexical.push(component);
                 }
             }
-            other => out.push(other),
+            other => lexical.push(other),
         }
     }
-    out
+    let mut missing = Vec::new();
+    let mut ancestor = lexical.as_path();
+    loop {
+        if let Ok(mut canonical) = std::fs::canonicalize(ancestor) {
+            canonical.extend(missing.iter().rev());
+            return canonical;
+        }
+        match (ancestor.parent(), ancestor.file_name()) {
+            (Some(parent), Some(name)) => {
+                missing.push(name);
+                ancestor = parent;
+            }
+            _ => return lexical,
+        }
+    }
 }
 
 #[cfg(test)]
