@@ -11,7 +11,7 @@ Blockers: none
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-10-11 | a3s_sync (WP07 branch) | a19_live_wog_check, import_autoconfig WOG | PASS |
 | WP09 | a3s_sync download | VERIFY(+live); review REQUEST_CHANGES (BLOCKER zsync cancel spin; MAJOR stop deadline, D-16) → fix after verifier | 0 | impl=ab815ed7 ver=ae84c937 rev=a6ecc9b9 | 1 | worktree-agent-ab815ed72afe7c2df | .claude/worktrees/agent-ab815ed72afe7c2df | 02619c7 | 2026-10-11 |
-| WP04 | a3s_repo_files local/legacy | IMPL | 0 | impl=a20b9ae5 | 2 | (worktree) | | | 2026-10-11 |
+| WP04 | a3s_repo_files local/legacy | VERIFY ∥ REVIEW | 0 | impl=a20b9ae5 ver=aab7bf75 rev=a18f8f57 | 2 | worktree-agent-a20b9ae5ecc809758 | .claude/worktrees/agent-a20b9ae5ecc809758 | c7513a5 | 2026-10-11 |
 | WP11 | a3s_admin build | IMPL | 0 | impl=a39b7a5c | 3 | (worktree) | | | 2026-10-11 |
 
 ## Done before orchestration
@@ -41,7 +41,7 @@ State values: TODO, SPEC, SPEC_OK, IMPL, VERIFY, FIX, REBASE, MERGED, BLOCKED, D
 | 0 | WP17 | a3s_tools bikey/rpt/radio | — | SPEC_OK | | |
 | 0 | WP20 | a3s_ui | — | MERGED | | |
 | 0 | WP31 | a3s_updater core | — | SPEC_OK | | |
-| 1 | WP04 | a3s_repo_files local/legacy | WP02, WP03 | IMPL | | |
+| 1 | WP04 | a3s_repo_files local/legacy | WP02, WP03 | VERIFY | | |
 | 1 | WP05 | autoconfig url/export | WP03 | SPEC_OK | | |
 | 1 | WP07 | a3s_sync model/remote/status | WP02, WP03 | MERGED | (git log) | | critical path |
 | 1 | WP11 | a3s_admin build | WP03 | IMPL | | wire-touching |
