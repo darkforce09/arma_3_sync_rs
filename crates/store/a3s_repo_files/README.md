@@ -8,4 +8,10 @@ Workshop metadata), the one-time importer of the Java client's files (including 
 (`autoconfig_export`, refused when a Java client could not read it back), and `hash`: parallel
 SHA-1 of repository files with the modification-time cache.
 
+`services::ClientData` is the client's state in memory (configuration, preferences, profiles,
+repositories) for the CLI and the viewer: load it once with `ClientData::load`, change it only
+through its methods, and every change is written to the TOML store before the call returns (on
+failure memory is left unchanged). Connections apply the stored proxy through
+`a3s_transport::proxy::transport_options`.
+
 Boundaries: depends on `a3s_types`, `a3s_jserial` and `a3s_foundation`; no network.

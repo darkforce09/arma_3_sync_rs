@@ -1,9 +1,10 @@
 //! Transport tests against in-process FTP/FTPS (libunftp), SFTP (russh), WebDAV (dav-server)
-//! and HTTP (axum) servers.
+//! and HTTP (axum) servers, and the configured proxy.
 
 mod common;
 mod ftp;
 mod http;
+mod proxy;
 mod sftp;
 mod support;
 mod webdav;

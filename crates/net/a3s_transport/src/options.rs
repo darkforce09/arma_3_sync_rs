@@ -14,12 +14,18 @@ pub struct ProxyConfig {
 }
 
 impl ProxyConfig {
+    /// `scheme://host:port`, an IPv6 host in brackets.
     pub fn url(&self) -> String {
-        format!("{}://{}:{}", self.scheme, self.host, self.port)
+        if self.host.contains(':') && !self.host.starts_with('[') {
+            format!("{}://[{}]:{}", self.scheme, self.host, self.port)
+        } else {
+            format!("{}://{}:{}", self.scheme, self.host, self.port)
+        }
     }
 }
 
-/// Connection options derived from a [`Protocol`] and global settings.
+/// Connection options derived from a [`Protocol`] and global settings; with the configured proxy
+/// from [`crate::proxy::transport_options`].
 #[derive(Clone, Debug)]
 pub struct TransportOptions {
     pub connect_timeout: Option<Duration>,

@@ -15,6 +15,7 @@ mod ftp;
 pub mod http;
 mod options;
 pub mod path;
+pub mod proxy;
 mod session;
 mod sftp;
 mod tls;

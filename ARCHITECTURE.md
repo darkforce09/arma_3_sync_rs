@@ -24,7 +24,7 @@ A crate may depend on crates from its own group or a group listed above it in th
 | **store** | | |
 | `a3s_jserial` | Generic Java Object Serialization Stream Protocol reader/writer. | JDK `ObjectInput/OutputStream` |
 | `a3s_types` | Domain types + their exact Java class descriptors. | `domain/*`, `constant/*` |
-| `a3s_repo_files` | `.a3s/*` gzip files, local TOML store, legacy Java data importer, parallel SHA-1 with mtime cache. | `dao/A3SFilesAccessor`, `dao/*DAO`, `dao/repository/RepositorySHA1Processor` |
+| `a3s_repo_files` | `.a3s/*` gzip files, local TOML store and the in-memory client data over it (configuration, preferences, profiles, repositories), legacy Java data importer, parallel SHA-1 with mtime cache. | `dao/A3SFilesAccessor`, `dao/*DAO`, `dao/repository/RepositorySHA1Processor`, `service/{Configuration,Preferences,Profile,Common}Service`, repository CRUD of `service/RepositoryService` |
 | `a3s_zsync` | jazsync-compatible `.zsync` writer, reader and patcher. | `jazsync/*`, `jazsyncmake/*` |
 | **net** | | |
 | `a3s_transport` | HTTP(S), FTP(S), SFTP, WebDAV; proxies, timeouts, throttling, cancel. | `dao/connection/*` |
@@ -129,6 +129,20 @@ Wire compatibility is the requirement; these differences are deliberate.
   limits) is refused instead of written. On import, a profile or repository element that is
   invalid (null name, missing protocol, wrong class) is skipped with a warning; Java fails part
   way through the import.
+* **Client data** (`a3s_repo_files::services`): every change is written at once and a failed
+  write leaves memory unchanged (Java keeps many changes in memory until exit and swallows write
+  errors). Names are checked: an existing or blank profile or repository name is refused on
+  create, duplicate and rename, `"Default"` cannot be removed or renamed, removing or renaming
+  the active profile keeps a valid active profile, and an unknown repository is an error instead
+  of a no-op. Preferences are loaded at start-up (Java never reads them and overwrites them on
+  exit). A duplicated profile copies its own splash-screen setting (Java copies `noPause`), a
+  renamed profile's old file is deleted (Java deletes the new name's file), and repositories are
+  listed in name order. Autoconfig export does not clear the launch settings of the live
+  profiles, and import never replaces an existing repository (Java overwrites its file with the
+  bare imported one). A name held by a store file that cannot be read stays taken.
+* **Proxy** is applied per connection with Java's effective routing, but its credentials go to
+  the proxy only (Java's default `Authenticator` also answered the repository server) and a
+  SOCKS4 proxy speaks SOCKS4 (Java's default made it SOCKS5).
 * **Insecure TLS override** is the environment variable `A3S_ALLOW_INSECURE_SSL=1` instead of
   Java's `-Da3s.allowInsecureSsl=true`.
 * **Local-only fixes** (no wire effect) are allowed where Java has a bug or a security hole, for
