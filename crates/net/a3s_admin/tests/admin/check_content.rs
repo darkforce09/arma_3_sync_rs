@@ -1,6 +1,6 @@
 //! Repository content check against in-process HTTP and FTP servers.
 
-mod net_support;
+use crate::net_support;
 
 use std::path::Path;
 use std::sync::atomic::Ordering;

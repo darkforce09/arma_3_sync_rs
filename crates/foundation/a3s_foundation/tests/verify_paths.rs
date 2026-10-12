@@ -1,3 +1,4 @@
+// Its own test binary: it re-executes itself filtered by the unprefixed test name.
 //! Adversarial checks of the `paths` module: odd environment values, portable mode, and read-only
 //! legacy Java discovery that never points into the Rust directories.
 

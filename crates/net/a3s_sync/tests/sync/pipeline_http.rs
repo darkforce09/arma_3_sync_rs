@@ -1,8 +1,8 @@
 //! End-to-end synchronization against a local HTTP server serving Java-built and hand-built
 //! repositories.
 
-mod download_support;
-mod pipeline_support;
+use crate::download_support;
+use crate::pipeline_support;
 
 use std::path::Path;
 use std::sync::Arc;

@@ -4,8 +4,12 @@
 mod common;
 mod ftp;
 mod http;
+mod live;
 mod proxy;
 mod sftp;
+mod verify_ftp_sftp_paths;
+mod verify_live;
+mod verify_upload;
 mod webdav;
 
 use std::path::PathBuf;

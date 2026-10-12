@@ -1,7 +1,7 @@
 //! Live, read-only verification of FTP resume against the WOG repository: the server must
 //! honour `REST` (no silent restart from 0), and edge offsets behave.
 //!
-//! Run with `cargo test -p a3s_transport --test verify_live -- --ignored --test-threads=1`.
+//! Run with `cargo test -p a3s_transport --test transport verify_live:: -- --ignored --test-threads=1`.
 
 use std::sync::atomic::Ordering;
 

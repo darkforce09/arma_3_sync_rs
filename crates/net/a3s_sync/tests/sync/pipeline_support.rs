@@ -1,7 +1,5 @@
 //! Repositories, stores and event capture for the end-to-end synchronization tests.
 
-#![allow(dead_code)]
-
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

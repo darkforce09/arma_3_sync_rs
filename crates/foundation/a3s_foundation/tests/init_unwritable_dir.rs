@@ -1,3 +1,4 @@
+// Its own test binary: `init` installs a process-global subscriber once per process.
 //! `init` installs a process-global subscriber, so this file holds a single test.
 
 use a3s_foundation::log::{LogConfig, init};

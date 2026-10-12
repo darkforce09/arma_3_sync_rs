@@ -1,7 +1,7 @@
 //! Adversarial verification of the download executor (resume, zsync, run policy, cancel,
 //! throttle, zip hand-off, path safety, sizes, names).
 
-mod download_support;
+use crate::download_support;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

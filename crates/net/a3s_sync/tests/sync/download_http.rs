@@ -1,6 +1,6 @@
 //! Download executor against a local range-capable HTTP server.
 
-mod download_support;
+use crate::download_support;
 
 use std::path::Path;
 use std::sync::Arc;

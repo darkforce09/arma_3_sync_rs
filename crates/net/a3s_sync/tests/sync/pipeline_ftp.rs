@@ -1,7 +1,7 @@
 //! End-to-end synchronization of a Java-built compressed repository over a local FTP server.
 
-mod download_support;
-mod pipeline_support;
+use crate::download_support;
+use crate::pipeline_support;
 
 use a3s_sync::pipeline::SyncEnd;
 use a3s_sync::{EventSender, Outcome, SyncSession, sync_repository};

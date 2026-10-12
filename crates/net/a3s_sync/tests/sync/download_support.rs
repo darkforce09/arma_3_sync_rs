@@ -1,7 +1,5 @@
 //! Local servers and helpers for the download executor tests.
 
-#![allow(dead_code)]
-
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -391,10 +389,6 @@ impl FtpServer {
             "",
             false,
         )
-    }
-
-    pub fn host_url(&self) -> String {
-        format!("ftp://127.0.0.1:{}/repo", self.port)
     }
 
     pub fn put(&self, relative: &str, bytes: &[u8]) {

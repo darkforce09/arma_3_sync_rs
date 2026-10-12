@@ -1,3 +1,4 @@
+// Its own test binary: it re-executes itself filtered by the unprefixed test name.
 //! `init` scenarios in child processes (the subscriber is process-global), with the real
 //! environment set through `Command::env` instead of `set_var`.
 

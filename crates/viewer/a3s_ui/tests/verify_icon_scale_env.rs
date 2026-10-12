@@ -1,3 +1,4 @@
+// Its own test binary: it re-executes itself filtered by the unprefixed test name.
 //! `A3S_ICON_SCALE` parsing: garbage, non-finite and non-positive values fall
 //! back to 1.5. The scale is read once per process, so each value runs in a child process.
 

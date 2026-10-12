@@ -1,6 +1,6 @@
 //! Events upload and the admin metadata fetch against in-process servers.
 
-mod net_support;
+use crate::net_support;
 
 use a3s_admin::events::{AdminMetadata, EventSelection, EventsDoc, EventsError};
 use a3s_admin::{fetch_admin_metadata, upload_events};

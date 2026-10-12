@@ -1,3 +1,4 @@
+// Its own test binary: it holds its own harness lock, separate from the one in `jdk.rs`.
 //! Adversarial tests for the harness wrapper and the generated fixtures.
 //!
 //! The JDK-backed tests are ignored like `jdk.rs`:

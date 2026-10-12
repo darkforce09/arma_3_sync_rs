@@ -1,6 +1,6 @@
 //! Download executor against a local libunftp server.
 
-mod download_support;
+use crate::download_support;
 
 use std::sync::Arc;
 

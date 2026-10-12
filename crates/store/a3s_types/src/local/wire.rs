@@ -2,7 +2,7 @@
 //!
 //! Descriptor functions exist only for the classes written to `export.a3s.autoconfig`. Their
 //! field lists are in Java wire order (primitives sorted by name, then objects sorted by name)
-//! and are locked by `tests/local_descriptor_lock.rs`. **Never** change them.
+//! and are locked by `tests/types/local_descriptor_lock.rs`. **Never** change them.
 
 use a3s_jserial::jdk::{Builder, FieldSpec};
 use a3s_jserial::{FieldType, NodeId, flags};

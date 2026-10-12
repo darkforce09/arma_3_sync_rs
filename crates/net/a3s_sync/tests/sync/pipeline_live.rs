@@ -1,9 +1,9 @@
 //! Live, read-only synchronization of two small files from the public WOG repository
 //! (`.a3s/*` plus less than 5 MB).
 //!
-//! Run with `cargo test -p a3s_sync --test pipeline_live -- --ignored`.
+//! Run with `cargo test -p a3s_sync --test sync pipeline_live:: -- --ignored`.
 
-mod pipeline_support;
+use crate::pipeline_support;
 
 use a3s_sync::pipeline::RunEnd;
 use a3s_sync::{EventSender, MemoryStore, Outcome, PlanNode, SyncSession};

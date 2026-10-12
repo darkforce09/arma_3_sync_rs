@@ -1,6 +1,6 @@
 //! The upload pipeline against in-process FTP(S), SFTP and WebDAV servers.
 
-mod net_support;
+use crate::net_support;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};

@@ -1,3 +1,4 @@
+// Its own test binary: wgpu rendering on a CPU adapter, Linux only, regenerated with UPDATE_SNAPSHOTS=1.
 //! Headless wgpu snapshots of the gallery and the dialogs.
 //!
 //! Rendered through wgpu on Mesa's lavapipe Vulkan driver. Regenerate with

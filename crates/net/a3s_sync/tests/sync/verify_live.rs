@@ -1,6 +1,6 @@
 //! Adversarial live checks against the public WOG repository (read-only, `.a3s/*` only).
 //!
-//! Run with `cargo test -p a3s_sync --test verify_live -- --ignored --test-threads=1`.
+//! Run with `cargo test -p a3s_sync --test sync verify_live:: -- --ignored --test-threads=1`.
 
 use a3s_foundation::error::ErrorKind;
 use a3s_sync::remote::import_autoconfig;

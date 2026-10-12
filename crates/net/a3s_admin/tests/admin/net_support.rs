@@ -2,8 +2,6 @@
 //!
 //! The FTP(S), SFTP and WebDAV servers and the TCP relay come from `a3s_test_servers`.
 
-#![allow(dead_code, reason = "every test binary uses a different subset")]
-
 pub use a3s_test_servers as servers;
 
 use std::collections::BTreeMap;
@@ -138,7 +136,6 @@ pub struct HttpState {
 /// Static HTTP server over a directory (`GET` and `HEAD`).
 pub struct HttpServer {
     pub protocol: Protocol,
-    pub root: PathBuf,
     pub state: Arc<HttpState>,
     _task: AbortOnDrop,
 }
@@ -172,7 +169,6 @@ impl HttpServer {
         );
         Self {
             protocol,
-            root: root.to_path_buf(),
             state,
             _task: AbortOnDrop(task),
         }

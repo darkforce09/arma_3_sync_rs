@@ -1,3 +1,4 @@
+// Its own test binary: it runs the built tool through CARGO_BIN_EXE.
 //! Acceptance tests that need neither a JDK nor the Java sources.
 
 use std::process::Command;

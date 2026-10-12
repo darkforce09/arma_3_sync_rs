@@ -1,3 +1,4 @@
+// Its own test binary: it runs the built tool through CARGO_BIN_EXE and holds its own harness lock.
 //! JDK-backed acceptance tests. They need JDK 25 (`scripts/java_env.sh`) and the Java
 //! sources, and are ignored by default:
 //!
