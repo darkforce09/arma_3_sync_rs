@@ -1,6 +1,6 @@
 // Its own test binary: wgpu rendering on a CPU adapter, Linux only, regenerated with UPDATE_SNAPSHOTS=1.
 //! Headless wgpu snapshots of the main window with two repositories, one with updates, and of
-//! the Repository and Activity screens.
+//! the Repository and Activity screens, and of the Mods screen's tree and load order.
 #![cfg(target_os = "linux")]
 
 #[allow(
@@ -25,7 +25,7 @@ use a3s_viewer_context::sync::{
 use a3s_viewer_context::{TaskError, TaskKey, TaskKind, ViewerContext};
 use egui_kittest::kittest::Queryable as _;
 
-use crate::support::{Fixture, Start, fixture_with};
+use crate::support::{Fixture, Start, fixture_with, mods_folder, mods_profile, wait_for_scan};
 
 fn snapshot(name: &str, mode: ThemeMode, setup: impl FnOnce(&mut Fixture)) {
     let mut fixture = fixture_with(Start::default(), |builder| {
@@ -123,6 +123,9 @@ fn show_repository(fixture: &mut Fixture) {
             },
         );
     });
+    // The Mods screen also shows an "Alpha" group: leave it first.
+    fixture.harness.get_by_label("Servers").click();
+    fixture.harness.run();
     fixture.harness.get_by_label("Alpha").click();
 }
 
@@ -208,4 +211,45 @@ fn mutate(viewer: &ViewerContext, f: impl FnOnce(&mut a3s_viewer_context::AppSta
             Ok::<(), Infallible>(())
         })
         .ok();
+}
+
+fn mods_snapshot(name: &str, mode: ThemeMode, load_order: bool) {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let (mods, exe) = mods_folder(dir.path());
+    let mut fixture = fixture_with(
+        Start {
+            profiles: Some(vec![mods_profile(&mods, &exe)]),
+            ..Start::default()
+        },
+        |builder| builder.with_theme(mode.into()).wgpu(),
+    );
+    theme::set_mode(&fixture.harness.ctx, mode);
+    wait_for_scan(&mut fixture.harness);
+    if load_order {
+        fixture.harness.get_by_label("Load order").click();
+    }
+    fixture.harness.run();
+    fixture.harness.remove_cursor();
+    fixture.harness.run();
+    fixture.harness.snapshot(name);
+}
+
+#[test]
+fn mods_light() {
+    mods_snapshot("mods_light", ThemeMode::Light, false);
+}
+
+#[test]
+fn mods_dark() {
+    mods_snapshot("mods_dark", ThemeMode::Dark, false);
+}
+
+#[test]
+fn load_order_light() {
+    mods_snapshot("load_order_light", ThemeMode::Light, true);
+}
+
+#[test]
+fn load_order_dark() {
+    mods_snapshot("load_order_dark", ThemeMode::Dark, true);
 }

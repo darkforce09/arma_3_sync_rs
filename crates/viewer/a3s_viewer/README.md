@@ -13,26 +13,45 @@ The window (`Shell`):
 
 - Unified toolbar: screen title, search field (⌘/Ctrl+F), the menu (Check now, Settings, Tools,
   Quit), the profile pop-up and the Play button ("Update and play" while a repository of the
-  active profile's addon groups has updates). Play calls `launch::request`, which only logs.
+  active profile's addon groups has updates). Play starts the context's Launch task (after the
+  updates of the enabled addon groups for "Update and play"); without a usable Arma 3 executable
+  a toast offers "Choose folder…" (Settings > Game). Once the game started, the "game launch"
+  preference hides the window to the tray, minimizes it, quits or does nothing.
 - Source-list sidebar: Library (Mods, Servers, Activity), Repositories with badges from the
   runtime state (changed-addon count when updated, "…" while checking, "!" after a failed
   check) and Add repository, Publishing (repositories with a local build folder), and the last
   check time. Each row routes to a screen under `screens/`.
+- Mods screen: All / Enabled / Load order. The tree shows the active profile's addon groups
+  (from repositories, events and the user) with a status pill per mod (Ready, Update with its
+  download size when the repository's comparison is current, Not installed with its size,
+  Missing, Enabled twice) and the addons found on this computer by folder; the toolbar search
+  filters it, Space or the checkbox toggles a row and every change is saved at once. "+" adds a
+  group, a mods folder or a group from a repository, "−" removes the selected group or folder
+  (Undo in a toast); double-click renames a user group. "Event preset" enables exactly an
+  event's mods. Load order lists the enabled mods in the order the game loads them; dragging
+  saves the priority list. Dropping an Arma 3 Launcher preset (`.html`) opens a sheet comparing
+  it with the local mods, whose "Enable matched" adds a group with the matched mods.
 - Repository screen: header with the URL, revision and mod count, the "…" menu (Edit
   connection, Check now, Remove repository with an Undo toast), one primary button ("Update
   <size>", "Resume <size>", "Up to date"), event cards with "Use preset", the changes a download
   makes (new, updated, removed to the Trash, with sizes) and the collapsed changelog of the
   revisions not downloaded yet. Opening it compares the repository with its download folder
   when the last comparison is older than the server revision.
+- Event presets, from the Mods screen or an event card, go through the context's
+  `profiles::use_event_preset` (the event's required mods enabled, every other mod disabled)
+  with an Undo toast.
 - Activity screen: running downloads (progress, bytes, speed, time left, current files, Pause
   and Stop), paused downloads (Resume, Stop) and the recent results ("Show issues").
 - Sheets (`egui::Modal`, one at a time): Welcome on the first start or while Java data waits for
   import (Arma 3 and mods folders through the system folder dialog, the legacy importer),
   load warnings, quit confirmation (running tasks, failed save), Add repository and Edit
   connection (an auto-config link fills the fields; protocol, address, port, anonymous,
-  download folder; login, SSL validation and the proxy under Advanced; Test connection), and
-  Update issues (one plain line per failed file, Retry, Retry all, Copy report, Play anyway).
-- Toasts (egui-toast) for the context's events, including an Undo kind that runs a callback.
+  download folder; login, SSL validation and the proxy under Advanced; Test connection), Update
+  issues (one plain line per failed file, Retry, Retry all, Copy report, Play anyway; during
+  "Update and play" the game starts anyway and the sheet offers no Play), and the Arma 3
+  Launcher preset comparison.
+- Toasts (egui-toast) for the context's events, including an Undo kind that runs a callback and
+  an action kind whose button asks the window for an action.
 - Settings and the tool windows as separate OS windows (deferred viewports).
 - Tray icon (StatusNotifierItem through `ksni` on Linux, `tray-icon` on Windows and macOS):
   Show, Hide, Check now, Quit. Closing or minimizing hides into the tray when the "minimized"

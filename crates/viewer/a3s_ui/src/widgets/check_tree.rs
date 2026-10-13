@@ -19,7 +19,8 @@ use egui::{
 };
 
 use crate::icon::icons;
-use crate::theme::{self, ThemeDefinition};
+use crate::theme::{self, ProgressTone, ThemeDefinition};
+use crate::widgets::status::paint_status_pill;
 
 /// Size of the row icon glyph in points.
 pub const TREE_ICON_SIZE: f32 = 15.0;
@@ -123,6 +124,11 @@ pub trait CheckTreeModel {
     /// Row icon, a glyph from [`icons`]; defaults to [`default_tree_icon`].
     fn icon(&self, key: &Self::Key, expanded: bool) -> Option<&'static str> {
         Some(default_tree_icon(self.is_leaf(key), expanded))
+    }
+
+    /// A status pill at the right end of the row, e.g. a mod's sync state.
+    fn pill(&self, _key: &Self::Key) -> Option<(String, ProgressTone)> {
+        None
     }
 }
 
@@ -549,6 +555,9 @@ impl CheckTree {
         }
         let text_pos = Align2::LEFT_CENTER.anchor_size(pos2(x, rect.center().y), galley.size());
         painter.galley(text_pos.min, galley, text_color);
+        if let Some((text, tone)) = model.pill(key) {
+            paint_status_pill(ui, pos2(rect.right() - 4.0, rect.center().y), &text, tone);
+        }
         rect
     }
 

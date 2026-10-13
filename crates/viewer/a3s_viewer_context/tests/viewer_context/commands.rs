@@ -68,10 +68,11 @@ fn commands_are_handled_in_send_order() {
 fn empty_domains_match(command: Command) -> Command {
     match command {
         Command::Admin(command) => match command {},
-        Command::Profiles(command) => match command {},
-        Command::Launch(command) => match command {},
         Command::Tools(command) => match command {},
-        other @ (Command::Repositories(_) | Command::Sync(_)) => other,
+        other @ (Command::Repositories(_)
+        | Command::Sync(_)
+        | Command::Profiles(_)
+        | Command::Launch(_)) => other,
     }
 }
 
@@ -80,7 +81,6 @@ fn empty_events_match(event: AppEvent) -> bool {
     match event {
         AppEvent::Admin(event) => match event {},
         AppEvent::Profiles(event) => match event {},
-        AppEvent::Launch(event) => match event {},
         AppEvent::Tools(event) => match event {},
         _ => true,
     }

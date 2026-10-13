@@ -2,12 +2,14 @@
 
 pub(crate) mod add_repository;
 mod exit;
+mod launcher_preset;
 mod load_warnings;
 mod update_issues;
 mod welcome;
 
 use std::collections::VecDeque;
 
+use a3s_tools::preset::ImportResult;
 use a3s_viewer_context::ViewerContext;
 
 use self::add_repository::{Mode, RepositoryForm};
@@ -38,6 +40,9 @@ pub enum SheetKind {
 
     /// Files that failed in the last download of a repository.
     UpdateIssues,
+
+    /// Comparing an Arma 3 Launcher preset with the mods on this computer.
+    LauncherPreset,
 }
 
 /// A sheet and its state.
@@ -47,6 +52,7 @@ pub(crate) enum Sheet {
     Exit(ExitPrompt),
     Repository(Box<RepositoryForm>),
     UpdateIssues(UpdateIssues),
+    LauncherPreset(Box<ImportResult>),
 }
 
 impl Sheet {
@@ -73,6 +79,7 @@ impl Sheet {
                 Mode::Edit(_) => SheetKind::EditRepository,
             },
             Self::UpdateIssues(_) => SheetKind::UpdateIssues,
+            Self::LauncherPreset(_) => SheetKind::LauncherPreset,
         }
     }
 }
@@ -146,6 +153,7 @@ impl Sheets {
             Sheet::Exit(prompt) => exit::show(ctx, prompt),
             Sheet::Repository(form) => form.show(ctx, viewer, toasts),
             Sheet::UpdateIssues(issues) => issues.show(ctx, viewer, toasts),
+            Sheet::LauncherPreset(result) => launcher_preset::show(ctx, result, viewer, toasts),
         };
         match shown {
             Shown::Open => None,

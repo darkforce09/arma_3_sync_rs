@@ -18,9 +18,11 @@ button does. This is the one crate that spawns the game.
   fast-exit guard stops it. Nothing kills the game.
 - `external`: starts the enabled external applications that are not already running.
 
-`launch_arma3` ties it together: parameters, plan, `Arma3.cfg` clean-up, launch thread. Planning
-errors (no executable, an executable this OS cannot run, no Steam) come back before any thread
-starts; everything after the spawn arrives as events.
+`plan_launch` computes the parameters and plans the command without starting anything;
+`launch_arma3` adds the `Arma3.cfg` clean-up and the launch thread. Planning errors (no
+executable, an executable this OS cannot run, no Steam) come back before any thread starts;
+everything after the spawn arrives as events. `launch_addon_names` is the mod order the game
+receives: the selected addons in priority order, then the rest.
 
 Boundaries: depends on `a3s_types` (profile and configuration), `a3s_addons` (the addon registry),
 `a3s_platform` (process probe, Steam app id) and `a3s_foundation` (`Os`, `PlatformEnv`, Windows

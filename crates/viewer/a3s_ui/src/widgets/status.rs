@@ -1,6 +1,10 @@
 //! Status display: the tinted status pill and the numbered step row of a step list.
 
-use egui::{Align2, CornerRadius, FontId, Rect, Response, Sense, Ui, pos2, vec2};
+use std::sync::Arc;
+
+use egui::{
+    Align2, CornerRadius, FontId, Galley, Pos2, Rect, Response, Sense, Ui, Vec2, pos2, vec2,
+};
 
 use crate::icon::icons;
 use crate::theme::{self, ProgressTone};
@@ -13,10 +17,32 @@ const STEP_MARKER_SIZE: f32 = 22.0;
 
 /// A rounded pill with `text` in the colour of `tone` on a light tint of it.
 pub fn status_pill(ui: &mut Ui, text: &str, tone: ProgressTone) -> Response {
+    let size = pill_galley(ui, text, tone).size() + PILL_PADDING;
+    let (rect, response) = ui.allocate_exact_size(size, Sense::hover());
+    paint_status_pill(ui, rect.right_center(), text, tone);
+    response
+}
+
+/// Room around the pill text.
+const PILL_PADDING: Vec2 = vec2(14.0, 4.0);
+
+fn pill_galley(ui: &Ui, text: &str, tone: ProgressTone) -> Arc<Galley> {
     let color = theme::palette(ui.ctx()).status_color(tone);
     let font = egui::TextStyle::Small.resolve(ui.style());
-    let galley = ui.painter().layout_no_wrap(text.to_owned(), font, color);
-    let (rect, response) = ui.allocate_exact_size(galley.size() + vec2(14.0, 4.0), Sense::hover());
+    ui.painter().layout_no_wrap(text.to_owned(), font, color)
+}
+
+/// Paints a [`status_pill`] whose right edge is centred on `right_center`, without allocating
+/// space; returns its rectangle.
+pub(crate) fn paint_status_pill(
+    ui: &Ui,
+    right_center: Pos2,
+    text: &str,
+    tone: ProgressTone,
+) -> Rect {
+    let color = theme::palette(ui.ctx()).status_color(tone);
+    let galley = pill_galley(ui, text, tone);
+    let rect = Align2::RIGHT_CENTER.anchor_size(right_center, galley.size() + PILL_PADDING);
     if ui.is_rect_visible(rect) {
         let painter = ui.painter();
         painter.rect_filled(rect, CornerRadius::same(9), color.gamma_multiply(0.18));
@@ -28,7 +54,7 @@ pub fn status_pill(ui: &mut Ui, text: &str, tone: ProgressTone) -> Response {
             color,
         );
     }
-    response
+    rect
 }
 
 /// Where a step of a step list stands.

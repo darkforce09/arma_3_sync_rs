@@ -22,9 +22,20 @@ folder and publishes the changes (`sync::Downloads::plans`), keeping the checked
 `Download` starts at once; `Pause` cancels and keeps the session for the next `Download` to
 resume, `Stop` discards it, `Retry` downloads failed files again. Extra local files go to the
 Trash. Each finished download is recorded in `sync::Downloads::recent` and announced with
-`sync::Event::DownloadFinished`. `profiles::use_event_preset` selects an event's mods in the
-active profile; `repositories::test_connection` and `fetch_autoconfig` serve the repository
-sheet.
+`sync::Event::DownloadFinished`. `profiles::use_event_preset` makes an event's mods the
+selection of the active profile; `repositories::test_connection` and `fetch_autoconfig` serve
+the repository sheet.
+
+The active profile's addons are scanned by an `AddonScan` task (`profiles::Command::ScanAddons`;
+the UI calls `profiles::ensure_scan` every frame, which asks again whenever the profile, its
+folders or its Arma 3 executable changed) into `profiles::State::scan`: the addon registry, the
+available-addons tree and each addon's size; the launch priority list is brought in line with it.
+`launch::Command::Play` runs a `Launch` task: optionally the user's downloads of the enabled
+addon groups' repositories that have updates (`sync::download`, so failed files reach
+`sync::Downloads::recent` and `sync::Event::DownloadFinished` like any download), then the
+launch plan of the active profile (`a3s_launch::plan_launch`), the companion apps and the game
+through the `launch::GameLauncher` in `launch::State` (tests put a recording launcher there).
+Update and launch problems never stop the game: launch problems arrive as `launch::Event`s.
 
 Network access and time go through two seams, `RemoteChecker` and `Clock`, plus `Synchronizer`
 for background downloads; tests use fakes and `ManualClock`. Each domain (`repositories`,

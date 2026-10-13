@@ -1,5 +1,6 @@
 //! The Update issues sheet: after a download with failed files, one plain line per file, Retry
-//! per file or for all, the report for the clipboard, and Play anyway.
+//! per file or for all, the report for the clipboard, and Play anyway (not while the game is
+//! already starting after Update and play).
 
 use std::collections::BTreeSet;
 use std::time::SystemTime;
@@ -25,14 +26,19 @@ pub(crate) struct UpdateIssues {
     /// Files whose Retry was clicked, for the download that finished at `shown`.
     retried: BTreeSet<String>,
     shown: Option<SystemTime>,
+
+    /// The download was part of Update and play: the game starts anyway, so the sheet offers
+    /// no Play.
+    game_starting: bool,
 }
 
 impl UpdateIssues {
-    pub(crate) fn new(repository: impl Into<String>) -> Self {
+    pub(crate) fn new(repository: impl Into<String>, game_starting: bool) -> Self {
         Self {
             repository: repository.into(),
             retried: BTreeSet::new(),
             shown: None,
+            game_starting,
         }
     }
 
@@ -66,6 +72,7 @@ impl UpdateIssues {
         let title = format!("Some files of {} were not updated", self.repository);
         let action = Dialog::new("a3s_viewer::sheet::update_issues", title)
             .ok_label("Play anyway")
+            .show_ok(!self.game_starting)
             .cancel_label("Close")
             .default_button(Some(DialogButton::Cancel))
             .show(ctx, |ui| {
@@ -92,7 +99,11 @@ impl UpdateIssues {
     ) -> bool {
         let palette = theme::palette(ui.ctx());
         ui.set_width(520.0);
-        ui.label("The game can still start; these mods may be out of date.");
+        ui.label(if self.game_starting {
+            "The game starts anyway; these mods may be out of date."
+        } else {
+            "The game can still start; these mods may be out of date."
+        });
         ui.add_space(8.0);
         egui::ScrollArea::vertical()
             .max_height(260.0)

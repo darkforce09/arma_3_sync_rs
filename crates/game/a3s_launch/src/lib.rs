@@ -27,7 +27,7 @@ use a3s_types::local::{Configuration, Profile};
 pub use command::{CommandSpec, LaunchMethod, LaunchPlan, LinuxLaunchMode};
 pub use error::LaunchError;
 pub use external::launch_external_applications;
-pub use params::{ModPathStyle, RunParameterInput, determine_run_parameters};
+pub use params::{ModPathStyle, RunParameterInput, determine_run_parameters, launch_addon_names};
 pub use runner::{
     EventSink, LaunchEvent, LaunchHandle, LaunchTarget, RestartGuard, RunOptions, spawn_plan,
 };
@@ -59,19 +59,24 @@ pub struct Arma3LaunchRequest<'a> {
     pub steam_watch: SteamWatch,
 }
 
-/// Starts the game of the active profile and returns at once; `Ok(None)` without a profile.
+/// A planned game launch: the command and how the launch thread follows it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PlannedLaunch {
+    /// The command that starts the game.
+    pub plan: LaunchPlan,
+
+    /// Auto-restart and the Steam watch.
+    pub options: RunOptions,
+}
+
+/// Plans the game launch of the active profile without starting anything; `Ok(None)` without a
+/// profile.
 ///
 /// Computes the run parameters ([`determine_run_parameters`], mod paths in Wine form for a Steam
-/// launch), plans the command, strips the launcher's mod list from `Arma3.cfg` (a failure is
-/// logged and the launch goes on) and runs the command on the `a3s-launch-arma3` thread ([`spawn_plan`]),
-/// with auto-restart as the profile says. A missing executable setting, an executable that
-/// cannot run on this OS and a missing Steam client fail here, before any thread starts.
+/// launch) and plans the command, with auto-restart as the profile says. A missing executable
+/// setting, an executable that cannot run on this OS and a missing Steam client fail here.
 // Mirrors service/LaunchService.java:129-155
-pub fn launch_arma3(
-    request: &Arma3LaunchRequest<'_>,
-    probe: Arc<dyn ProcessProbe>,
-    events: EventSink,
-) -> Result<Option<LaunchHandle>, LaunchError> {
+pub fn plan_launch(request: &Arma3LaunchRequest<'_>) -> Result<Option<PlannedLaunch>, LaunchError> {
     let Some(profile) = request.profile else {
         return Ok(None);
     };
@@ -95,9 +100,30 @@ pub fn launch_arma3(
         registry: request.registry,
         mod_path_style,
     });
-
     let plan = command::plan_arma3(request.os, exe, &params, method, request.steam.as_ref())?;
+    Ok(Some(PlannedLaunch {
+        plan,
+        options: RunOptions {
+            auto_restart: options.auto_restart,
+            guard: request.restart_guard,
+            steam_watch: request.steam_watch,
+        },
+    }))
+}
 
+/// Starts the game of the active profile and returns at once; `Ok(None)` without a profile.
+///
+/// Plans the launch ([`plan_launch`]), strips the launcher's mod list from `Arma3.cfg` (a failure
+/// is logged and the launch goes on) and runs the command on the `a3s-launch-arma3` thread
+/// ([`spawn_plan`]). Planning errors come back before any thread starts.
+pub fn launch_arma3(
+    request: &Arma3LaunchRequest<'_>,
+    probe: Arc<dyn ProcessProbe>,
+    events: EventSink,
+) -> Result<Option<LaunchHandle>, LaunchError> {
+    let Some(planned) = plan_launch(request)? else {
+        return Ok(None);
+    };
     if let Some(dir) = &request.arma3_documents_dir
         && let Err(err) = cfg::erase_arma3_cfg_mod_launcher_list(dir)
     {
@@ -106,11 +132,5 @@ pub fn launch_arma3(
             dir.join(cfg::ARMA3_CFG).display()
         );
     }
-
-    let run_options = RunOptions {
-        auto_restart: options.auto_restart,
-        guard: request.restart_guard,
-        steam_watch: request.steam_watch,
-    };
-    spawn_plan(plan, run_options, probe, events).map(Some)
+    spawn_plan(planned.plan, planned.options, probe, events).map(Some)
 }

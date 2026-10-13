@@ -65,6 +65,7 @@ eframe = { version = "0.36.2", default-features = false }
 egui = "0.36.2"
 egui-phosphor = "0.14.0"
 egui-toast = "0.22.0"
+egui_dnd = "0.17.0"
 egui_kittest = "0.36.2"
 flate2 = "1.1"
 fs4 = "1.1.0"

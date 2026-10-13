@@ -12,7 +12,7 @@ use a3s_ui::theme::{self, ProgressTone};
 use a3s_ui::widgets::{button, primary_button, status_pill};
 use a3s_viewer_context::sync::{self, ChangeKind, DownloadResult, PlanState};
 use a3s_viewer_context::{
-    Change, Command, RepositoryRuntime, TaskKey, TaskKind, ViewerContext, profiles, repositories,
+    Change, Command, RepositoryRuntime, TaskKey, TaskKind, ViewerContext, repositories,
 };
 use egui::{Align, Label, Layout, RichText, Ui};
 
@@ -317,50 +317,17 @@ fn events(ui: &mut Ui, view: &View, cx: &mut ScreenCx<'_>) {
                 });
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     if button(ui, "Use preset").clicked() {
-                        use_preset(cx, &view.repository.name, event);
+                        super::mods::use_event_preset(
+                            cx.viewer,
+                            cx.toasts,
+                            &view.repository.name,
+                            event,
+                        );
                     }
                 });
             });
         });
         ui.add_space(6.0);
-    }
-}
-
-/// Selects the event's mods in the active profile, with an Undo toast.
-fn use_preset(cx: &mut ScreenCx<'_>, repository: &str, event: &Event) {
-    let before = cx
-        .viewer
-        .read()
-        .client
-        .active_profile()
-        .map(|profile| profile.tree.clone());
-    let applied = cx.viewer.mutate(Some(Change::AddonSelection), |state| {
-        profiles::use_event_preset(state, repository, event)
-    });
-    match applied {
-        Ok(true) => {
-            let Some(before) = before else {
-                return;
-            };
-            cx.toasts.undoable(
-                format!("Selected the mods of {}", event.name),
-                move |viewer: &ViewerContext| {
-                    let restored = viewer.mutate(Some(Change::AddonSelection), |state| {
-                        state.client.update_active_profile(|profile| {
-                            profile.tree = before;
-                            true
-                        })
-                    });
-                    if let Err(err) = restored {
-                        tracing::warn!("Cannot undo the event preset: {}", err.user_message());
-                    }
-                },
-            );
-        }
-        Ok(false) => cx
-            .toasts
-            .info(format!("The mods of {} are already selected", event.name)),
-        Err(err) => cx.toasts.error(err.user_message()),
     }
 }
 

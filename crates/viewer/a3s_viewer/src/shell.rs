@@ -8,20 +8,22 @@ use a3s_foundation::error::UserFacing as _;
 use a3s_types::constants::MinimizationType;
 use a3s_ui::frames;
 use a3s_ui::theme;
-use a3s_viewer_context::{Change, Command, TaskKind, ViewerContext, repositories};
+use a3s_viewer_context::{
+    AppEvent, Change, Command, TaskKey, TaskKind, ViewerContext, profiles, repositories,
+};
 use egui::{Frame, Ui, ViewportCommand};
 
 use crate::events::EventSink;
 use crate::launch::{self, PlayRequest};
 use crate::requests::WindowRequest;
-use crate::screens::ScreenCx;
+use crate::screens::{ModsScreen, ScreenCx};
 use crate::sheets::{
     ExitPrompt, Sheet, SheetKind, SheetOutcome, Sheets, UpdateIssues, WelcomeSetup,
 };
 use crate::sidebar::{self, SidebarView};
 use crate::snapshot::Snapshot;
 use crate::toasts::Toaster;
-use crate::windows::{SecondaryWindow, SecondaryWindows};
+use crate::windows::{SecondaryWindow, SecondaryWindows, SettingsPane};
 use crate::{screens, shortcuts, toolbar};
 
 /// A screen of the content area, chosen in the sidebar.
@@ -66,10 +68,12 @@ pub(crate) enum Action {
     Play,
     SelectProfile(String),
     Open(SecondaryWindow),
+    OpenSettings(SettingsPane),
     CheckNow,
     FocusSearch,
     Show,
     Hide,
+    Minimize,
     Quit,
 }
 
@@ -108,6 +112,7 @@ pub struct Shell {
     screen: Screen,
     search: String,
     sheets: Sheets,
+    mods: ModsScreen,
     toasts: Toaster,
     windows: SecondaryWindows,
     requests: mpsc::Receiver<WindowRequest>,
@@ -134,6 +139,7 @@ impl Shell {
             screen: Screen::Mods,
             search: String::new(),
             sheets,
+            mods: ModsScreen::default(),
             toasts: Toaster::default(),
             windows: SecondaryWindows::default(),
             requests: setup.requests,
@@ -185,14 +191,33 @@ impl Shell {
         for request in requests {
             self.apply(ctx, Action::from(request));
         }
+        if let Err(err) = profiles::ensure_scan(&self.viewer) {
+            tracing::warn!("Cannot scan the addons: {err}");
+        }
+        let mut window_actions = Vec::new();
         let mut sink = EventSink {
             toasts: &mut self.toasts,
             sheets: &mut self.sheets,
             last_check: &mut self.last_check,
             hidden: self.hidden,
+            game_starting: self
+                .viewer
+                .is_running(&TaskKey::new(TaskKind::Launch))
+                .is_some(),
         };
         for event in self.viewer.poll_events() {
+            if let AppEvent::Launch(event) = &event {
+                window_actions.extend(launch::on_event(
+                    event,
+                    &self.viewer,
+                    sink.toasts,
+                    self.tray_available,
+                ));
+            }
             sink.handle(event);
+        }
+        for action in window_actions {
+            self.apply(ctx, action);
         }
     }
 
@@ -248,10 +273,12 @@ impl Shell {
             .show(ui, |ui| {
                 let mut screen = ScreenCx {
                     viewer: &self.viewer,
+                    search: &self.search,
                     toasts: &mut self.toasts,
+                    sheets: &mut self.sheets,
                     actions: Vec::new(),
                 };
-                screens::show(ui, &self.screen, &mut screen);
+                screens::show(ui, &self.screen, &mut self.mods, &mut screen);
                 screen.actions
             });
         actions.extend(content.inner);
@@ -270,11 +297,15 @@ impl Shell {
                     profile: snapshot.active_profile.clone(),
                     update_first: false,
                 },
+                &mut self.toasts,
             ),
             None => {}
         }
         self.windows.show(&ctx);
         self.toasts.show(ui, &self.viewer);
+        for action in self.toasts.take_actions() {
+            self.apply(&ctx, action);
+        }
     }
 
     fn apply(&mut self, ctx: &egui::Context, action: Action) {
@@ -293,13 +324,14 @@ impl Shell {
             }
             Action::ShowIssues(name) => self
                 .sheets
-                .push(Sheet::UpdateIssues(UpdateIssues::new(name))),
+                .push(Sheet::UpdateIssues(UpdateIssues::new(name, false))),
             Action::Play => launch::request(
                 &self.viewer,
                 &PlayRequest {
                     profile: snapshot.active_profile.clone(),
                     update_first: snapshot.profile_has_updates,
                 },
+                &mut self.toasts,
             ),
             Action::SelectProfile(name) => {
                 let selected = self.viewer.mutate(Some(Change::Profile), |state| {
@@ -310,12 +342,14 @@ impl Shell {
                 }
             }
             Action::Open(window) => self.windows.open(ctx, window),
+            Action::OpenSettings(pane) => self.windows.open_settings(ctx, pane),
             Action::CheckNow => self.check_now(snapshot),
             Action::FocusSearch => {
                 ctx.memory_mut(|memory| memory.request_focus(toolbar::search_id()));
             }
             Action::Show => self.show_window(ctx),
             Action::Hide => self.hide_window(ctx),
+            Action::Minimize => ctx.send_viewport_cmd(ViewportCommand::Minimized(true)),
             Action::Quit => self.quit(ctx),
         }
     }
@@ -438,6 +472,7 @@ fn stops_silently(kind: TaskKind) -> bool {
             | TaskKind::SelfUpdateCheck
             | TaskKind::PartialTransferTest
             | TaskKind::AddonScan
+            | TaskKind::Launch
             | TaskKind::RptTail
     )
 }

@@ -229,6 +229,9 @@ fn issues_sheet_lists_the_failed_files_and_retry_downloads_again() {
         })
         .ok();
 
+    // The Mods screen also shows an "Alpha" group: leave it first.
+    harness.get_by_label("Servers").click();
+    harness.run();
     harness.get_by_label("Alpha").click();
     harness.run();
     harness.get_by_label("Show issues").click();

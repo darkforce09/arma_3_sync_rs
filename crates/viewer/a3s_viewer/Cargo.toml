@@ -18,10 +18,13 @@ workspace = true
 all-features = true
 
 [dependencies]
+a3s_addons.workspace = true
 a3s_foundation.workspace = true
+a3s_launch.workspace = true
 a3s_platform.workspace = true
 a3s_repo_files.workspace = true
 a3s_sync.workspace = true
+a3s_tools.workspace = true
 a3s_transport.workspace = true
 a3s_types.workspace = true
 a3s_ui.workspace = true
@@ -29,6 +32,7 @@ a3s_viewer_context.workspace = true
 chrono.workspace = true
 eframe = { workspace = true, features = ["accesskit", "default_fonts", "wgpu", "wayland", "x11"] }
 egui.workspace = true
+egui_dnd.workspace = true
 egui-toast.workspace = true
 futures.workspace = true
 notify-rust.workspace = true

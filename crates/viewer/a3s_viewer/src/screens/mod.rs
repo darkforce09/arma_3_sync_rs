@@ -12,22 +12,28 @@ use a3s_ui::theme;
 use a3s_viewer_context::ViewerContext;
 use egui::{Align, Layout, RichText, Ui};
 
+pub(crate) use self::mods::ModsScreen;
+use crate::sheets::Sheets;
 use crate::shell::{Action, Screen};
 use crate::toasts::Toaster;
 
-/// What a screen works with besides its `Ui`.
+/// What a screen works with besides its `Ui` and its own state.
 pub(crate) struct ScreenCx<'a> {
     pub(crate) viewer: &'a ViewerContext,
+
+    /// The toolbar search text.
+    pub(crate) search: &'a str,
     pub(crate) toasts: &'a mut Toaster,
+    pub(crate) sheets: &'a mut Sheets,
 
     /// What the screen asks the window to do, applied after the frame.
     pub(crate) actions: Vec<Action>,
 }
 
-/// Shows `screen` in the content area.
-pub(crate) fn show(ui: &mut Ui, screen: &Screen, cx: &mut ScreenCx<'_>) {
+/// Shows `screen` in the content area; `mods` is the Mods screen's state, kept by the window.
+pub(crate) fn show(ui: &mut Ui, screen: &Screen, mods: &mut ModsScreen, cx: &mut ScreenCx<'_>) {
     match screen {
-        Screen::Mods => mods::show(ui),
+        Screen::Mods => mods.show(ui, cx),
         Screen::Servers => servers::show(ui),
         Screen::Activity => activity::show(ui, cx),
         Screen::Repository(name) => repository::show(ui, name, cx),

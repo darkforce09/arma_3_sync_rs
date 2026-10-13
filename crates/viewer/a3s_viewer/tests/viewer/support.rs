@@ -1,12 +1,15 @@
 //! A shell over client data in a temporary folder, driven by `egui_kittest`.
 
 use std::convert::Infallible;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use a3s_repo_files::local::{LocalDirs, LocalStore};
 use a3s_repo_files::services::ClientData;
 use a3s_types::constants::{ModsetType, RepositoryStatus};
-use a3s_types::local::{Configuration, Preferences, Profile, Repository, TreeDirectory, TreeNode};
+use a3s_types::local::{
+    Configuration, Preferences, Profile, Repository, TreeDirectory, TreeLeaf, TreeNode,
+};
 use a3s_types::{Changelog, Changelogs, Protocol, ProtocolType};
 use a3s_viewer::{RequestSender, Shell, ShellSetup, WelcomeSetup};
 use a3s_viewer_context::{ContextOptions, ViewerContext};
@@ -32,6 +35,9 @@ pub struct Start {
 
     /// Repositories stored besides `Alpha` and `Beta`.
     pub repositories: Vec<Repository>,
+
+    /// The profiles, the first one active; `None` gives `Default` and `Training`.
+    pub profiles: Option<Vec<Profile>>,
 }
 
 /// Repositories `Alpha` (in the Default profile's addon groups, with updates) and `Beta`
@@ -54,14 +60,21 @@ pub fn fixture_with(
     }));
     let mut beta = repository("Beta");
     beta.path = Some(dir.path().join("beta").display().to_string());
-    let client = ClientData::from_parts(
-        Arc::clone(&store),
-        Configuration::default(),
-        Preferences::default(),
+    let profiles = start.profiles.unwrap_or_else(|| {
         vec![
             profile_with_group("Default", "Alpha"),
             Profile::new("Training"),
-        ],
+        ]
+    });
+    let configuration = Configuration {
+        profile_name: profiles[0].name.clone(),
+        ..Configuration::default()
+    };
+    let client = ClientData::from_parts(
+        Arc::clone(&store),
+        configuration,
+        Preferences::default(),
+        profiles,
         [repository("Alpha"), beta]
             .into_iter()
             .chain(start.repositories)
@@ -157,4 +170,71 @@ fn profile_with_group(name: &str, repository: &str) -> Profile {
     group.modset_repository_name = Some(repository.to_owned());
     profile.tree.add_child(TreeNode::Directory(group));
     profile
+}
+
+/// A mods folder in `dir` with `@ace`, `@cba` and `@gm` (whose `meta.cpp` names Workshop item
+/// 3147580028), and an Arma 3 executable `arma3_x64` beside it. Returns both paths.
+pub fn mods_folder(dir: &Path) -> (PathBuf, PathBuf) {
+    let mods = dir.join("mods");
+    for (name, size) in [("@ace", 3000), ("@cba", 2000), ("@gm", 1000)] {
+        let addons = mods.join(name).join("addons");
+        std::fs::create_dir_all(&addons).expect("addons folder");
+        std::fs::write(addons.join("main.pbo"), vec![0_u8; size]).expect("pbo");
+    }
+    std::fs::write(
+        mods.join("@gm").join("meta.cpp"),
+        "protocol = 1;\npublishedid = 3147580028;\nname = \"GM\";\n",
+    )
+    .expect("meta.cpp");
+    let game = dir.join("game");
+    std::fs::create_dir_all(&game).expect("game folder");
+    let exe = game.join("arma3_x64");
+    std::fs::write(&exe, b"").expect("executable");
+    (mods, exe)
+}
+
+/// The `Mods` profile: user group `Core` with `@ace` and `@cba` enabled, the `Alpha`
+/// repository group with `@alpha_mod`, the mods folder, `@cba` loading before `@ace`.
+pub fn mods_profile(mods: &Path, exe: &Path) -> Profile {
+    let mut profile = Profile::new("Mods");
+    let mut core = TreeDirectory::new("Core");
+    core.selected = true;
+    for name in ["@ace", "@cba"] {
+        core.add_child(TreeNode::Leaf(TreeLeaf {
+            selected: true,
+            ..TreeLeaf::new(name)
+        }));
+    }
+    profile.tree.add_child(TreeNode::Directory(core));
+    let mut alpha = TreeDirectory::new("Alpha");
+    alpha.modset_type = Some(ModsetType::Repository);
+    alpha.modset_repository_name = Some("Alpha".to_owned());
+    alpha.add_child(TreeNode::Leaf(TreeLeaf::new("@alpha_mod")));
+    profile.tree.add_child(TreeNode::Directory(alpha));
+    profile.addon_search_directories = vec![mods.display().to_string()];
+    profile.addon_names_by_priority = vec!["@cba".to_owned(), "@ace".to_owned()];
+    profile.launcher_options.arma3_exe_path = Some(exe.display().to_string());
+    profile
+}
+
+/// Steps the harness until `done` holds, sleeping between steps for background work; panics
+/// after five seconds.
+pub fn step_until(harness: &mut Harness<'static, Shell>, done: impl Fn(&Shell) -> bool) {
+    for _ in 0..500 {
+        harness.step();
+        if done(harness.state()) {
+            harness.run();
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    panic!("condition not reached");
+}
+
+/// Steps until the addon scan of the active profile finished.
+pub fn wait_for_scan(harness: &mut Harness<'static, Shell>) {
+    step_until(harness, |shell| {
+        let state = shell.viewer().read();
+        state.profiles.scan.is_some() && state.profiles.scan_requested.is_none()
+    });
 }

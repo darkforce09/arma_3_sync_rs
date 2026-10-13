@@ -17,6 +17,9 @@ pub(crate) struct EventSink<'a> {
     pub(crate) sheets: &'a mut Sheets,
     pub(crate) last_check: &'a mut Option<SystemTime>,
     pub(crate) hidden: bool,
+
+    /// Update and play is running: the game starts whatever the downloads end with.
+    pub(crate) game_starting: bool,
 }
 
 impl EventSink<'_> {
@@ -70,8 +73,10 @@ impl EventSink<'_> {
                     "{repository}: {} not updated",
                     count_text(errors.len(), "file", "files")
                 ));
-                self.sheets
-                    .push(Sheet::UpdateIssues(UpdateIssues::new(repository)));
+                self.sheets.push(Sheet::UpdateIssues(UpdateIssues::new(
+                    repository,
+                    self.game_starting,
+                )));
             }
             sync::DownloadResult::Failed(error) => {
                 self.toasts
