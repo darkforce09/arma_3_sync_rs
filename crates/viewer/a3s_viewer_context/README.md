@@ -37,6 +37,14 @@ launch plan of the active profile (`a3s_launch::plan_launch`), the companion app
 through the `launch::GameLauncher` in `launch::State` (tests put a recording launcher there).
 Update and launch problems never stop the game: launch problems arrive as `launch::Event`s.
 
+Repository administration is `admin`: `refresh` reads the published repository (download
+protocol) and compares the source folder with it without hashing (the build's SHA-1 cache tells
+which files still match) into `admin::Publishing`; `publish` runs scan, build, verify and upload
+as one cancellable `Publish` task whose steps report their state and detail, and retries from a
+failed or stopped step (an interrupted upload resumes); `edit_events` changes the events and
+writes the source folder's `.a3s/events` at once, which the next build carries and the upload
+publishes, and `upload_events` uploads them alone.
+
 Network access and time go through two seams, `RemoteChecker` and `Clock`, plus `Synchronizer`
 for background downloads; tests use fakes and `ManualClock`. Each domain (`repositories`,
 `sync`, `admin`, `profiles`, `launch`, `tools`) has its own `Command`, `Event` and `State`.

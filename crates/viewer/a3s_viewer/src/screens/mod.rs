@@ -45,7 +45,7 @@ pub(crate) fn show(ui: &mut Ui, screen: &Screen, states: &mut ScreenStates, cx: 
         Screen::Servers => states.servers.show(ui, cx),
         Screen::Activity => activity::show(ui, cx),
         Screen::Repository(name) => repository::show(ui, name, cx),
-        Screen::Publishing(name) => publishing::show(ui, name),
+        Screen::Publishing(name) => publishing::show(ui, name, cx),
     }
 }
 

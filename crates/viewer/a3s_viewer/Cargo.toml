@@ -19,6 +19,7 @@ all-features = true
 
 [dependencies]
 a3s_addons.workspace = true
+a3s_admin.workspace = true
 a3s_foundation.workspace = true
 a3s_launch.workspace = true
 a3s_platform.workspace = true

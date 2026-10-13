@@ -265,6 +265,7 @@ name = "a3s_viewer"
 version = "0.1.0-alpha.1"
 dependencies = [
  "a3s_addons",
+ "a3s_admin",
  "a3s_foundation",
  "a3s_launch",
  "a3s_platform",
@@ -300,6 +301,7 @@ name = "a3s_viewer_context"
 version = "0.1.0-alpha.1"
 dependencies = [
  "a3s_addons",
+ "a3s_admin",
  "a3s_foundation",
  "a3s_launch",
  "a3s_platform",

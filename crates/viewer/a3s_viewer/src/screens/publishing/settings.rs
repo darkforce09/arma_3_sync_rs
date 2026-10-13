@@ -1,0 +1,198 @@
+//! The Settings segment: source folder, upload connection, the public auto-config link, the
+//! build and upload options, and the path lists. Every change is stored at once.
+
+use std::path::PathBuf;
+
+use a3s_foundation::error::UserFacing as _;
+use a3s_repo_files::services::ServiceError;
+use a3s_types::autoconfig_url::{autoconfig_display_url, determine_autoconfig_url};
+use a3s_types::local::Repository;
+use a3s_ui::frames;
+use a3s_ui::theme;
+use a3s_ui::widgets::{ROW_HEIGHT, button, form_row, toggle};
+use a3s_viewer_context::admin;
+use a3s_viewer_context::{Change, Command, ViewerContext};
+use egui::{Align, Label, Layout, RichText, Ui, WidgetInfo, WidgetType, vec2};
+
+use super::View;
+use crate::picker::FolderPicker;
+use crate::screens::{ScreenCx, count_text, section_title};
+use crate::sheets::PathListKind;
+use crate::shell::Action;
+
+/// The folder dialog of the source folder.
+#[derive(Default)]
+pub(super) struct SettingsState {
+    picker: FolderPicker,
+}
+
+pub(super) fn show(ui: &mut Ui, view: &View, state: &mut SettingsState, cx: &mut ScreenCx<'_>) {
+    let name = view.name();
+    if let Some(folder) = state.picker.poll() {
+        set_source(cx, name, &folder);
+    }
+    let palette = theme::palette(ui.ctx());
+    let repository = &view.repository;
+
+    section_title(ui, "Source");
+    frames::group(ui, |ui| {
+        form_row(ui, "Source folder", |ui| {
+            if button(ui, "Choose…").clicked() {
+                let start = repository.path.as_deref().map(PathBuf::from);
+                state
+                    .picker
+                    .open(ui.ctx(), "Source folder", start.as_deref());
+            }
+            let text = repository.path.clone().unwrap_or_else(|| "None".to_owned());
+            ui.add(Label::new(text).truncate());
+        });
+    });
+
+    section_title(ui, "Upload");
+    frames::group(ui, |ui| {
+        form_row(ui, "Upload connection", |ui| {
+            if button(ui, "Edit connection…").clicked() {
+                cx.actions
+                    .push(Action::EditUploadConnection(name.to_owned()));
+            }
+            let text = repository.upload_protocol.as_ref().map_or_else(
+                || "Not set".to_owned(),
+                |protocol| {
+                    format!(
+                        "{}{}:{}",
+                        protocol.protocol_type.prompt(),
+                        protocol.url,
+                        protocol.port
+                    )
+                },
+            );
+            ui.add(Label::new(text).truncate());
+        });
+        frames::group_separator(ui);
+        let link = autoconfig_display_url(
+            repository.protocol.protocol_type,
+            Some(&determine_autoconfig_url(&repository.protocol)),
+        )
+        .unwrap_or_default();
+        form_row(ui, "Auto-config link", |ui| {
+            if button(ui, "Copy").clicked() {
+                ui.ctx().copy_text(link.clone());
+                cx.toasts.info("Copied the auto-config link");
+            }
+            ui.add(Label::new(RichText::new(&link).color(palette.text_secondary)).truncate());
+        });
+    });
+
+    section_title(ui, "Options");
+    frames::group(ui, |ui| {
+        let mut compressed = repository.compressed;
+        if toggle_row(ui, "Compress files", &mut compressed) {
+            store(cx, |data| data.set_compressed(name, compressed));
+        }
+        frames::group_separator(ui);
+        let mut delta = repository.use_partial_file_transfer();
+        if toggle_row(ui, "Delta updates", &mut delta) {
+            store(cx, |data| data.set_use_partial_file_transfer(name, delta));
+        }
+        frames::group_separator(ui);
+        let mut compressed_only = repository.upload_compressed_pbo_files_only;
+        if toggle_row(ui, "Upload only compressed files", &mut compressed_only) {
+            store(cx, |data| {
+                data.set_upload_compressed_pbo_files_only(name, compressed_only)
+            });
+        }
+        frames::group_separator(ui);
+        let mut parallel = repository.parallel_upload_connections() > 1;
+        if toggle_row(ui, "Parallel uploads", &mut parallel) {
+            let connections = if parallel {
+                Repository::DEFAULT_PARALLEL_UPLOAD_CONNECTIONS
+            } else {
+                1
+            };
+            store(cx, |data| {
+                data.set_parallel_upload_connections(name, connections)
+            });
+        }
+    });
+
+    section_title(ui, "Exclusions");
+    frames::group(ui, |ui| {
+        for (index, kind) in [PathListKind::ExcludedFiles, PathListKind::HiddenFolders]
+            .into_iter()
+            .enumerate()
+        {
+            if index > 0 {
+                frames::group_separator(ui);
+            }
+            let count = kind.paths(cx.viewer, name).len();
+            form_row(ui, kind.title(), |ui| {
+                if button(ui, &format!("Edit {}…", kind.title().to_lowercase())).clicked() {
+                    cx.actions.push(Action::EditPathList(name.to_owned(), kind));
+                }
+                ui.label(
+                    RichText::new(count_text(count, "entry", "entries"))
+                        .color(palette.text_secondary),
+                );
+            });
+        }
+    });
+}
+
+/// A form row with a switch named by its label; returns whether it was flipped.
+fn toggle_row(ui: &mut Ui, label: &str, on: &mut bool) -> bool {
+    ui.allocate_ui_with_layout(
+        vec2(ui.available_width(), ROW_HEIGHT),
+        Layout::left_to_right(Align::Center),
+        |ui| {
+            ui.label(label);
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                let response = toggle(ui, on);
+                // The switch is named by the row's label.
+                let (enabled, state) = (ui.is_enabled(), *on);
+                response.widget_info(|| {
+                    WidgetInfo::selected(WidgetType::Checkbox, enabled, state, label)
+                });
+                response.changed()
+            })
+            .inner
+        },
+    )
+    .inner
+}
+
+/// Stores a repository setting; a failure is a toast.
+fn store(
+    cx: &mut ScreenCx<'_>,
+    f: impl FnOnce(&mut a3s_repo_files::services::ClientData) -> Result<(), ServiceError>,
+) {
+    if let Err(err) = cx
+        .viewer
+        .mutate(Some(Change::Repository), |state| f(&mut state.client))
+    {
+        cx.toasts.error(err.user_message());
+    }
+}
+
+/// Stores the new source folder; the publishing status is read again for it.
+fn set_source(cx: &mut ScreenCx<'_>, name: &str, folder: &std::path::Path) {
+    let path = folder.display().to_string();
+    let stored = cx.viewer.mutate(Some(Change::Repository), |state| {
+        state.client.set_repository_path(name, Some(path))?;
+        admin::forget(state, name);
+        Ok::<(), ServiceError>(())
+    });
+    match stored {
+        Ok(()) => refresh(cx.viewer, name),
+        Err(err) => cx.toasts.error(err.user_message()),
+    }
+}
+
+fn refresh(viewer: &ViewerContext, name: &str) {
+    let command = Command::Admin(admin::Command::Refresh {
+        repository: name.to_owned(),
+        remote: true,
+    });
+    if let Err(err) = viewer.send(command) {
+        tracing::warn!("Cannot refresh the publishing status of {name}: {err}");
+    }
+}
