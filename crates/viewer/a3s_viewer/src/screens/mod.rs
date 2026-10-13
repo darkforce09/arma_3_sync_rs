@@ -31,7 +31,7 @@ pub(crate) fn show(ui: &mut Ui, screen: &Screen, cx: &mut ScreenCx<'_>) {
         Screen::Servers => servers::show(ui),
         Screen::Activity => activity::show(ui, cx),
         Screen::Repository(name) => repository::show(ui, name, cx),
-        Screen::Publishing(name) => publishing::show(ui, name),
+        Screen::Publishing(name) => publishing::show(ui, name, cx),
     }
 }
 

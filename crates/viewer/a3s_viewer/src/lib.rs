@@ -26,7 +26,7 @@ mod windows;
 
 pub use self::requests::{RequestSender, WindowRequest, channel};
 pub use self::run::{Exit, RunOptions, ViewerError, display_available, run};
-pub use self::sheets::{SheetKind, WelcomeSetup};
+pub use self::sheets::{PathListKind, SheetKind, WelcomeSetup};
 pub use self::shell::{Screen, Shell, ShellSetup};
 pub use self::toasts::{Toaster, UndoAction};
 pub use self::windows::{SecondaryWindow, SettingsPane};

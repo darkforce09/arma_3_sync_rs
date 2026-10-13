@@ -22,7 +22,13 @@ folder and publishes the changes (`sync::Downloads::plans`), keeping the checked
 `Download` starts at once; `Pause` cancels and keeps the session for the next `Download` to
 resume, `Stop` discards it, `Retry` downloads failed files again. Extra local files go to the
 Trash. Each finished download is recorded in `sync::Downloads::recent` and announced with
-`sync::Event::DownloadFinished`. `profiles::use_event_preset` selects an event's mods in the
+`sync::Event::DownloadFinished`. Repository administration is `admin`: `refresh` reads the published repository (download
+protocol) and compares the source folder with it without hashing (the build's SHA-1 cache tells
+which files still match) into `admin::Publishing`; `publish` runs scan, build, verify and upload
+as one cancellable `Publish` task whose steps report their state and detail, and retries from a
+failed or stopped step (an interrupted upload resumes); `edit_events` changes the events and
+writes the source folder's `.a3s/events` at once, which the next build carries and the upload
+publishes, and `upload_events` uploads them alone. `profiles::use_event_preset` selects an event's mods in the
 active profile; `repositories::test_connection` and `fetch_autoconfig` serve the repository
 sheet.
 

@@ -4,7 +4,7 @@
 use std::time::SystemTime;
 
 use a3s_viewer_context::repositories::{self, UPDATES_AVAILABLE_MESSAGE};
-use a3s_viewer_context::{AppEvent, CheckOutcome, TaskEvent, TaskOutcome, sync};
+use a3s_viewer_context::{AppEvent, CheckOutcome, TaskEvent, TaskOutcome, admin, sync};
 
 use crate::notify;
 use crate::screens::count_text;
@@ -32,6 +32,7 @@ impl EventSink<'_> {
             AppEvent::Sync(sync::Event::DownloadFinished { repository, result }) => {
                 self.download_finished(repository, result);
             }
+            AppEvent::Admin(event) => self.admin(event),
             AppEvent::Error { error, .. } => self.toasts.error(error.message),
             AppEvent::Task(TaskEvent::Finished { info, outcome }) => match outcome {
                 TaskOutcome::Failed(error) => {
@@ -77,6 +78,26 @@ impl EventSink<'_> {
                 self.toasts
                     .error(format!("Could not update {repository}: {}", error.message));
             }
+        }
+    }
+
+    fn admin(&mut self, event: admin::Event) {
+        match event {
+            admin::Event::Published {
+                repository,
+                revision,
+            } => self
+                .toasts
+                .success(format!("Published {repository} revision {revision}")),
+            admin::Event::PublishFailed {
+                repository, error, ..
+            } => self
+                .toasts
+                .error(format!("Could not publish {repository}: {}", error.message)),
+            admin::Event::EventsUploaded { repository } => self
+                .toasts
+                .success(format!("Uploaded the events of {repository}")),
+            _ => {}
         }
     }
 

@@ -47,6 +47,10 @@ pub enum TaskKind {
     Upload,
     /// An upload of the events file.
     UploadEvents,
+    /// A publish: scan, build, verify and upload of a repository.
+    Publish,
+    /// Reading the published repository and comparing the source folder with it.
+    PublishingStatus,
     /// An autoconfig import from a URL.
     ImportAutoConfig,
     /// A probe of partial transfer support.
@@ -77,6 +81,8 @@ impl TaskKind {
             Self::AdminCheck => "Checking the repository content",
             Self::Upload => "Uploading the repository",
             Self::UploadEvents => "Uploading the events",
+            Self::Publish => "Publishing the repository",
+            Self::PublishingStatus => "Reading the publishing status",
             Self::ImportAutoConfig => "Importing the autoconfig",
             Self::PartialTransferTest => "Testing partial file transfer",
             Self::AddonScan => "Scanning addons",

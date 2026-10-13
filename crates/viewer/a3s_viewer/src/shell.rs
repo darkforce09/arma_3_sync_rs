@@ -16,7 +16,7 @@ use crate::launch::{self, PlayRequest};
 use crate::requests::WindowRequest;
 use crate::screens::ScreenCx;
 use crate::sheets::{
-    ExitPrompt, Sheet, SheetKind, SheetOutcome, Sheets, UpdateIssues, WelcomeSetup,
+    ExitPrompt, PathListKind, Sheet, SheetKind, SheetOutcome, Sheets, UpdateIssues, WelcomeSetup,
 };
 use crate::sidebar::{self, SidebarView};
 use crate::snapshot::Snapshot;
@@ -62,6 +62,8 @@ pub(crate) enum Action {
     Navigate(Screen),
     AddRepository,
     EditRepository(String),
+    EditUploadConnection(String),
+    EditPathList(String, PathListKind),
     ShowIssues(String),
     Play,
     SelectProfile(String),
@@ -291,6 +293,10 @@ impl Shell {
                     self.sheets.push(sheet);
                 }
             }
+            Action::EditUploadConnection(name) => self
+                .sheets
+                .push(Sheet::upload_connection(&self.viewer, &name)),
+            Action::EditPathList(name, kind) => self.sheets.push(Sheet::path_list(&name, kind)),
             Action::ShowIssues(name) => self
                 .sheets
                 .push(Sheet::UpdateIssues(UpdateIssues::new(name))),
@@ -435,6 +441,7 @@ fn stops_silently(kind: TaskKind) -> bool {
         TaskKind::PeriodicCheck
             | TaskKind::CheckRepositories
             | TaskKind::Compare
+            | TaskKind::PublishingStatus
             | TaskKind::SelfUpdateCheck
             | TaskKind::PartialTransferTest
             | TaskKind::AddonScan

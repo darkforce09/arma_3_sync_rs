@@ -26,12 +26,23 @@ The window (`Shell`):
   when the last comparison is older than the server revision.
 - Activity screen: running downloads (progress, bytes, speed, time left, current files, Pause
   and Stop), paused downloads (Resume, Stop) and the recent results ("Show issues").
+- Publishing screen (a repository built on this computer), with a Publish / Events / Settings
+  segment and one primary button ("Publish revision N", "Upload events" when only the events
+  changed, "Published"). Publish: tiles for the published revision, the local changes and the
+  repository size; the step list (Scan source folder, Build, Verify, Upload) with live details
+  and Retry or Resume under a failed or stopped step; the mods players get. Events: the event
+  list (Add, Duplicate, Remove with Undo) and the selected event (name, description, each mod
+  required or optional), saved to the source folder as you type. Settings: source folder,
+  upload connection, the auto-config link with Copy, the build and upload switches, and the
+  excluded files and hidden folders.
 - Sheets (`egui::Modal`, one at a time): Welcome on the first start or while Java data waits for
   import (Arma 3 and mods folders through the system folder dialog, the legacy importer),
   load warnings, quit confirmation (running tasks, failed save), Add repository and Edit
   connection (an auto-config link fills the fields; protocol, address, port, anonymous,
   download folder; login, SSL validation and the proxy under Advanced; Test connection), and
-  Update issues (one plain line per failed file, Retry, Retry all, Copy report, Play anyway).
+  Update issues (one plain line per failed file, Retry, Retry all, Copy report, Play anyway),
+  Upload connection (protocol, host, port, path, login) and the path lists of a published
+  repository (add through the system dialog, remove with Undo).
 - Toasts (egui-toast) for the context's events, including an Undo kind that runs a callback.
 - Settings and the tool windows as separate OS windows (deferred viewports).
 - Tray icon (StatusNotifierItem through `ksni` on Linux, `tray-icon` on Windows and macOS):

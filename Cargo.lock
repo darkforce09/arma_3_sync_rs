@@ -264,6 +264,7 @@ dependencies = [
 name = "a3s_viewer"
 version = "0.1.0-alpha.1"
 dependencies = [
+ "a3s_admin",
  "a3s_foundation",
  "a3s_platform",
  "a3s_repo_files",
@@ -295,6 +296,7 @@ name = "a3s_viewer_context"
 version = "0.1.0-alpha.1"
 dependencies = [
  "a3s_addons",
+ "a3s_admin",
  "a3s_foundation",
  "a3s_repo_files",
  "a3s_sync",

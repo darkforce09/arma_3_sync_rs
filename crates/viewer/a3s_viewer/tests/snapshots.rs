@@ -1,6 +1,6 @@
 // Its own test binary: wgpu rendering on a CPU adapter, Linux only, regenerated with UPDATE_SNAPSHOTS=1.
 //! Headless wgpu snapshots of the main window with two repositories, one with updates, and of
-//! the Repository and Activity screens.
+//! the Repository, Activity and Publishing screens.
 #![cfg(target_os = "linux")]
 
 #[allow(
@@ -15,10 +15,14 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
+use a3s_admin::{EventSelection, EventsDoc};
 use a3s_foundation::error::ErrorKind;
 use a3s_sync::{EventError, SyncEvent, TransferProgress};
 use a3s_types::{Changelog, Changelogs, Event, Events, ServerInfo};
 use a3s_ui::theme::{self, ThemeMode};
+use a3s_viewer_context::admin::{
+    LocalScan, ModChanges, PublishRun, Remote, RemoteRepository, StepDetail, StepState, StepStatus,
+};
 use a3s_viewer_context::sync::{
     AddonChange, ChangeKind, DownloadRecord, DownloadResult, PlanState, SyncPlan,
 };
@@ -208,4 +212,135 @@ fn mutate(viewer: &ViewerContext, f: impl FnOnce(&mut a3s_viewer_context::AppSta
             Ok::<(), Infallible>(())
         })
         .ok();
+}
+
+#[test]
+fn publishing_publish_light() {
+    snapshot("publishing_publish_light", ThemeMode::Light, |fixture| {
+        show_publishing(fixture, "Publish");
+    });
+}
+
+#[test]
+fn publishing_publish_dark() {
+    snapshot("publishing_publish_dark", ThemeMode::Dark, |fixture| {
+        show_publishing(fixture, "Publish");
+    });
+}
+
+#[test]
+fn publishing_events_light() {
+    snapshot("publishing_events_light", ThemeMode::Light, |fixture| {
+        show_publishing(fixture, "Events");
+    });
+}
+
+#[test]
+fn publishing_events_dark() {
+    snapshot("publishing_events_dark", ThemeMode::Dark, |fixture| {
+        show_publishing(fixture, "Events");
+    });
+}
+
+#[test]
+fn publishing_settings_light() {
+    snapshot("publishing_settings_light", ThemeMode::Light, |fixture| {
+        show_publishing(fixture, "Settings");
+    });
+}
+
+#[test]
+fn publishing_settings_dark() {
+    snapshot("publishing_settings_dark", ThemeMode::Dark, |fixture| {
+        show_publishing(fixture, "Settings");
+    });
+}
+
+/// Beta published at revision 12 three days ago, with local changes, one event and a run
+/// that failed at Verify; then the `tab` segment.
+fn show_publishing(fixture: &mut Fixture, tab: &str) {
+    let viewer = fixture.harness.state().viewer();
+    let built = SystemTime::now() - Duration::from_secs(3 * 86_400);
+    let build_date = built
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|d| i64::try_from(d.as_millis()).unwrap_or_default())
+        .unwrap_or_default();
+    let mut events = EventsDoc::new();
+    events.add_event(
+        "Sunday operation",
+        "Weekly co-op with the full mod set.",
+        &EventSelection {
+            addon_names: vec![("@ace".to_owned(), false), ("@cba".to_owned(), true)],
+            ..EventSelection::default()
+        },
+    );
+    let changes = ModChanges {
+        added: vec!["@tfar".to_owned()],
+        updated: vec!["@ace".to_owned()],
+        removed: vec!["@old".to_owned()],
+    };
+    let mut run = PublishRun {
+        revision: Some(13),
+        changes: Some(changes.clone()),
+        ..PublishRun::default()
+    };
+    run.steps[0] = StepState {
+        status: StepStatus::Done,
+        detail: StepDetail::Scanned {
+            files: 412,
+            changed_files: 6,
+            changed_bytes: 84_000_000,
+        },
+    };
+    run.steps[1] = StepState {
+        status: StepStatus::Done,
+        detail: StepDetail::Built {
+            revision: 13,
+            rehashed: 6,
+        },
+    };
+    run.steps[2] = StepState {
+        status: StepStatus::Failed(EventError::new(
+            ErrorKind::ConnectionFailed,
+            "Connection refused",
+        )),
+        detail: StepDetail::Verifying { percent: None },
+    };
+    mutate(viewer, |state| {
+        state
+            .client
+            .update_repository("Beta", |repository| {
+                repository.path = Some("/srv/arma3/beta".to_owned());
+                Ok(true)
+            })
+            .expect("path");
+        let publishing = state.admin.publishing_mut("Beta");
+        publishing.remote = Remote::Loaded(RemoteRepository {
+            server_info: Some(Arc::new(ServerInfo {
+                revision: 12,
+                build_date: Some(build_date),
+                ..ServerInfo::default()
+            })),
+            sync: None,
+        });
+        publishing.local = Some(Ok(LocalScan {
+            files: 412,
+            bytes: 23_400_000_000,
+            mods: vec!["@ace".to_owned(), "@cba".to_owned(), "@tfar".to_owned()],
+            changed_files: 6,
+            changed_bytes: 84_000_000,
+            changes,
+            built_revision: Some(12),
+        }));
+        publishing.events = Some(events);
+        publishing.run = Some(run);
+    });
+    fixture
+        .harness
+        .get_all_by_label("Beta")
+        .last()
+        .expect("publishing row")
+        .click();
+    fixture.harness.run();
+    fixture.harness.get_by_label(tab).click();
 }

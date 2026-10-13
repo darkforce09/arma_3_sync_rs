@@ -3,7 +3,9 @@
 pub(crate) mod add_repository;
 mod exit;
 mod load_warnings;
+mod path_list;
 mod update_issues;
+mod upload_connection;
 mod welcome;
 
 use std::collections::VecDeque;
@@ -12,7 +14,10 @@ use a3s_viewer_context::ViewerContext;
 
 use self::add_repository::{Mode, RepositoryForm};
 pub(crate) use self::exit::ExitPrompt;
+use self::path_list::PathList;
+pub use self::path_list::PathListKind;
 pub(crate) use self::update_issues::UpdateIssues;
+use self::upload_connection::UploadConnection;
 use self::welcome::Welcome;
 pub use self::welcome::WelcomeSetup;
 use crate::shell::Screen;
@@ -38,6 +43,12 @@ pub enum SheetKind {
 
     /// Files that failed in the last download of a repository.
     UpdateIssues,
+
+    /// Editing where a repository built on this computer is uploaded.
+    UploadConnection,
+
+    /// Editing a path list of a repository built on this computer.
+    PathList(PathListKind),
 }
 
 /// A sheet and its state.
@@ -47,6 +58,8 @@ pub(crate) enum Sheet {
     Exit(ExitPrompt),
     Repository(Box<RepositoryForm>),
     UpdateIssues(UpdateIssues),
+    UploadConnection(Box<UploadConnection>),
+    PathList(PathList),
 }
 
 impl Sheet {
@@ -56,6 +69,16 @@ impl Sheet {
 
     pub(crate) fn add_repository(viewer: &ViewerContext) -> Self {
         Self::Repository(Box::new(RepositoryForm::add(viewer)))
+    }
+
+    /// The Upload connection sheet of `repository`.
+    pub(crate) fn upload_connection(viewer: &ViewerContext, repository: &str) -> Self {
+        Self::UploadConnection(Box::new(UploadConnection::new(viewer, repository)))
+    }
+
+    /// The sheet editing the `kind` list of `repository`.
+    pub(crate) fn path_list(repository: &str, kind: PathListKind) -> Self {
+        Self::PathList(PathList::new(repository, kind))
     }
 
     /// The Edit connection sheet of `name`; `None` when it does not exist.
@@ -73,6 +96,8 @@ impl Sheet {
                 Mode::Edit(_) => SheetKind::EditRepository,
             },
             Self::UpdateIssues(_) => SheetKind::UpdateIssues,
+            Self::UploadConnection(_) => SheetKind::UploadConnection,
+            Self::PathList(list) => SheetKind::PathList(list.kind),
         }
     }
 }
@@ -146,6 +171,8 @@ impl Sheets {
             Sheet::Exit(prompt) => exit::show(ctx, prompt),
             Sheet::Repository(form) => form.show(ctx, viewer, toasts),
             Sheet::UpdateIssues(issues) => issues.show(ctx, viewer, toasts),
+            Sheet::UploadConnection(sheet) => sheet.show(ctx, viewer, toasts),
+            Sheet::PathList(list) => list.show(ctx, viewer, toasts),
         };
         match shown {
             Shown::Open => None,

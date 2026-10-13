@@ -566,12 +566,18 @@ fn summary_text(summary: &ConnectionSummary) -> String {
 }
 
 /// `url` without a leading `scheme://`.
-fn strip_scheme(url: &str) -> &str {
+pub(crate) fn strip_scheme(url: &str) -> &str {
     url.split_once("://").map_or(url, |(_, rest)| rest)
 }
 
 /// A form row with a labelled text field; returns whether the text changed.
-fn text_row(ui: &mut Ui, label: &str, text: &mut String, hint: &str, password: bool) -> bool {
+pub(crate) fn text_row(
+    ui: &mut Ui,
+    label: &str,
+    text: &mut String,
+    hint: &str,
+    password: bool,
+) -> bool {
     ui.allocate_ui_with_layout(
         vec2(ui.available_width(), ROW_HEIGHT),
         Layout::left_to_right(Align::Center),

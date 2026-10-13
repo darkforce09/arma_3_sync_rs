@@ -1,8 +1,10 @@
-//! Folder picker through the system dialog (the XDG desktop portal on Linux), without blocking
+//! Folder and file picker through the system dialog (the XDG desktop portal on Linux), without blocking
 //! the frame.
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
+
+use futures::FutureExt as _;
 
 /// One folder dialog at a time; [`Self::poll`] returns the choice once the user made it.
 #[derive(Default)]
@@ -13,6 +15,15 @@ pub(crate) struct FolderPicker {
 impl FolderPicker {
     /// Opens the dialog unless one is open; the window repaints when it closes.
     pub(crate) fn open(&mut self, ctx: &egui::Context, title: &str, start: Option<&Path>) {
+        self.open_dialog(ctx, title, start, false);
+    }
+
+    /// Like [`Self::open`], but the dialog chooses a file.
+    pub(crate) fn open_file(&mut self, ctx: &egui::Context, title: &str, start: Option<&Path>) {
+        self.open_dialog(ctx, title, start, true);
+    }
+
+    fn open_dialog(&mut self, ctx: &egui::Context, title: &str, start: Option<&Path>, file: bool) {
         if self.pending.is_some() {
             return;
         }
@@ -21,7 +32,11 @@ impl FolderPicker {
             dialog = dialog.set_directory(start);
         }
         // Created here (macOS opens dialogs from the main thread), awaited on a worker.
-        let choice = dialog.pick_folder();
+        let choice = if file {
+            dialog.pick_file().boxed()
+        } else {
+            dialog.pick_folder().boxed()
+        };
         let (sender, receiver) = mpsc::channel();
         let ctx = ctx.clone();
         let spawned = std::thread::Builder::new()
