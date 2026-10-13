@@ -43,8 +43,9 @@ The project is maintained by AI agents. Keep it small: every rule below states a
 | `tests/fixtures/` | Golden fixtures written by the Java implementation (data; see its README) |
 | `tools/java_fixture_harness/` | Java harness that runs the real Arma3Sync code to produce fixtures and verify Rust output |
 | `scripts/java_env.sh` | Sources the JDK for the harness |
+| `packaging/` | Linux AppImage build (`packaging/linux/build-appimage.sh`, run by CI) |
 | `java_version/` | Gitignored Java reference checkout |
-| `.github/workflows/` | CI (`rust.yml`) |
+| `.github/workflows/` | CI: gates (`rust.yml`), AppImage artifact and tagged releases (`appimage.yml`) |
 | `.workstation/`, `.worktrees/`, `target/` | Gitignored machine state, linked worktrees, build output |
 
 ---
@@ -59,6 +60,7 @@ cargo test -p a3s_jserial -p a3s_types -p a3s_repo_files -p a3s_zsync # Golden w
 cargo doc --workspace --no-deps                                     # Docs (CI denies warnings)
 cargo deny check && typos                                           # Licences/advisories, spelling
 cargo run -p arma3sync                                          # The application
+packaging/linux/build-appimage.sh                                 # Linux AppImage in target/appimage/
 
 # JDK cross-checks and live network tests (opt-in)
 source scripts/java_env.sh && cargo test -p a3s_dev_tools -- --ignored --test-threads=1

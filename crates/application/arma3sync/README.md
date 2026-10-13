@@ -26,6 +26,8 @@ start shows the first window and exits with 1, and so does a start without a dis
 pipe them in. It ends on `QUIT` or at the end of the input, and exits with 1 when a command
 failed or was unknown, or the input ended inside a command.
 
+The Linux AppImage is built by `packaging/linux/build-appimage.sh` (see `packaging/README.md`).
+
 Data lives in the application directories of `a3s_foundation::paths` (`A3S_CONFIG_DIR`,
 `A3S_DATA_DIR`, `A3S_CACHE_DIR` override them); every change goes through
 `a3s_repo_files::services::ClientData`, which writes it at once. The synchronization stores its

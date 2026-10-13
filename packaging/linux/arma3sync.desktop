@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Arma3Sync
+Comment=Synchronize Arma 3 mod repositories and launch the game
+Exec=arma3sync
+Icon=arma3sync
+Categories=Game;Utility;
+Terminal=false
+StartupWMClass=arma3sync
