@@ -18,7 +18,7 @@ use tokio::sync::oneshot;
 use super::Event;
 use crate::error::ContextError;
 use crate::event::AppEvent;
-use crate::profiles::{AddonScan, ScanKey};
+use crate::profiles::AddonScan;
 use crate::state::AppState;
 use crate::tasks::{Cx, TaskCtx, TaskError, TaskKey, TaskKind};
 
@@ -80,17 +80,10 @@ async fn run(task: TaskCtx, update_first: bool) -> Result<(), TaskError> {
             Arc::clone(&state.launch.launcher),
         )
     };
-    let scan = match scan {
-        Some(scan) if scan.key == ScanKey::of(&profile) => scan,
-        _ => {
-            let scanned = profile.clone();
-            Arc::new(
-                tokio::task::spawn_blocking(move || crate::profiles::scan_profile(&scanned))
-                    .await
-                    .map_err(|err| internal(format!("The addon scan stopped: {err}")))?,
-            )
-        }
-    };
+    let scanned = profile.clone();
+    let scan = tokio::task::spawn_blocking(move || crate::profiles::reuse_or_scan(scan, &scanned))
+        .await
+        .map_err(|err| internal(format!("The addon scan stopped: {err}")))?;
     report_missing(&cx, &profile, &scan);
 
     let environment = {

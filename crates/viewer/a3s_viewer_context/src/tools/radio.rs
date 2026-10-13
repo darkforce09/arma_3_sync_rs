@@ -3,7 +3,6 @@
 
 use std::path::{Path, PathBuf};
 
-use a3s_addons::{ScanOptions, scan};
 use a3s_repo_files::services::ServiceError;
 use a3s_tools::radio::{
     Acre2Form, Acre2Plan, HostInfo, InstallerIssue, RadioMod, TfarForm, TfarPlan, Ts3ProcessProbe,
@@ -14,6 +13,7 @@ use a3s_types::local::Profile;
 
 use super::{Platform, blocking};
 use crate::error::ContextError;
+use crate::profiles::{AddonScan, reuse_or_scan};
 use crate::tasks::{Cx, TaskId, TaskKey, TaskKind};
 
 /// What the radio plugin installer knows.
@@ -96,7 +96,7 @@ pub struct RadioInstall {
 /// Inspects `radio` on a blocking thread into [`RadioState::inspection`]; returns `false` and
 /// does nothing while an inspection runs.
 pub fn inspect_radio(cx: &Cx, radio: RadioMod) -> bool {
-    let (profile, stored, platform) = {
+    let (profile, stored, platform, last_scan) = {
         let mut state = cx.state().write();
         if state.tools.radio.inspecting {
             return false;
@@ -111,12 +111,14 @@ pub fn inspect_radio(cx: &Cx, radio: RadioMod) -> bool {
             state.client.active_profile().cloned(),
             stored,
             state.tools.platform.clone(),
+            state.profiles.scan.clone(),
         )
     };
     let cx = cx.clone();
     cx.handle().clone().spawn_blocking(move || {
         let profile = profile.unwrap_or_else(|| Profile::new(""));
-        let inspection = inspect(radio, &profile, stored.as_deref(), &platform);
+        let addons = reuse_or_scan(last_scan, &profile);
+        let inspection = inspect(radio, &profile, &addons, stored.as_deref(), &platform);
         {
             let mut state = cx.state().write();
             state.tools.radio.inspection = Some(inspection);
@@ -184,6 +186,7 @@ impl Ts3ProcessProbe for Probed {
 fn inspect(
     radio: RadioMod,
     profile: &Profile,
+    addons: &AddonScan,
     stored_ts3: Option<&str>,
     platform: &Platform,
 ) -> RadioInspection {
@@ -195,7 +198,7 @@ fn inspect(
         .as_deref()
         .map(|dir| dir.display().to_string())
         .unwrap_or_default();
-    let mod_dir = find_radio_mod(radio, profile);
+    let mod_dir = find_radio_mod(radio, addons);
     let plugin_dir = mod_dir
         .as_deref()
         .map(|dir| dir.join(plugin_folder(radio)).display().to_string())
@@ -277,10 +280,9 @@ fn plugin_dlls(radio: RadioMod) -> [&'static str; 2] {
     }
 }
 
-/// The first addon of the profile's search folders that holds the plugin of `radio`.
-fn find_radio_mod(radio: RadioMod, profile: &Profile) -> Option<PathBuf> {
-    let found = scan(profile, &ScanOptions::default());
-    found
+/// The first addon of the profile's addon scan that holds the plugin of `radio`.
+fn find_radio_mod(radio: RadioMod, addons: &AddonScan) -> Option<PathBuf> {
+    addons
         .registry
         .addons()
         .map(|addon| Path::new(&addon.path).join(&addon.name))

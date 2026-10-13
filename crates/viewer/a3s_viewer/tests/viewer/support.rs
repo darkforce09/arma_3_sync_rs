@@ -223,18 +223,10 @@ pub fn mods_profile(mods: &Path, exe: &Path) -> Profile {
     profile
 }
 
-/// Steps the harness until `done` holds, sleeping between steps for background work; panics
-/// after five seconds.
+/// Steps the harness until `done` holds, then runs it to rest; panics after ten seconds.
 pub fn step_until(harness: &mut Harness<'static, Shell>, done: impl Fn(&Shell) -> bool) {
-    for _ in 0..500 {
-        harness.step();
-        if done(harness.state()) {
-            harness.run();
-            return;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(10));
-    }
-    panic!("condition not reached");
+    wait_for(harness, "the condition", |h| done(h.state()));
+    harness.run();
 }
 
 /// Steps until the addon scan of the active profile finished.

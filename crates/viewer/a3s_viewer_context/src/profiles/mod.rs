@@ -6,7 +6,7 @@ mod scan;
 use std::sync::Arc;
 
 pub use self::preset::use_event_preset;
-pub(crate) use self::scan::scan_profile;
+pub(crate) use self::scan::reuse_or_scan;
 pub use self::scan::{AddonScan, ScanKey, ensure_scan};
 use crate::error::ContextError;
 use crate::tasks::Cx;

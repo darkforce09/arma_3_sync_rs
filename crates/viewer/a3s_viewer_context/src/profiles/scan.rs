@@ -8,6 +8,7 @@ use std::sync::Arc;
 use a3s_addons::{AddonRegistry, ScanOptions, priority};
 use a3s_repo_files::services::ClientData;
 use a3s_sync::EventError;
+use a3s_types::constants::GameDlc;
 use a3s_types::local::{Profile, TreeDirectory};
 
 use crate::ViewerContext;
@@ -60,6 +61,9 @@ pub struct AddonScan {
 
     /// The bytes on disk of each addon folder, by lowercase registry key.
     pub sizes: HashMap<String, u64>,
+
+    /// The CDLCs present in the Arma 3 folder.
+    pub dlcs: Vec<GameDlc>,
 }
 
 impl AddonScan {
@@ -147,7 +151,7 @@ async fn scan_active(task: &TaskCtx) -> Result<(), TaskError> {
 }
 
 /// Scans `profile` and measures every addon found. Blocking.
-pub(crate) fn scan_profile(profile: &Profile) -> AddonScan {
+fn scan_profile(profile: &Profile) -> AddonScan {
     let result = a3s_addons::scan(profile, &ScanOptions::default());
     let sizes = result
         .registry
@@ -162,6 +166,16 @@ pub(crate) fn scan_profile(profile: &Profile) -> AddonScan {
         registry: result.registry,
         tree: result.tree,
         sizes,
+        dlcs: result.dlcs,
+    }
+}
+
+/// The addon scan of `profile`: `last` when it was made for the profile as it is now, else a
+/// new scan, which is not stored. Blocking when it scans.
+pub(crate) fn reuse_or_scan(last: Option<Arc<AddonScan>>, profile: &Profile) -> Arc<AddonScan> {
+    match last {
+        Some(scan) if scan.key == ScanKey::of(profile) => scan,
+        _ => Arc::new(scan_profile(profile)),
     }
 }
 

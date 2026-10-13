@@ -50,7 +50,8 @@ The tool windows call `tools` functions with the context's `Cx` and read `tools:
 stored target folder), `inspect_radio` and `install_radio` (the TFAR or ACRE 2 plugin of the
 mods, TeamSpeak 3's folder, version and installed plugin, the copy as a task), `follow_log` and
 `stop_log` (the newest or a chosen RPT log tailed into `tools::LogState`, each line classified
-as error, warning or other). OS lookups (TeamSpeak and RPT folders, running processes) go
+as error, warning or other). The keys and the radio mod are looked up in `profiles::State::scan`
+when it matches the active profile, else in a fresh scan of it. OS lookups (TeamSpeak and RPT folders, running processes) go
 through `tools::Platform`, which tests replace.
 
 Network access and time go through two seams, `RemoteChecker` and `Clock`, plus `Synchronizer`

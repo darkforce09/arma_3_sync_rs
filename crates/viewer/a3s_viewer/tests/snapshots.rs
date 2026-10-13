@@ -36,12 +36,12 @@ use a3s_viewer_context::admin::{
 use a3s_viewer_context::sync::{
     AddonChange, ChangeKind, DownloadRecord, DownloadResult, PlanState, SyncPlan,
 };
-use a3s_viewer_context::{TaskError, TaskKey, TaskKind, ViewerContext};
+use a3s_viewer_context::{TaskError, TaskKey, TaskKind};
 use egui_kittest::kittest::Queryable as _;
 
 use crate::settings_support::{SettingsStart, settings_with};
 use crate::support::{
-    Fixture, Start, add_mod, enable_mods, fixture_with, mods_folder, mods_profile, open,
+    Fixture, Start, add_mod, enable_mods, fixture_with, mods_folder, mods_profile, mutate, open,
     radio_folders, wait_for_label, wait_for_scan, write,
 };
 
@@ -220,15 +220,6 @@ fn record(repository: &str, finished: SystemTime, result: DownloadResult) -> Dow
         finished,
         result,
     }
-}
-
-fn mutate(viewer: &ViewerContext, f: impl FnOnce(&mut a3s_viewer_context::AppState)) {
-    viewer
-        .mutate(None, |state| {
-            f(state);
-            Ok::<(), Infallible>(())
-        })
-        .ok();
 }
 
 fn mods_snapshot(name: &str, mode: ThemeMode, load_order: bool) {

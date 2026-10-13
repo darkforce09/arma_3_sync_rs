@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use a3s_addons::{ScanOptions, arma3_directory, scan};
+use a3s_addons::arma3_directory;
 use a3s_repo_files::services::ServiceError;
 use a3s_tools::CancelToken;
 use a3s_tools::bikey::{self, BikeyOutcome};
@@ -10,6 +10,7 @@ use a3s_types::local::{Profile, TreeDirectory, TreeNode};
 
 use super::blocking;
 use crate::error::ContextError;
+use crate::profiles::{AddonScan, reuse_or_scan};
 use crate::state::AppState;
 use crate::tasks::{Cx, TaskError, TaskId, TaskKey, TaskKind};
 
@@ -97,17 +98,25 @@ pub fn set_keys_target(cx: &Cx, folder: &Path) -> Result<(), ServiceError> {
 
 /// Finds the keys of the active profile's enabled mods into [`KeysState::scan`].
 pub fn find_keys(cx: &Cx) -> Result<TaskId, ContextError> {
-    let (name, profile) = {
+    let (name, profile, last_scan) = {
         let state = cx.state().read();
         let name = state.client.active_profile_name().to_owned();
         let profile = state.client.active_profile().cloned();
-        (name.clone(), profile.unwrap_or_else(|| Profile::new(name)))
+        (
+            name.clone(),
+            profile.unwrap_or_else(|| Profile::new(name)),
+            state.profiles.scan.clone(),
+        )
     };
     cx.spawn_task(
         TaskKey::new(TaskKind::ExtractBikeys),
         true,
         move |task| async move {
-            let found = blocking(&task, move |cancel| scan_keys(&profile, cancel)).await?;
+            let found = blocking(&task, move |cancel| {
+                let addons = reuse_or_scan(last_scan, &profile);
+                scan_keys(&profile, &addons, cancel)
+            })
+            .await?;
             let mut scan = found.ok_or(TaskError::Cancelled)?;
             scan.profile = name;
             task.cx.state().write().tools.keys.scan = Some(scan);
@@ -159,9 +168,9 @@ fn copy(scan: &KeyScan, target: &Path, cancel: &CancelToken) -> Result<BikeyOutc
     bikey::copy_bikeys(&keys, target, cancel).map_err(|err| err.to_string())
 }
 
-/// The enabled mods of `profile` found on disk and their keys; `None` once cancelled.
-fn scan_keys(profile: &Profile, cancel: &CancelToken) -> Option<KeyScan> {
-    let found = scan(profile, &ScanOptions::default());
+/// The enabled mods of `profile` found by its addon scan `found` and their keys; `None` once
+/// cancelled.
+fn scan_keys(profile: &Profile, found: &AddonScan, cancel: &CancelToken) -> Option<KeyScan> {
     let arma3_dir = arma3_directory(profile.launcher_options.arma3_exe_path.as_deref())
         .and_then(|dir| std::path::absolute(dir).ok());
     let is_dlc = |name: &str, path: &str| {

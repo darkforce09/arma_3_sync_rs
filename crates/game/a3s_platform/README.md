@@ -8,9 +8,10 @@ Operating-system integration of the client, one module per concern:
   client's install folders; Steam libraries (`libraryfolders.vdf`, `appmanifest_*.acf`) and
   Proton prefixes on Linux.
 - `folders`: Documents, Desktop and home, the Arma 3 user folder, the Arma 3 profile names, the
-  log-export folder, and opening a folder in the file manager.
+  and the log-export folder.
 - `process`: "is Arma 3 / TeamSpeak / Steam running" (`tasklist` on Windows, `/proc` on Linux).
-- `reveal`: show a file in the system file manager (Explorer, Finder, `xdg-open`).
+- `reveal`: show a file or folder in the system file manager, the file selected (Explorer,
+  Finder, the `org.freedesktop.FileManager1` D-Bus service, else its folder through `xdg-open`).
 - `autostart`: start with the OS (per-user `Run` value, XDG autostart entry, macOS LaunchAgent).
 - `shortcut`: desktop shortcuts (`.lnk` on Windows, `.desktop` on Linux).
 - `single_instance`: one client per configuration folder; a second start asks the first to come to

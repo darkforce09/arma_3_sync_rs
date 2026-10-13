@@ -144,23 +144,3 @@ pub fn game_profile_names(arma3_documents_dir: &Path) -> Vec<String> {
     names.dedup();
     names
 }
-
-/// Opens `dir` in the system file manager (Explorer, Finder, or the `xdg-open` handler); the
-/// opener is reaped on the `a3s-file-manager` thread, so this returns at once.
-pub fn open_in_file_manager(env: &PlatformEnv, dir: &Path) -> crate::Result<()> {
-    let program = match env.os() {
-        Os::Windows => "explorer",
-        Os::MacOs => "open",
-        Os::Linux | Os::OtherUnix => "xdg-open",
-        Os::Other => return Err(crate::Error::Unsupported),
-    };
-    let mut child = std::process::Command::new(program)
-        .arg(dir)
-        .spawn()
-        .map_err(|source| crate::Error::io(dir, source))?;
-    std::thread::Builder::new()
-        .name("a3s-file-manager".to_owned())
-        .spawn(move || child.wait().map(drop))
-        .map(drop)
-        .map_err(|source| crate::Error::io(dir, source))
-}

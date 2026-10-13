@@ -2,7 +2,7 @@
 
 use a3s_foundation::paths::legacy::{LegacyJavaData, discover_legacy_java};
 use a3s_platform::detect::java_install_dirs;
-use a3s_platform::folders::open_in_file_manager;
+use a3s_platform::reveal::show_in_folder;
 use a3s_repo_files::services::AutoConfigImportSummary;
 use a3s_ui::frames;
 use a3s_ui::widgets::{button, form_row};
@@ -101,7 +101,7 @@ impl DataPane {
                             path: Some(dir.clone()),
                             source,
                         })
-                        .and_then(|()| open_in_file_manager(env, dir));
+                        .and_then(|()| show_in_folder(env, dir));
                     cx.report(opened);
                 }
                 if let Some(dir) = &log_dir {

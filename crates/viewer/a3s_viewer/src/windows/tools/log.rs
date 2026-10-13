@@ -1,6 +1,8 @@
 //! The Game log window: the newest RPT log followed live, coloured by line type, with a filter.
 
 use a3s_foundation::error::UserFacing as _;
+use a3s_foundation::paths::PlatformEnv;
+use a3s_platform::reveal::show_in_folder;
 use a3s_ui::icon::icons;
 use a3s_ui::theme;
 use a3s_ui::widgets::{button, icon_text_button, popup_button, toggle};
@@ -66,7 +68,7 @@ impl LogWindow {
         // Nothing below may write the state; a new follow starts once the guard is gone.
         let state = cx.state().read();
         let log = &state.tools.log;
-        let choice_changed = self.bar(ui, log);
+        let choice_changed = self.bar(ui, log, state.tools.platform.env.as_ref());
         ui.add_space(8.0);
         match (&log.folder, &log.file) {
             (None, _) => self.no_folder(ui),
@@ -112,7 +114,7 @@ impl LogWindow {
 
     /// File pop-up, filter field, the errors-only switch and Show in folder; returns whether
     /// another log was chosen.
-    fn bar(&mut self, ui: &mut Ui, log: &LogState) -> bool {
+    fn bar(&mut self, ui: &mut Ui, log: &LogState, env: Option<&PlatformEnv>) -> bool {
         let mut changed = false;
         ui.horizontal(|ui| {
             let newest = log.files.first().map_or_else(
@@ -137,9 +139,13 @@ impl LogWindow {
                 });
                 if show.inner.clicked()
                     && let Some(file) = &log.file
-                    && let Err(err) = a3s_platform::reveal::show_in_folder(file)
                 {
-                    self.toasts.error(format!("Cannot open the folder: {err}"));
+                    let shown = env.map_or(Err(a3s_platform::Error::Unsupported), |env| {
+                        show_in_folder(env, file)
+                    });
+                    if let Err(err) = shown {
+                        self.toasts.error(err.user_message());
+                    }
                 }
                 let switch = toggle(ui, &mut self.errors_only);
                 // The label flips the switch too, as a checkbox label does.
