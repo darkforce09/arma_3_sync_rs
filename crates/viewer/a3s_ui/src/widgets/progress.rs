@@ -1,17 +1,23 @@
-//! The labelled progress bar of `UiStyle.styleProgressBar` with the halo text of
-//! `ContrastProgressBarUI`.
+//! The macOS progress bar: a thin rounded track with a tone-coloured fill and its label
+//! (percent or caller text) beside it.
 
-use egui::{Color32, Rect, Response, Sense, Ui, Widget, WidgetInfo, WidgetType, pos2, vec2};
+use egui::{
+    Align2, CornerRadius, Rect, Response, Sense, Ui, Widget, WidgetInfo, WidgetType, pos2, vec2,
+};
 
-use crate::fonts::{self, FontFace};
-use crate::frames;
 use crate::theme::{self, ProgressTone};
 
-/// Default bar height (`ui/UiStyle.java:38`).
+/// Default height of the row the bar sits in.
 pub const DEFAULT_HEIGHT: f32 = 24.0;
 
-/// Bar height used by progress dialogs (`ui/AbstractProgressDialog.java:72-73`).
+/// Row height used by progress dialogs.
 pub const DIALOG_HEIGHT: f32 = 18.0;
+
+/// Thickness of the track.
+const TRACK_HEIGHT: f32 = 6.0;
+
+/// Gap between the track and its label.
+const LABEL_GAP: f32 = 8.0;
 
 /// Seconds for one left → right → left sweep of the indeterminate box.
 const INDETERMINATE_PERIOD: f64 = 4.0;
@@ -33,7 +39,7 @@ pub enum Progress {
     },
     /// Unknown amount of work: a bouncing box with optional caller text.
     Indeterminate {
-        /// Text painted over the bar, or none.
+        /// Label shown beside the bar, or none.
         text: Option<String>,
     },
 }
@@ -58,7 +64,7 @@ impl Progress {
         }
     }
 
-    /// The text painted over the bar.
+    /// The label shown beside the bar.
     pub fn text(&self) -> Option<String> {
         match self {
             Self::Determinate { value, min, max } => Some(percent_text(*value, *min, *max)),
@@ -99,10 +105,8 @@ fn java_round_float(x: f32) -> i64 {
     (f64::from(x) + 0.5).floor() as i64
 }
 
-/// A progress bar styled like `UiStyle.styleProgressBar` (`ui/UiStyle.java:72-89`).
-///
-/// 1 px `borderMuted` outline, padding 4 / 8 / 4 / 8, `surfaceMuted` track, tone-coloured
-/// fill and white text with a dark halo (`ui/components/ContrastProgressBarUI.java`).
+/// A progress bar: a thin rounded `surfaceMuted` track, centred vertically in its row, with a
+/// tone-coloured fill and the label in secondary text at its right.
 #[derive(Clone, Debug)]
 #[must_use = "add it to a Ui with `ui.add(bar)`"]
 pub struct ProgressBar {
@@ -131,7 +135,7 @@ impl ProgressBar {
         self
     }
 
-    /// Sets the outer height in points.
+    /// Sets the height of the row in points.
     pub fn height(mut self, height: f32) -> Self {
         self.height = height;
         self
@@ -165,7 +169,6 @@ impl Widget for ProgressBar {
     fn ui(self, ui: &mut Ui) -> Response {
         let def = theme::current(ui.ctx());
         let palette = &def.palette;
-        let m = &def.metrics;
         let width = self
             .desired_width
             .unwrap_or_else(|| ui.available_size_before_wrap().x);
@@ -188,75 +191,46 @@ impl Widget for ProgressBar {
         }
 
         let painter = ui.painter();
-        let tone = palette.status_color(self.tone);
-        frames::paint_line_border(painter, rect, palette.border_muted);
-        // LineBorder(1) + EmptyBorder(xs, sm, xs, sm).
-        let inner = Rect::from_min_max(
+        let label = text.filter(|t| !t.is_empty()).map(|t| {
+            painter.layout_no_wrap(
+                t,
+                egui::TextStyle::Small.resolve(ui.style()),
+                palette.text_secondary,
+            )
+        });
+        let label_width = label.as_ref().map_or(0.0, |g| g.size().x + LABEL_GAP);
+        let track = Rect::from_min_max(
+            pos2(rect.left(), rect.center().y - TRACK_HEIGHT / 2.0),
             pos2(
-                rect.left() + 1.0 + m.spacing_sm as f32,
-                rect.top() + 1.0 + m.spacing_xs as f32,
-            ),
-            pos2(
-                rect.right() - 1.0 - m.spacing_sm as f32,
-                rect.bottom() - 1.0 - m.spacing_xs as f32,
+                rect.right() - label_width,
+                rect.center().y + TRACK_HEIGHT / 2.0,
             ),
         );
-        if inner.is_positive() {
-            painter.rect_filled(inner, 0.0, palette.surface_muted);
+        let radius = CornerRadius::same((TRACK_HEIGHT / 2.0) as u8);
+        if track.is_positive() {
+            painter.rect_filled(track, radius, palette.surface_muted);
             let fill = if let Some(fraction) = fraction {
-                let fill_width = (inner.width() * fraction).round();
-                Rect::from_min_size(inner.min, vec2(fill_width, inner.height()))
+                Rect::from_min_size(track.min, vec2(track.width() * fraction, track.height()))
             } else {
                 let time = self.animation_time.unwrap_or_else(|| {
                     ui.ctx().request_repaint();
                     ui.input(|i| i.time)
                 });
-                let box_width = (inner.width() * INDETERMINATE_FRACTION).round();
-                let x = inner.left() + (inner.width() - box_width) * bounce(time);
-                Rect::from_min_size(pos2(x, inner.top()), vec2(box_width, inner.height()))
+                let box_width = track.width() * INDETERMINATE_FRACTION;
+                let x = track.left() + (track.width() - box_width) * bounce(time);
+                Rect::from_min_size(pos2(x, track.top()), vec2(box_width, track.height()))
             };
-            painter.rect_filled(fill, 0.0, tone);
+            if fill.width() > 0.0 {
+                painter.rect_filled(fill, radius, palette.status_color(self.tone));
+            }
         }
-
-        if let Some(text) = text.filter(|t| !t.is_empty()) {
-            paint_halo_text(ui, rect, inner, &text);
+        if let Some(galley) = label {
+            let pos = Align2::RIGHT_CENTER
+                .anchor_size(pos2(rect.right(), rect.center().y), galley.size());
+            painter.galley(pos.min, galley, palette.text_secondary);
         }
         response
     }
-}
-
-/// Paints `text` centred on `inner` with an 8-fold dark halo, clipped to `clip`.
-///
-/// Mirrors `ui/components/ContrastProgressBarUI.java:37-45,54-71`.
-fn paint_halo_text(ui: &Ui, clip: Rect, inner: Rect, text: &str) {
-    const HALO: Color32 = Color32::from_rgba_premultiplied(0, 0, 0, 220);
-    let painter = ui.painter_at(clip);
-    // Swing deriveFont(BOLD) → Geist SemiBold (ui/UiStyle.java:76-78).
-    let font = fonts::font_id_in(ui.ctx(), FontFace::SemiBold, fonts::BODY_SIZE);
-    let galley = painter.layout_no_wrap(text.to_owned(), font, Color32::WHITE);
-    let size = galley.size();
-    let ascent = galley
-        .rows
-        .first()
-        .and_then(|row| row.row.glyphs.first())
-        .map_or(size.y * 0.75, |glyph| glyph.font_ascent);
-
-    let x = inner.left() + ((inner.width() - size.x) / 2.0).round();
-    let baseline = inner.top() + ((inner.height() + ascent) / 2.0).floor() - 2.0;
-    let top = baseline - ascent;
-
-    for dx in -1..=1 {
-        for dy in -1..=1 {
-            if dx != 0 || dy != 0 {
-                painter.galley_with_override_text_color(
-                    pos2(x + dx as f32, top + dy as f32),
-                    galley.clone(),
-                    HALO,
-                );
-            }
-        }
-    }
-    painter.galley(pos2(x, top), galley, Color32::WHITE);
 }
 
 #[cfg(test)]

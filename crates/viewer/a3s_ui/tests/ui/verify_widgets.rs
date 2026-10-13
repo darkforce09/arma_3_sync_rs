@@ -606,7 +606,10 @@ fn installed_styles_follow_both_palettes() {
     for mode in [ThemeMode::Light, ThemeMode::Dark] {
         let def = ThemeLibrary::for_mode(mode);
         let style = ctx.style_of(mode.into());
-        assert_eq!(style.visuals.panel_fill, def.palette.surface, "{mode:?}");
+        assert_eq!(
+            style.visuals.panel_fill, def.palette.window_background,
+            "{mode:?}"
+        );
         assert_eq!(
             style.visuals.widgets.hovered.bg_fill,
             def.palette.state_hover_overlay

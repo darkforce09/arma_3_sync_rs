@@ -19,8 +19,7 @@ all-features = true
 
 [dependencies]
 egui.workspace = true
-egui_extras = { workspace = true, features = ["svg"] }
-resvg.workspace = true
+egui-phosphor.workspace = true
 
 [dev-dependencies]
 eframe = { workspace = true, features = ["accesskit", "default_fonts", "wgpu", "wayland", "x11"] }

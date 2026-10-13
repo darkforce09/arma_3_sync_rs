@@ -1,4 +1,4 @@
-//! A gallery of every token, font face, icon, widget, frame and dialog of this crate.
+//! A gallery of every token, font face, icon sample, widget, frame and dialog of this crate.
 //!
 //! Used by `examples/demo.rs` and by the snapshot tests.
 
@@ -8,12 +8,13 @@ use crate::consts::{JAVA_BLUE, JAVA_RED, java_blue_for};
 use crate::dialog::{Dialog, DialogAction, DialogButton, ProgressDialog, ProgressDialogAction};
 use crate::fonts::{self, FontFace};
 use crate::frames;
-use crate::icon::{self, IconState, UiIcon};
+use crate::icon::icons;
 use crate::theme::{self, ProgressTone, ThemeMode};
 use crate::widgets::progress::DIALOG_HEIGHT;
 use crate::widgets::{
     CheckItem, CheckList, CheckState, CheckTree, CheckTreeEvent, CheckTreeModel, Progress,
-    ProgressBar, button, checked_labels, icon_text_button, primary_button,
+    ProgressBar, SidebarItem, StepState, button, checked_labels, form_row, icon_text_button,
+    popup_button, primary_button, segmented, sidebar_heading, status_pill, step_row, toggle,
 };
 
 /// Section headings, in display order.
@@ -25,12 +26,34 @@ pub const SECTIONS: [&str; 9] = [
     "Progress",
     "Check tree",
     "Check list",
-    "Frames",
+    "Layout",
     "Dialogs",
 ];
 
-/// Java size of the gallery icons (18 → 27 pt).
-const GALLERY_ICON_SIZE: u32 = 18;
+/// Size of the gallery icon glyphs in points.
+const GALLERY_ICON_SIZE: f32 = 20.0;
+
+/// A sample of the icons the viewer uses, with their Phosphor names.
+const SAMPLE_ICONS: [(&str, &str); 18] = [
+    ("puzzle-piece", icons::PUZZLE_PIECE),
+    ("hard-drives", icons::HARD_DRIVES),
+    ("cloud", icons::CLOUD),
+    ("cloud-arrow-down", icons::CLOUD_ARROW_DOWN),
+    ("arrow-circle-down", icons::ARROW_CIRCLE_DOWN),
+    ("broadcast", icons::BROADCAST),
+    ("play", icons::PLAY),
+    ("pause", icons::PAUSE),
+    ("x", icons::X),
+    ("plus", icons::PLUS),
+    ("minus", icons::MINUS),
+    ("gear", icons::GEAR),
+    ("magnifying-glass", icons::MAGNIFYING_GLASS),
+    ("folder-open", icons::FOLDER_OPEN),
+    ("trash", icons::TRASH),
+    ("check-circle", icons::CHECK_CIRCLE),
+    ("warning", icons::WARNING),
+    ("x-circle", icons::X_CIRCLE),
+];
 
 /// Icons per row in the icon grid.
 const ICONS_PER_ROW: usize = 6;
@@ -197,6 +220,10 @@ pub struct Gallery {
     window_open: bool,
     progress_dialog: Option<ProgressDialog>,
     last_action: String,
+    sidebar_selected: usize,
+    switch_on: bool,
+    appearance: usize,
+    check_interval: u32,
 }
 
 impl Default for Gallery {
@@ -216,6 +243,10 @@ impl Default for Gallery {
             window_open: false,
             progress_dialog: None,
             last_action: "none".to_owned(),
+            sidebar_selected: 0,
+            switch_on: true,
+            appearance: 2,
+            check_interval: 30,
         }
     }
 }
@@ -246,10 +277,10 @@ impl Gallery {
         let def = theme::current(ui.ctx());
         // Java shows the moon in light mode (switch to dark) and the sun in dark mode.
         let icon = match def.mode() {
-            ThemeMode::Light => UiIcon::Moon,
-            ThemeMode::Dark => UiIcon::Sun,
+            ThemeMode::Light => icons::MOON,
+            ThemeMode::Dark => icons::SUN,
         };
-        if icon_text_button(ui, icon, 16, "Toggle theme").clicked() {
+        if icon_text_button(ui, icon, "Toggle theme").clicked() {
             theme::toggle(ui.ctx());
         }
         ui.label(format!("Current theme: {}", def.id));
@@ -306,32 +337,18 @@ impl Gallery {
         }
     }
 
-    /// All 42 icons in Normal, Disabled and Selected state, labelled with the file stem.
+    /// A sample of the Phosphor icons, labelled with their names.
     pub fn icons_ui(&mut self, ui: &mut Ui) {
         Self::heading(ui, SECTIONS[2]);
-        let ctx = ui.ctx().clone();
-        let selection_bg = ui.visuals().selection.bg_fill;
         egui::Grid::new("a3s_ui_gallery_icons")
             .striped(false)
             .num_columns(ICONS_PER_ROW)
             .spacing(vec2(16.0, 6.0))
             .show(ui, |ui| {
-                for (i, icon) in UiIcon::ALL.into_iter().enumerate() {
-                    ui.vertical(|ui| {
-                        ui.horizontal(|ui| {
-                            for state in
-                                [IconState::Normal, IconState::Disabled, IconState::Selected]
-                            {
-                                let image = icon::icon_image(&ctx, icon, GALLERY_ICON_SIZE, state);
-                                let image = if state == IconState::Selected {
-                                    image.bg_fill(selection_bg)
-                                } else {
-                                    image
-                                };
-                                ui.add(image.alt_text(format!("{} {state:?}", icon.file_name())));
-                            }
-                        });
-                        ui.label(icon.file_name());
+                for (i, (name, glyph)) in SAMPLE_ICONS.into_iter().enumerate() {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(glyph).size(GALLERY_ICON_SIZE));
+                        ui.label(name);
                     });
                     if i % ICONS_PER_ROW == ICONS_PER_ROW - 1 {
                         ui.end_row();
@@ -347,9 +364,9 @@ impl Gallery {
             button(ui, "Normal");
             primary_button(ui, "Primary");
             ui.add_enabled_ui(false, |ui| button(ui, "Disabled"));
-            icon_text_button(ui, UiIcon::Refresh, 16, "Refresh");
+            icon_text_button(ui, icons::ARROWS_CLOCKWISE, "Refresh");
             ui.add_enabled_ui(false, |ui| {
-                icon_text_button(ui, UiIcon::Download, 16, "Download")
+                icon_text_button(ui, icons::DOWNLOAD_SIMPLE, "Download")
             });
         });
     }
@@ -418,35 +435,84 @@ impl Gallery {
         ));
     }
 
-    /// Section, panel, toolbar, status bar and pane divider.
+    /// The macOS layout: unified toolbar, sidebar with content, grouped form controls, status
+    /// pills, step rows and the status bar.
     pub fn frames_ui(&mut self, ui: &mut Ui) {
         Self::heading(ui, SECTIONS[7]);
-        frames::section(ui, "Section", |ui| {
-            ui.label("Content of a titled section.");
-        });
-        ui.add_space(8.0);
-        frames::panel(ui, |ui| {
-            ui.label("Content of a bordered panel.");
-        });
-        ui.add_space(8.0);
+        let def = theme::current(ui.ctx());
         frames::toolbar(ui, |ui| {
-            ui.horizontal(|ui| {
-                icon_text_button(ui, UiIcon::Add, 16, "Add");
-                icon_text_button(ui, UiIcon::Edit, 16, "Edit");
-                icon_text_button(ui, UiIcon::Delete, 16, "Delete");
+            ui.label(RichText::new("Mods").strong());
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                primary_button(ui, &format!("{} Update and play", icons::PLAY));
+                button(ui, &format!("{} Default", icons::USER));
             });
         });
-        ui.add_space(8.0);
-        ui.horizontal(|ui| {
-            frames::pane_divider(ui, |ui| {
-                ui.set_min_size(vec2(160.0, 40.0));
-                ui.label("Left pane");
+        ui.horizontal_top(|ui| {
+            let sidebar = frames::sidebar_frame(def).show(ui, |ui| {
+                ui.set_width(frames::SIDEBAR_WIDTH - 16.0);
+                ui.set_min_height(250.0);
+                ui.vertical(|ui| {
+                    sidebar_heading(ui, "Library");
+                    let items = [
+                        SidebarItem::new(icons::PUZZLE_PIECE, "Mods").badge("27"),
+                        SidebarItem::new(icons::HARD_DRIVES, "Servers"),
+                        SidebarItem::new(icons::ARROW_CIRCLE_DOWN, "Activity").badge("38%"),
+                    ];
+                    for (i, item) in items.into_iter().enumerate() {
+                        if item.show(ui, self.sidebar_selected == i).clicked() {
+                            self.sidebar_selected = i;
+                        }
+                    }
+                    sidebar_heading(ui, "Repositories");
+                    if SidebarItem::new(icons::CLOUD, "WOG")
+                        .badge("3")
+                        .badge_tone(ProgressTone::Warning)
+                        .show(ui, self.sidebar_selected == 3)
+                        .clicked()
+                    {
+                        self.sidebar_selected = 3;
+                    }
+                });
             });
-            ui.label("Right pane");
+            frames::paint_pane_divider(ui.painter(), sidebar.response.rect, def);
+            ui.vertical(|ui| {
+                ui.set_width(420.0);
+                frames::group(ui, |ui| {
+                    form_row(ui, "Appearance", |ui| {
+                        segmented(ui, &mut self.appearance, &["Light", "Dark", "Auto"])
+                    });
+                    frames::group_separator(ui);
+                    form_row(ui, "Keep running in the tray", |ui| {
+                        toggle(ui, &mut self.switch_on)
+                    });
+                    frames::group_separator(ui);
+                    form_row(ui, "Check repositories", |ui| {
+                        popup_button(
+                            ui,
+                            "a3s_ui_gallery_interval",
+                            &mut self.check_interval,
+                            &[(0, "Never"), (30, "Every 30 minutes"), (60, "Every hour")],
+                        )
+                    });
+                });
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    status_pill(ui, "Ready", ProgressTone::Success);
+                    status_pill(ui, "312 MB", ProgressTone::Warning);
+                    status_pill(ui, "Not installed", ProgressTone::Danger);
+                });
+                ui.add_space(8.0);
+                frames::group(ui, |ui| {
+                    step_row(ui, 1, StepState::Done, "Scan source folder", "4,212 files");
+                    frames::group_separator(ui);
+                    step_row(ui, 2, StepState::Active, "Build", "1.9k of 4.2k");
+                    frames::group_separator(ui);
+                    step_row(ui, 3, StepState::Pending, "Upload", "changed files only");
+                });
+            });
         });
-        ui.add_space(8.0);
         frames::status_bar(ui, |ui| {
-            ui.label("Status bar");
+            ui.label("Checked 2 min ago");
         });
     }
 

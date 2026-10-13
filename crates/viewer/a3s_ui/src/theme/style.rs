@@ -91,7 +91,7 @@ pub fn visuals_for(def: &ThemeDefinition) -> Visuals {
         window_stroke: Stroke::new(1.0, p.border),
         window_highlight_topmost: false,
         menu_corner_radius: widget_radius,
-        panel_fill: p.surface,
+        panel_fill: p.window_background,
         popup_shadow: m.shadow_low.to_egui(),
         text_cursor: TextCursorStyle {
             stroke: Stroke::new(2.0, p.accent_primary),
@@ -125,7 +125,7 @@ fn widgets(p: &ThemePalette, m: &ThemeMetrics) -> Widgets {
             )
         },
         inactive: visuals(
-            p.surface_variant,
+            p.control,
             Stroke::new(1.0, p.border),
             Stroke::new(1.0, p.text_primary),
         ),
@@ -140,7 +140,7 @@ fn widgets(p: &ThemePalette, m: &ThemeMetrics) -> Widgets {
             Stroke::new(2.0, p.text_primary),
         ),
         open: visuals(
-            p.surface_variant,
+            p.control,
             Stroke::new(1.0, p.border),
             Stroke::new(1.0, p.text_primary),
         ),

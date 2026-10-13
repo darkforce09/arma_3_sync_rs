@@ -2,7 +2,6 @@
 //!
 //! Run with `cargo run -p a3s_ui --example demo`.
 
-use a3s_ui::UiIcon;
 use a3s_ui::gallery::Gallery;
 
 struct DemoApp {
@@ -23,7 +22,10 @@ fn main() -> eframe::Result {
     let viewport = egui::ViewportBuilder::default()
         .with_title("a3s_ui demo")
         .with_inner_size([1000.0, 800.0])
-        .with_icon(a3s_ui::icon::app_icon_data(UiIcon::WINDOW_ICON_SIZE));
+        .with_icon(
+            eframe::icon_data::from_png_bytes(a3s_ui::icon::APP_ICON_PNG)
+                .expect("the embedded app icon is a valid PNG"),
+        );
     let options = eframe::NativeOptions {
         viewport,
         ..Default::default()

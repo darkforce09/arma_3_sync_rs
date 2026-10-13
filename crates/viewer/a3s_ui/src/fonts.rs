@@ -9,6 +9,8 @@ use std::sync::Arc;
 
 use egui::{Context, FontData, FontDefinitions, FontFamily, FontId, TextStyle};
 
+use crate::icon;
+
 /// Base text size in points (`FlatLaf`'s per-OS `defaultFont` is replaced by one size).
 pub const BODY_SIZE: f32 = 13.0;
 
@@ -112,8 +114,18 @@ pub fn font_id_in(ctx: &Context, face: FontFace, size: f32) -> FontId {
 
 /// The font definitions: egui's defaults plus the six Geist faces, with Geist Regular first in
 /// [`FontFamily::Proportional`] and one named family per face.
+///
+/// The icon font is a fallback of every proportional family, so icon glyphs render in any text.
 pub fn font_definitions() -> FontDefinitions {
     let mut defs = FontDefinitions::default();
+    defs.font_data.insert(
+        icon::ICON_FONT_NAME.to_owned(),
+        Arc::new(FontData::from_static(icon::icon_font_bytes())),
+    );
+    defs.families
+        .entry(FontFamily::Proportional)
+        .or_default()
+        .push(icon::ICON_FONT_NAME.to_owned());
     let proportional_fallbacks = defs
         .families
         .get(&FontFamily::Proportional)

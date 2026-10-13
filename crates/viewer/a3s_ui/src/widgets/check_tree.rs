@@ -18,11 +18,11 @@ use egui::{
     WidgetType, pos2, vec2,
 };
 
-use crate::icon::{self, IconState, UiIcon};
+use crate::icon::icons;
 use crate::theme::{self, ThemeDefinition};
 
-/// Java tree icon size (`ui/main/tree/MyRenderer.java:15`); 18 pt after scaling.
-pub const TREE_ICON_SIZE: u32 = 12;
+/// Size of the row icon glyph in points.
+pub const TREE_ICON_SIZE: f32 = 15.0;
 
 /// Side of the painted check box (`FlatLaf` `CheckBox.icon` is 15×15).
 const CHECKBOX_SIZE: f32 = 15.0;
@@ -85,13 +85,13 @@ impl CheckState {
 /// The default tree icon: Package for leaves, `FolderOpen` / Folder for directories.
 ///
 /// Mirrors `ui/main/tree/MyRenderer.java:32-44`.
-pub fn default_tree_icon(is_leaf: bool, expanded: bool) -> UiIcon {
+pub fn default_tree_icon(is_leaf: bool, expanded: bool) -> &'static str {
     if is_leaf {
-        UiIcon::Package
+        icons::PACKAGE
     } else if expanded {
-        UiIcon::FolderOpen
+        icons::FOLDER_OPEN
     } else {
-        UiIcon::Folder
+        icons::FOLDER
     }
 }
 
@@ -120,9 +120,8 @@ pub trait CheckTreeModel {
         None
     }
 
-    /// Row icon; defaults to [`default_tree_icon`]. The sync tree overrides this with the
-    /// warning/package rule of `ui/repository/tree/MyRendererRepository.java:34-59`.
-    fn icon(&self, key: &Self::Key, expanded: bool) -> Option<UiIcon> {
+    /// Row icon, a glyph from [`icons`]; defaults to [`default_tree_icon`].
+    fn icon(&self, key: &Self::Key, expanded: bool) -> Option<&'static str> {
         Some(default_tree_icon(self.is_leaf(key), expanded))
     }
 }
@@ -500,7 +499,7 @@ impl CheckTree {
 
         let font = egui::TextStyle::Body.resolve(ui.style());
         let galley = painter.layout_no_wrap(label, font, text_color);
-        let icon_size = icon::scaled_size(TREE_ICON_SIZE) as f32;
+        let icon_size = TREE_ICON_SIZE;
         let icon = model.icon(key, row.expanded);
         let icon_width = if icon.is_some() {
             icon_size + ICON_GAP
@@ -539,12 +538,13 @@ impl CheckTree {
 
         let mut x = content_left;
         if let Some(icon) = icon {
-            let icon_rect = Rect::from_min_size(
-                pos2(x, rect.center().y - icon_size / 2.0),
-                vec2(icon_size, icon_size),
+            painter.text(
+                pos2(x, rect.center().y),
+                Align2::LEFT_CENTER,
+                icon,
+                egui::FontId::proportional(icon_size),
+                def.palette.text_secondary,
             );
-            icon::icon_image(ui.ctx(), icon, TREE_ICON_SIZE, IconState::Normal)
-                .paint_at(ui, icon_rect);
             x += icon_width;
         }
         let text_pos = Align2::LEFT_CENTER.anchor_size(pos2(x, rect.center().y), galley.size());
@@ -625,17 +625,5 @@ pub(crate) fn paint_checkbox(
                 painter.rect_filled(bar, 0.0, p.accent_primary);
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn default_icons() {
-        assert_eq!(default_tree_icon(true, false), UiIcon::Package);
-        assert_eq!(default_tree_icon(false, true), UiIcon::FolderOpen);
-        assert_eq!(default_tree_icon(false, false), UiIcon::Folder);
     }
 }

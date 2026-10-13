@@ -2,12 +2,15 @@
 
 Theme, icons and reusable egui widgets for the Arma3Sync viewer.
 
-- `theme`: light/dark tokens of the Java `ThemeLibrary` and their egui mapping (default: dark).
+- `theme`: light/dark tokens with macOS system colours and their egui mapping (default: dark).
 - `fonts`: the embedded Geist faces (SIL OFL 1.1, see `assets/fonts/Geist-OFL.txt`).
-- `icon`: the 42 bundled icons with tone/state tinting and the application icon
-  (see `assets/icons/README.md` for their origin).
-- `widgets`: tri-state check tree, check list, labelled progress bar, button helpers.
-- `frames`, `dialog`: `UiStyle` frames and the OK/Cancel and progress dialog bases.
+- `icon`: the Phosphor icon font (MIT; icons are text glyphs, `icon::icons::PLAY`) and the
+  application icon PNG.
+- `widgets`: macOS form controls (form row, toggle switch, segmented control, pop-up button),
+  sidebar rows, status pill and step rows, thin progress bar, tri-state check tree, check list,
+  button helpers.
+- `frames`: grouped box, unified toolbar, sidebar, status bar and pane divider.
+- `dialog`: the OK/Cancel and progress dialog bases.
 - `gallery`: shows everything; run it with `cargo run -p a3s_ui --example demo`.
 
 Call `a3s_ui::install(ctx)` once before the first frame.

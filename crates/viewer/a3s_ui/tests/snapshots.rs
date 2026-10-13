@@ -66,14 +66,14 @@ fn gallery_dark() {
 
 #[test]
 fn icons_light() {
-    snapshot_gallery("icons_light", ThemeMode::Light, (1000.0, 520.0), |ui, g| {
+    snapshot_gallery("icons_light", ThemeMode::Light, (1000.0, 160.0), |ui, g| {
         g.icons_ui(ui);
     });
 }
 
 #[test]
 fn icons_dark() {
-    snapshot_gallery("icons_dark", ThemeMode::Dark, (1000.0, 520.0), |ui, g| {
+    snapshot_gallery("icons_dark", ThemeMode::Dark, (1000.0, 160.0), |ui, g| {
         g.icons_ui(ui);
     });
 }

@@ -1,7 +1,7 @@
 //! Theme, icons and reusable egui widgets for the Arma3Sync viewer.
 //!
 //! Ports the look of the Java Swing UI (`fr.soe.a3s.ui`): the `FlatLaf` theme tokens
-//! ([`theme`]), the bundled Geist fonts ([`fonts`]), the SVG icon set ([`icon`]), the `UiStyle`
+//! ([`theme`]), the bundled Geist fonts ([`fonts`]), the Phosphor icon font ([`icon`]), the `UiStyle`
 //! frames ([`frames`]), the shared widgets ([`widgets`]) and the dialog bases ([`dialog`]).
 //! [`gallery::Gallery`] shows all of them; `examples/demo.rs` runs it.
 //!
@@ -16,7 +16,6 @@ pub mod icon;
 pub mod theme;
 pub mod widgets;
 
-pub use self::icon::{IconState, IconTone, UiIcon};
 pub use self::theme::{ThemeDefinition, ThemeLibrary, ThemeMode};
 
 /// Installs the Geist fonts and the light and dark styles, then selects the default (dark)

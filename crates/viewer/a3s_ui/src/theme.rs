@@ -16,18 +16,21 @@ pub use self::style::{
     style_before_fonts, style_for, text_edit_corner_radius, visuals_for, widget_corner_radius,
 };
 
-/// The 21 colour tokens of a theme, in `ThemePalette` constructor order
-/// (`ui/theme/ThemePalette.java:10-58`).
+/// The 21 colour tokens of a theme. Values follow the macOS system colours.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ThemePalette {
-    /// Window background. Defined but never read by the Java UI.
+    /// Window and panel background.
     pub window_background: Color32,
-    /// Default panel / component surface.
+    /// Sidebar and toolbar background.
+    pub sidebar: Color32,
+    /// Content surface: grouped boxes, lists, text fields, sheets.
     pub surface: Color32,
-    /// Slightly raised surface (buttons, alternate table rows, status bar).
+    /// Alternate list rows and the status bar.
     pub surface_variant: Color32,
-    /// Muted surface (scroll and progress track).
+    /// Muted surface (scroll and progress track, code background).
     pub surface_muted: Color32,
+    /// Push buttons, pop-up buttons and the selected segment.
+    pub control: Color32,
     /// Default border.
     pub border: Color32,
     /// Subtle border (separators, progress outline, pane divider).
@@ -38,9 +41,6 @@ pub struct ThemePalette {
     pub text_secondary: Color32,
     /// Disabled text and disabled icon tint.
     pub text_disabled: Color32,
-    /// Default icon colour. Defined but never read by the Java UI (PRIMARY icons use
-    /// [`Self::text_primary`]).
-    pub icon_default: Color32,
     /// Primary accent (default buttons, links, caret).
     pub accent_primary: Color32,
     /// Secondary accent (default-button hover).
@@ -61,24 +61,23 @@ pub struct ThemePalette {
     pub state_selection_bg: Color32,
     /// Selection foreground.
     pub state_selection_fg: Color32,
-    /// Disabled component background.
-    pub state_disabled_bg: Color32,
 }
 
 impl ThemePalette {
-    /// All 21 tokens with their Java names, in constructor order.
+    /// All 21 tokens with their names, in declaration order.
     pub fn named_tokens(&self) -> [(&'static str, Color32); 21] {
         [
             ("windowBackground", self.window_background),
+            ("sidebar", self.sidebar),
             ("surface", self.surface),
             ("surfaceVariant", self.surface_variant),
             ("surfaceMuted", self.surface_muted),
+            ("control", self.control),
             ("border", self.border),
             ("borderMuted", self.border_muted),
             ("textPrimary", self.text_primary),
             ("textSecondary", self.text_secondary),
             ("textDisabled", self.text_disabled),
-            ("iconDefault", self.icon_default),
             ("accentPrimary", self.accent_primary),
             ("accentSecondary", self.accent_secondary),
             ("statusSuccess", self.status_success),
@@ -89,7 +88,6 @@ impl ThemePalette {
             ("stateFocus", self.state_focus),
             ("stateSelectionBg", self.state_selection_bg),
             ("stateSelectionFg", self.state_selection_fg),
-            ("stateDisabledBg", self.state_disabled_bg),
         ]
     }
 
@@ -101,11 +99,6 @@ impl ThemePalette {
     /// Alias of [`Self::state_selection_fg`]. Mirrors `ui/UiColors.java:77`.
     pub fn selection_foreground(&self) -> Color32 {
         self.state_selection_fg
-    }
-
-    /// Alias of [`Self::state_disabled_bg`]. Mirrors `ui/UiColors.java:81`.
-    pub fn disabled_surface(&self) -> Color32 {
-        self.state_disabled_bg
     }
 
     /// Colour of a progress / status tone. Mirrors `ui/UiStyle.java:148-161,223-225`.
@@ -327,34 +320,34 @@ const fn rgb(hex: u32) -> Color32 {
     Color32::from_rgb((hex >> 16) as u8, (hex >> 8) as u8, hex as u8)
 }
 
-// Mirrors ui/theme/ThemeLibrary.java:28-39
+// macOS light appearance (system colours).
 fn build_light() -> ThemeDefinition {
     let palette = ThemePalette {
-        window_background: rgb(0xF4F6FB),
+        window_background: rgb(0xECECEC),
+        sidebar: rgb(0xE3E3E3),
         surface: rgb(0xFFFFFF),
-        surface_variant: rgb(0xF6F8FC),
-        surface_muted: rgb(0xE9EDF5),
-        border: rgb(0xDFE4EF),
-        border_muted: rgb(0xE4E8F0),
-        text_primary: rgb(0x1E232C),
-        text_secondary: rgb(0x4B5565),
-        text_disabled: rgb(0x9CA3AF),
-        icon_default: rgb(0x1F2937),
-        accent_primary: rgb(0x2563EB),
-        accent_secondary: rgb(0x7C3AED),
-        status_success: rgb(0x16A34A),
-        status_warning: rgb(0xF59E0B),
-        status_danger: rgb(0xDC2626),
-        status_info: rgb(0x0284C7),
-        state_hover_overlay: Color32::from_rgba_unmultiplied(15, 23, 42, 24),
-        state_focus: rgb(0x2563EB),
-        state_selection_bg: rgb(0xDCE7FF),
-        state_selection_fg: rgb(0x1E3A8A),
-        state_disabled_bg: rgb(0xE5E7EB),
+        surface_variant: rgb(0xF4F5F5),
+        surface_muted: rgb(0xE5E5EA),
+        control: rgb(0xFFFFFF),
+        border: rgb(0xC8C8CC),
+        border_muted: rgb(0xE5E5EA),
+        text_primary: rgb(0x1D1D1F),
+        text_secondary: rgb(0x6E6E73),
+        text_disabled: rgb(0xAEAEB2),
+        accent_primary: rgb(0x007AFF),
+        accent_secondary: rgb(0x0062CC),
+        status_success: rgb(0x34C759),
+        status_warning: rgb(0xFF9500),
+        status_danger: rgb(0xFF3B30),
+        status_info: rgb(0x007AFF),
+        state_hover_overlay: Color32::from_rgba_unmultiplied(0, 0, 0, 13),
+        state_focus: rgb(0x7FBCFF),
+        state_selection_bg: rgb(0x0064E1),
+        state_selection_fg: rgb(0xFFFFFF),
     };
     let metrics = metrics(
-        ThemeShadow::new(rgb(0x1F2937), 0.1, 1, 6),
-        ThemeShadow::new(rgb(0x111827), 0.14, 4, 16),
+        ThemeShadow::new(rgb(0x000000), 0.15, 2, 8),
+        ThemeShadow::new(rgb(0x000000), 0.25, 8, 24),
     );
     ThemeDefinition {
         id: "light",
@@ -364,34 +357,34 @@ fn build_light() -> ThemeDefinition {
     }
 }
 
-// Mirrors ui/theme/ThemeLibrary.java:41-52
+// macOS dark appearance (system colours).
 fn build_dark() -> ThemeDefinition {
     let palette = ThemePalette {
-        window_background: rgb(0x10151E),
-        surface: rgb(0x1B222C),
-        surface_variant: rgb(0x242B38),
-        surface_muted: rgb(0x2D3545),
-        border: rgb(0x3A4250),
-        border_muted: rgb(0x2E3645),
-        text_primary: rgb(0xF3F4F6),
-        text_secondary: rgb(0xD1D5DB),
-        text_disabled: rgb(0x8B94A7),
-        icon_default: rgb(0xCBD5F5),
-        accent_primary: rgb(0x60A5FA),
-        accent_secondary: rgb(0xA78BFA),
-        status_success: rgb(0x22C55E),
-        status_warning: rgb(0xF4A259),
-        status_danger: rgb(0xF87171),
-        status_info: rgb(0x38BDF8),
-        state_hover_overlay: Color32::from_rgba_unmultiplied(148, 163, 184, 36),
-        state_focus: rgb(0x93C5FD),
-        state_selection_bg: rgb(0x1E3A8A),
-        state_selection_fg: rgb(0xE0EAFF),
-        state_disabled_bg: rgb(0x1F2937),
+        window_background: rgb(0x1F1F1F),
+        sidebar: rgb(0x2A2A2C),
+        surface: rgb(0x2C2C2E),
+        surface_variant: rgb(0x262628),
+        surface_muted: rgb(0x3A3A3C),
+        control: rgb(0x48484A),
+        border: rgb(0x3E3E40),
+        border_muted: rgb(0x343436),
+        text_primary: rgb(0xECECEC),
+        text_secondary: rgb(0x98989D),
+        text_disabled: rgb(0x636366),
+        accent_primary: rgb(0x0A84FF),
+        accent_secondary: rgb(0x409CFF),
+        status_success: rgb(0x30D158),
+        status_warning: rgb(0xFF9F0A),
+        status_danger: rgb(0xFF453A),
+        status_info: rgb(0x0A84FF),
+        state_hover_overlay: Color32::from_rgba_unmultiplied(255, 255, 255, 15),
+        state_focus: rgb(0x409CFF),
+        state_selection_bg: rgb(0x0059D1),
+        state_selection_fg: rgb(0xFFFFFF),
     };
     let metrics = metrics(
-        ThemeShadow::new(rgb(0x000000), 0.4, 2, 12),
-        ThemeShadow::new(rgb(0x000000), 0.55, 6, 28),
+        ThemeShadow::new(rgb(0x000000), 0.4, 2, 10),
+        ThemeShadow::new(rgb(0x000000), 0.5, 10, 30),
     );
     ThemeDefinition {
         id: "dark",
@@ -401,7 +394,7 @@ fn build_dark() -> ThemeDefinition {
     }
 }
 
-// Mirrors ui/theme/ThemeLibrary.java:35,48 (identical in both themes)
+// Identical in both themes. Radii are arcs (diameters), halved for egui.
 fn metrics(shadow_low: ThemeShadow, shadow_medium: ThemeShadow) -> ThemeMetrics {
     ThemeMetrics {
         spacing_xs: 4,

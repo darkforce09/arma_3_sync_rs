@@ -37,7 +37,7 @@ A crate may depend on crates from its own group or a group listed above it in th
 | `a3s_launch` | Arma 3 run parameters, `Arma3.cfg` mod-list clean-up, the launch command for each OS (BattlEye, UAC elevation, `.bat`/`.sh`, Steam/Proton), the launch thread with auto-restart, external applications. The one place that spawns the game. | `service/LaunchService`, `dao/LauncherDAO` (launching), run-parameter parts of `ui/main/LauncherOptionsPanel` and `ui/main/MainPanel` |
 | `a3s_tools` | Bikey extraction, RPT log tailing, TFAR and ACRE 2 installer logic, Arma 3 Launcher preset import and export. | `dao/CommonDAO`, `ui/tools/*`, `service/Arma3LauncherPreset{Importer,Exporter}` |
 | **viewer** | | |
-| `a3s_ui` | Theme tokens (port of `ui/theme`), Geist fonts, SVG icons, widgets. | `ui/theme`, `ui/icon`, `ui/components` |
+| `a3s_ui` | Theme tokens (port of `ui/theme`), Geist fonts, Phosphor icon font, widgets. | `ui/theme`, `ui/components` |
 | **application** | | |
 | `arma3sync` | The `arma3sync` binary: command line, interactive console, build information. | `main/ArmA3Sync`, `console/*`, `version.properties` |
 | **development** | | |
