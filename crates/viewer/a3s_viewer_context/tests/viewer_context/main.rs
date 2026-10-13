@@ -2,6 +2,7 @@
 //! the periodic schedule, commands, event presets and shutdown. None touches the network except
 //! a refused local connection.
 
+mod autoconfig;
 mod check;
 mod clock;
 mod commands;

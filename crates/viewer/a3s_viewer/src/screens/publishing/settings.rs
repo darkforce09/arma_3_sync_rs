@@ -1,5 +1,6 @@
 //! The Settings segment: source folder, upload connection, the public auto-config link, the
-//! build and upload options, and the path lists. Every change is stored at once.
+//! build and upload options, the favourite servers of the auto-config, and the path lists.
+//! Every change is stored at once.
 
 use std::path::PathBuf;
 
@@ -115,6 +116,9 @@ pub(super) fn show(ui: &mut Ui, view: &View, state: &mut SettingsState, cx: &mut
         }
     });
 
+    section_title(ui, "Auto-config servers");
+    servers(ui, name, cx);
+
     section_title(ui, "Exclusions");
     frames::group(ui, |ui| {
         for (index, kind) in [PathListKind::ExcludedFiles, PathListKind::HiddenFolders]
@@ -138,13 +142,61 @@ pub(super) fn show(ui: &mut Ui, view: &View, state: &mut SettingsState, cx: &mut
     });
 }
 
+/// The client's favourite servers, each with a switch that includes it in the auto-config
+/// players get with the repository; it is published by the next publish.
+fn servers(ui: &mut Ui, name: &str, cx: &mut ScreenCx<'_>) {
+    let palette = theme::palette(ui.ctx());
+    let servers = admin::autoconfig_servers(&cx.viewer.read().client, name);
+    frames::group(ui, |ui| {
+        if servers.is_empty() {
+            ui.label(
+                RichText::new("No favourite servers yet. Add them on the Servers screen.")
+                    .color(palette.text_secondary),
+            );
+            return;
+        }
+        for (index, entry) in servers.iter().enumerate() {
+            if index > 0 {
+                frames::group_separator(ui);
+            }
+            let server = &entry.server;
+            let label = server.name.as_deref().unwrap_or("Unnamed server");
+            let address = format!(
+                "{}:{}",
+                server.ip_address.as_deref().unwrap_or_default(),
+                server.port
+            );
+            let mut included = entry.included;
+            if switch_row(ui, label, Some(&address), &mut included) {
+                store(cx, |data| {
+                    admin::set_autoconfig_server(data, name, index, included)
+                });
+            }
+        }
+    });
+    ui.label(
+        RichText::new("Players get the chosen servers with the auto-config of the next publish.")
+            .color(palette.text_secondary),
+    );
+}
+
 /// A form row with a switch named by its label; returns whether it was flipped.
 fn toggle_row(ui: &mut Ui, label: &str, on: &mut bool) -> bool {
+    switch_row(ui, label, None, on)
+}
+
+/// A form row with a switch named by its label and an optional secondary detail beside the
+/// label; returns whether it was flipped.
+fn switch_row(ui: &mut Ui, label: &str, detail: Option<&str>, on: &mut bool) -> bool {
     ui.allocate_ui_with_layout(
         vec2(ui.available_width(), ROW_HEIGHT),
         Layout::left_to_right(Align::Center),
         |ui| {
             ui.label(label);
+            if let Some(detail) = detail {
+                let palette = theme::palette(ui.ctx());
+                ui.label(RichText::new(detail).color(palette.text_secondary));
+            }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 let response = toggle(ui, on);
                 // The switch is named by the row's label.

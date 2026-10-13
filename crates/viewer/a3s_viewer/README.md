@@ -49,8 +49,9 @@ The window (`Shell`):
   and Retry or Resume under a failed or stopped step; the mods players get. Events: the event
   list (Add, Duplicate, Remove with Undo) and the selected event (name, description, each mod
   required or optional), saved to the source folder as you type. Settings: source folder,
-  upload connection, the auto-config link with Copy, the build and upload switches, and the
-  excluded files and hidden folders.
+  upload connection, the auto-config link with Copy, the build and upload switches, which of the
+  favourite servers the auto-config carries (stored at once, published by the next publish), and
+  the excluded files and hidden folders.
 - Sheets (`egui::Modal`, one at a time): Welcome on the first start or while Java data waits for
   import (Arma 3 and mods folders through the system folder dialog, the legacy importer),
   load warnings, quit confirmation (running tasks, failed save), Add repository and Edit

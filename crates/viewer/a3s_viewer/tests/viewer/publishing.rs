@@ -5,9 +5,10 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use a3s_admin::EventsDoc;
+use a3s_repo_files::services::ServiceError;
 use a3s_test_servers::Fixture as Server;
-use a3s_types::ProtocolType;
 use a3s_types::local::Repository;
+use a3s_types::{FavoriteServer, ProtocolType};
 use a3s_viewer::{SheetKind, Shell};
 use a3s_viewer_context::admin::{PublishStep, Publishing, Remote, StepStatus};
 use a3s_viewer_context::{TaskKey, TaskKind};
@@ -279,6 +280,69 @@ fn settings_persist_at_once() {
         stored.parallel_upload_connections() > 1,
         defaults.parallel_upload_connections() <= 1
     );
+}
+
+#[test]
+fn auto_config_servers_are_chosen_and_stored_at_once() {
+    let mut fixture = fixture(Start::default());
+    let harness = &mut fixture.harness;
+    harness
+        .state()
+        .viewer()
+        .mutate(None, |state| {
+            for (name, address) in [("Main", "10.0.0.1"), ("Training", "10.0.0.2")] {
+                state.client.add_favorite_server(FavoriteServer {
+                    name: Some(name.to_owned()),
+                    ip_address: Some(address.to_owned()),
+                    port: 2302,
+                    ..FavoriteServer::default()
+                })?;
+            }
+            Ok::<(), ServiceError>(())
+        })
+        .expect("servers");
+    harness
+        .get_all_by_label("Beta")
+        .last()
+        .expect("publishing row")
+        .click();
+    harness.run();
+    harness.get_by_label("Settings").click();
+    harness.run();
+
+    let stored = |fixture: &crate::support::Fixture| -> Vec<Option<String>> {
+        let loaded = fixture.store.load_repositories().expect("load");
+        loaded
+            .repositories
+            .values()
+            .find(|loaded| loaded.repository.name == "Beta")
+            .expect("Beta stored")
+            .repository
+            .favorite_servers_set_to_autoconfig
+            .iter()
+            .map(|server| server.name.clone())
+            .collect()
+    };
+    let switch = |fixture: &mut crate::support::Fixture, label: &str| {
+        let role = egui::accesskit::Role::CheckBox;
+        fixture
+            .harness
+            .get_by_role_and_label(role, label)
+            .scroll_to_me();
+        fixture.harness.run();
+        fixture.harness.get_by_role_and_label(role, label).click();
+        fixture.harness.run();
+    };
+
+    switch(&mut fixture, "Training");
+    assert_eq!(stored(&fixture), [Some("Training".to_owned())]);
+    switch(&mut fixture, "Main");
+    assert_eq!(
+        stored(&fixture),
+        [Some("Main".to_owned()), Some("Training".to_owned())]
+    );
+    switch(&mut fixture, "Training");
+    assert_eq!(stored(&fixture), [Some("Main".to_owned())]);
 }
 
 #[test]

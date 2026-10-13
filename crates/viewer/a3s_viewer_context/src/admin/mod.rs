@@ -1,6 +1,8 @@
 //! Repository administration: the publishing status of a repository built on this computer,
-//! the publish run (scan, build, verify, upload), and its events.
+//! the publish run (scan, build, verify, upload), its events, and the favourite servers of its
+//! auto-config.
 
+mod autoconfig;
 mod events;
 mod publish;
 mod status;
@@ -10,6 +12,7 @@ use std::collections::BTreeMap;
 use a3s_admin::UploadResume;
 use a3s_sync::EventError;
 
+pub use self::autoconfig::{AutoconfigServer, autoconfig_servers, set_autoconfig_server};
 pub use self::events::{edit_events, restore_events, upload_events};
 pub use self::publish::{
     BuildStage, PublishRun, PublishStep, StepDetail, StepState, StepStatus, UploadStage, cancel,

@@ -31,7 +31,8 @@ use a3s_types::{Changelog, Changelogs, Event, Events, FavoriteServer, ServerInfo
 use a3s_ui::theme::{self, ThemeMode};
 use a3s_viewer::{Screen, SecondaryWindow, SettingsPane};
 use a3s_viewer_context::admin::{
-    LocalScan, ModChanges, PublishRun, Remote, RemoteRepository, StepDetail, StepState, StepStatus,
+    self, LocalScan, ModChanges, PublishRun, Remote, RemoteRepository, StepDetail, StepState,
+    StepStatus,
 };
 use a3s_viewer_context::sync::{
     AddonChange, ChangeKind, DownloadRecord, DownloadResult, PlanState, SyncPlan,
@@ -471,6 +472,18 @@ fn show_publishing(fixture: &mut Fixture, tab: &str) {
         }));
         publishing.events = Some(events);
         publishing.run = Some(run);
+        for (name, address) in [("Main", "10.0.0.1"), ("Training", "10.0.0.2")] {
+            state
+                .client
+                .add_favorite_server(FavoriteServer {
+                    name: Some(name.to_owned()),
+                    ip_address: Some(address.to_owned()),
+                    port: 2302,
+                    ..FavoriteServer::default()
+                })
+                .expect("server added");
+        }
+        admin::set_autoconfig_server(&mut state.client, "Beta", 0, true).expect("included");
     });
     fixture
         .harness
@@ -480,6 +493,13 @@ fn show_publishing(fixture: &mut Fixture, tab: &str) {
         .click();
     fixture.harness.run();
     fixture.harness.get_by_label(tab).click();
+    if tab == "Settings" {
+        fixture.harness.run();
+        fixture
+            .harness
+            .get_by_role_and_label(egui::accesskit::Role::CheckBox, "Training")
+            .scroll_to_me();
+    }
 }
 
 /// A snapshot of a tool window over the main window. The temporary folders the window shows
