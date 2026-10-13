@@ -38,6 +38,7 @@ A crate may depend on crates from its own group or a group listed above it in th
 | `a3s_tools` | Bikey extraction, RPT log tailing, TFAR and ACRE 2 installer logic, Arma 3 Launcher preset import and export. | `dao/CommonDAO`, `ui/tools/*`, `service/Arma3LauncherPreset{Importer,Exporter}` |
 | **viewer** | | |
 | `a3s_ui` | Theme tokens (port of `ui/theme`), Geist fonts, SVG icons, widgets. | `ui/theme`, `ui/icon`, `ui/components` |
+| `a3s_viewer_context` | Application state, command bus, event channel, background tasks with cancellation and coalesced progress, periodic repository check and automatic updates. No UI code. | `ui/Facade`, `controller/*`, `ui/main/tasks/*`, background parts of `ui/main/MainPanel` and `ui/repository/dialogs/progress/ProgressSynchronizationDialog` |
 | **application** | | |
 | `arma3sync` | The `arma3sync` binary: command line, interactive console, build information. | `main/ArmA3Sync`, `console/*`, `version.properties` |
 | **development** | | |
@@ -261,6 +262,15 @@ Wire compatibility is the requirement; these differences are deliberate.
   not writable; unknown updater flags exit 1 in every mode; console progress prints once per
   percent; Windows argument quoting follows the MSVC rules (Java's doubled the backslashes before
   an embedded quote twice).
+* **Viewer background work** (local only): at most 4 repository checks run at once in the whole
+  process and a repository is never checked twice at once (Java's manual check uses one thread
+  per processor and can overlap the periodic one); cancelling a manual check stops every
+  connection (Java only the last one). Changing the check frequency reschedules only when it
+  actually changed, the "updates available" memory survives a reschedule, the periodic check
+  starts independently of the self-update check and starts again when the user stays after a
+  failed save on exit; a periodic check interrupted by exit skips its follow-up. Automatic
+  updates move extra local files to the Trash. Progress events are coalesced per task, and an
+  event emitted on the UI thread is seen at the next poll (Java runs it inline).
 * **Insecure TLS override** is the environment variable `A3S_ALLOW_INSECURE_SSL=1` instead of
   Java's `-Da3s.allowInsecureSsl=true`.
 * **Game tools:** each bikey extraction has its own cancel token (Java's flag is never reset, so
