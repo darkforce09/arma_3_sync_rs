@@ -5,11 +5,9 @@ mod settings;
 mod tools;
 
 use std::collections::BTreeSet;
-use std::sync::Arc;
 
 use a3s_viewer_context::ViewerContext;
 use egui::{ViewportBuilder, ViewportClass, ViewportId};
-use parking_lot::Mutex;
 
 pub(crate) use self::settings::Appearance;
 pub use self::settings::{SettingsPane, SettingsWindow};
@@ -65,10 +63,11 @@ impl SecondaryWindow {
 /// The secondary windows. Call [`Self::show`] every frame of the main window: a viewport
 /// closes when its parent stops showing it.
 ///
-/// Settings is an immediate viewport, drawn within the main window's frame so it can use the
-/// context; the tool windows are deferred viewports.
+/// Every window is an immediate viewport, drawn within the main window's frame so it can use
+/// the context.
 pub(crate) struct SecondaryWindows {
-    tools: Arc<Mutex<BTreeSet<SecondaryWindow>>>,
+    open_tools: BTreeSet<SecondaryWindow>,
+    tools: tools::ToolWindows,
     settings: Option<SettingsWindow>,
     desktop: Desktop,
 }
@@ -76,7 +75,8 @@ pub(crate) struct SecondaryWindows {
 impl SecondaryWindows {
     pub(crate) fn new(desktop: Desktop) -> Self {
         Self {
-            tools: Arc::default(),
+            open_tools: BTreeSet::new(),
+            tools: tools::ToolWindows::default(),
             settings: None,
             desktop,
         }
@@ -96,7 +96,7 @@ impl SecondaryWindows {
             }
             closed
         } else {
-            self.tools.lock().insert(window)
+            self.open_tools.insert(window)
         };
         if !opened {
             ctx.send_viewport_cmd_to(window.viewport_id(), egui::ViewportCommand::Focus);
@@ -116,7 +116,7 @@ impl SecondaryWindows {
         if window == SecondaryWindow::Settings {
             self.settings.is_some()
         } else {
-            self.tools.lock().contains(&window)
+            self.open_tools.contains(&window)
         }
     }
 
@@ -140,16 +140,19 @@ impl SecondaryWindows {
             }
         }
 
-        let open: Vec<SecondaryWindow> = self.tools.lock().iter().copied().collect();
+        let open: Vec<SecondaryWindow> = self.open_tools.iter().copied().collect();
         for window in open {
-            let tools = Arc::clone(&self.tools);
-            ctx.show_viewport_deferred(window.viewport_id(), window.builder(), move |ui, class| {
-                let close = ui.ctx().input(|i| i.viewport().close_requested());
-                in_window(ui, class, |ui| tools::show(ui, window));
-                if close {
-                    tools.lock().remove(&window);
-                }
-            });
+            let tools = &mut self.tools;
+            let close =
+                ctx.show_viewport_immediate(window.viewport_id(), window.builder(), |ui, class| {
+                    let close = ui.ctx().input(|i| i.viewport().close_requested());
+                    in_window(ui, class, |ui| tools.show(ui, window, viewer));
+                    close
+                });
+            if close {
+                self.open_tools.remove(&window);
+                self.tools.close(window, viewer);
+            }
         }
     }
 }

@@ -486,3 +486,25 @@ fn initial_field_values() {
         Some(s(&temp.path().join("Arma 3")))
     );
 }
+
+/// A dll stand-in whose version resource holds `VS_FIXEDFILEINFO` for version 1.2.3.4.
+fn dll_with_version() -> Vec<u8> {
+    let mut bytes = b"MZ\0\0 padding VS_VERSION_INFO".to_vec();
+    bytes.extend_from_slice(&0xFEEF_04BD_u32.to_le_bytes());
+    bytes.extend_from_slice(&0x0001_0000_u32.to_le_bytes());
+    bytes.extend_from_slice(&0x0001_0002_u32.to_le_bytes());
+    bytes.extend_from_slice(&0x0003_0004_u32.to_le_bytes());
+    bytes.extend_from_slice(&[0; 36]);
+    bytes
+}
+
+#[test]
+fn file_version_reads_the_fixed_file_info() {
+    assert_eq!(
+        a3s_tools::radio::file_version(&dll_with_version()).as_deref(),
+        Some("1.2.3.4")
+    );
+    assert_eq!(a3s_tools::radio::file_version(b"MZ no resource"), None);
+    let truncated = &dll_with_version()[..30];
+    assert_eq!(a3s_tools::radio::file_version(truncated), None);
+}

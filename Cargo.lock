@@ -307,6 +307,7 @@ dependencies = [
  "a3s_platform",
  "a3s_repo_files",
  "a3s_sync",
+ "a3s_tools",
  "a3s_transport",
  "a3s_types",
  "futures",

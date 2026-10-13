@@ -10,6 +10,7 @@ Operating-system integration of the client, one module per concern:
 - `folders`: Documents, Desktop and home, the Arma 3 user folder, the Arma 3 profile names, the
   log-export folder, and opening a folder in the file manager.
 - `process`: "is Arma 3 / TeamSpeak / Steam running" (`tasklist` on Windows, `/proc` on Linux).
+- `reveal`: show a file in the system file manager (Explorer, Finder, `xdg-open`).
 - `autostart`: start with the OS (per-user `Run` value, XDG autostart entry, macOS LaunchAgent).
 - `shortcut`: desktop shortcuts (`.lnk` on Windows, `.desktop` on Linux).
 - `single_instance`: one client per configuration folder; a second start asks the first to come to

@@ -45,6 +45,14 @@ failed or stopped step (an interrupted upload resumes); `edit_events` changes th
 writes the source folder's `.a3s/events` at once, which the next build carries and the upload
 publishes, and `upload_events` uploads them alone.
 
+The tool windows call `tools` functions with the context's `Cx` and read `tools::State`:
+`find_keys` and `copy_keys` (the `.bikey` files of the active profile's enabled mods, into the
+stored target folder), `inspect_radio` and `install_radio` (the TFAR or ACRE 2 plugin of the
+mods, TeamSpeak 3's folder, version and installed plugin, the copy as a task), `follow_log` and
+`stop_log` (the newest or a chosen RPT log tailed into `tools::LogState`, each line classified
+as error, warning or other). OS lookups (TeamSpeak and RPT folders, running processes) go
+through `tools::Platform`, which tests replace.
+
 Network access and time go through two seams, `RemoteChecker` and `Clock`, plus `Synchronizer`
 for background downloads; tests use fakes and `ManualClock`. Each domain (`repositories`,
 `sync`, `admin`, `profiles`, `launch`, `tools`) has its own `Command`, `Event` and `State`.
