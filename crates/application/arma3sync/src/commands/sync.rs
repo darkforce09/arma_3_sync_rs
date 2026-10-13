@@ -4,6 +4,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use a3s_foundation::error::ErrorKind;
+use a3s_sync::cleanup::RemovedFiles;
 use a3s_sync::pipeline::{
     CLI_RECONNECT_DELAY, CheckRequest, ReconnectPolicy, SyncEnd, SyncJob, UserconfigPolicy,
     sync_repository,
@@ -60,6 +61,8 @@ fn synchronize(app: &App, name: &str, protocol: &a3s_types::Protocol) -> Command
             protocol: protocol.clone(),
             // The Java console never discovers addons: its addon map stays empty.
             addons: Arc::new(NoAddons),
+            // Headless runs delete like Java: nobody empties a Trash on a server.
+            removed_files: RemovedFiles::Delete,
         },
         arma3_exe_path: None,
         userconfig: UserconfigPolicy::Skip,

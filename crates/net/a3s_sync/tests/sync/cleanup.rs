@@ -5,7 +5,10 @@ use std::collections::{BTreeSet, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 
-use a3s_sync::cleanup::{DeleteRoots, copy_directory, delete_extra_files, protected_paths};
+use a3s_sync::cleanup::{
+    DeleteKind, DeleteRoots, RemovedFiles, copy_directory, delete_extra_files, protected_paths,
+    remove_no_follow,
+};
 use a3s_sync::plan::{plan_repository, select_all_except_root};
 use a3s_sync::{
     DeleteTask, DownloadStatus, DownloadTask, DownloadTaskKind, EventSender, Phase, PlanSummary,
@@ -33,6 +36,7 @@ fn delete(tasks: &[DeleteTask], dest: &Path) -> a3s_sync::cleanup::CleanupReport
         &DeleteRoots::from_plan(&a3s_sync::PlanTree::new(), dest),
         &HashSet::new(),
         &BTreeSet::new(),
+        RemovedFiles::Delete,
         &CancellationToken::new(),
         &EventSender::noop(),
     )
@@ -59,6 +63,7 @@ fn deletes_files_and_folders() {
         &DeleteRoots::from_plan(&a3s_sync::PlanTree::new(), dest),
         &HashSet::new(),
         &BTreeSet::new(),
+        RemovedFiles::Delete,
         &CancellationToken::new(),
         &events,
     );
@@ -78,6 +83,7 @@ fn deletes_files_and_folders() {
         &DeleteRoots::default(),
         &HashSet::new(),
         &BTreeSet::new(),
+        RemovedFiles::Delete,
         &CancellationToken::new(),
         &events,
     );
@@ -117,6 +123,13 @@ fn links_are_removed_never_followed() {
     let report = delete(&[task(&dest, "dangling", false)], &dest);
     assert_eq!(report.deleted, 1);
     assert!(std::fs::symlink_metadata(dest.join("dangling")).is_err());
+
+    // In Trash mode a link is still only unlinked: the Trash is never involved, the target stays.
+    symlink(&outside, dest.join("@trash_link")).expect("symlink");
+    let kind = remove_no_follow(&dest.join("@trash_link"), RemovedFiles::Trash).expect("remove");
+    assert_eq!(kind, DeleteKind::Link);
+    assert!(std::fs::symlink_metadata(dest.join("@trash_link")).is_err());
+    assert!(outside.join("keep.txt").exists());
 }
 
 #[cfg(windows)]
@@ -182,6 +195,7 @@ fn unsafe_tasks_are_refused() {
         &DeleteRoots::from_plan(&a3s_sync::PlanTree::new(), &dest),
         &HashSet::new(),
         &hidden,
+        RemovedFiles::Delete,
         &CancellationToken::new(),
         &EventSender::noop(),
     );
@@ -208,6 +222,7 @@ fn unsafe_tasks_are_refused() {
         &DeleteRoots::from_plan(&a3s_sync::PlanTree::new(), &dest),
         &protected_paths(&[download]),
         &BTreeSet::new(),
+        RemovedFiles::Delete,
         &CancellationToken::new(),
         &EventSender::noop(),
     );
@@ -223,6 +238,7 @@ fn unsafe_tasks_are_refused() {
         &DeleteRoots::from_plan(&a3s_sync::PlanTree::new(), &dest),
         &HashSet::new(),
         &BTreeSet::new(),
+        RemovedFiles::Delete,
         &cancel,
         &EventSender::noop(),
     );
@@ -311,6 +327,7 @@ fn auto_discovered_addon_folders_are_roots() {
         &roots,
         &HashSet::new(),
         &BTreeSet::new(),
+        RemovedFiles::Delete,
         &CancellationToken::new(),
         &EventSender::noop(),
     );
@@ -346,6 +363,7 @@ fn extras_inside_a_user_linked_addon_folder_are_listed_through_the_link() {
         &DeleteRoots::from_plan(&a3s_sync::PlanTree::new(), &dest),
         &HashSet::new(),
         &BTreeSet::new(),
+        RemovedFiles::Delete,
         &CancellationToken::new(),
         &EventSender::noop(),
     );

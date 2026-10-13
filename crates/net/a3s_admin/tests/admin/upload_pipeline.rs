@@ -890,6 +890,7 @@ async fn nested_racine_folder_round_trip() {
             event_name: None,
             protocol: fixture.protocol.clone(),
             addons: Arc::new(a3s_sync::plan::NoAddons),
+            removed_files: a3s_sync::cleanup::RemovedFiles::Delete,
         },
         arma3_exe_path: None,
         userconfig: a3s_sync::pipeline::UserconfigPolicy::Silent,

@@ -147,7 +147,9 @@ Wire compatibility is the requirement; these differences are deliberate.
   `<Arma 3 folder>/<userconfig folder name>`. An extra local symbolic link is never
   followed (it is one file node); deletions remove the link, never its target (a Windows directory
   link or junction with `remove_dir`), and are checked again against the destination and the
-  auto-discovered addon folders before anything is removed. Downloads, and the extra-file scan of a
+  auto-discovered addon folders before anything is removed. The caller chooses whether extra
+  files go to the system Trash (the UI) or are deleted permanently like Java (the headless
+  console); a link is unlinked either way. Downloads, and the extra-file scan of a
   repository folder, do follow links the user created inside the destination. Archives a run still
   needs (`.zip`, `.part`) are never deleted as extra files. Java has none of these checks.
 * **Uncompressing:** every compressed leaf is uncompressed, `.ebo.zip` included (Java only

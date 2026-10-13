@@ -33,6 +33,7 @@ suppaftp.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["fs", "macros", "rt", "sync", "time"] }
 tracing.workspace = true
+trash.workspace = true
 zip.workspace = true
 
 [dev-dependencies]

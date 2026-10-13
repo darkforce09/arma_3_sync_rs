@@ -96,6 +96,7 @@ tokio-util = "0.7.20"
 toml = "1.1"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }
+trash = "5.2.9"
 unftp-sbe-fs = "0.4.0"
 url = "2.5"
 winreg = "0.56.0"

@@ -2,7 +2,7 @@
 
 The client synchronization engine: fetch a repository's `.a3s` metadata, compare it with the
 local folder into a plan (downloads, zsync patches, deletions, never outside the destination),
-download with resume, zsync and progress events, uncompress archives, delete extra files and
+download with resume, zsync and progress events, uncompress archives, delete or Trash extra files and
 write the download report.
 
 Use `SyncSession` to check a repository, change the selection and run downloads (a paused run

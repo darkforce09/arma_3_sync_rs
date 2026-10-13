@@ -4,6 +4,7 @@ use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use a3s_sync::cleanup::RemovedFiles;
 use a3s_sync::pipeline::{CheckRequest, ReconnectPolicy, SyncJob, UserconfigPolicy};
 use a3s_sync::plan::NoAddons;
 use a3s_sync::{MemoryStore, SyncEvent};
@@ -118,6 +119,7 @@ pub fn check_request(protocol: Protocol) -> CheckRequest {
         event_name: None,
         protocol,
         addons: Arc::new(NoAddons),
+        removed_files: RemovedFiles::Delete,
     }
 }
 

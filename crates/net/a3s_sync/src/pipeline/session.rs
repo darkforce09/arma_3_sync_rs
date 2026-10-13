@@ -16,7 +16,9 @@ use a3s_types::local::protocol::host_url;
 
 use super::store::{StoreChanges, StoreError, SyncStore};
 use super::userconfig::{UserconfigAction, plan_userconfig_copy};
-use crate::cleanup::{CleanupReport, DeleteRoots, delete_extra_files, protected_paths};
+use crate::cleanup::{
+    CleanupReport, DeleteRoots, RemovedFiles, delete_extra_files, protected_paths,
+};
 use crate::completion::{CompletionError, determine_completion};
 use crate::download::{DownloadReport, DownloadRequest, DownloadedZip, ZIP_EXTENSION, ZipSink};
 use crate::events::{EventError, EventSender, Outcome, SyncEvent};
@@ -45,6 +47,9 @@ pub struct CheckRequest {
 
     /// Where existing addon folders are (auto-discovery).
     pub addons: Arc<dyn AddonLocator + Send + Sync>,
+
+    /// What happens to extra local files when the repository asks for an exact match.
+    pub removed_files: RemovedFiles,
 }
 
 impl std::fmt::Debug for CheckRequest {
@@ -53,6 +58,7 @@ impl std::fmt::Debug for CheckRequest {
             .field("repository_name", &self.repository_name)
             .field("event_name", &self.event_name)
             .field("protocol", &self.protocol)
+            .field("removed_files", &self.removed_files)
             .finish_non_exhaustive()
     }
 }
@@ -413,10 +419,13 @@ impl SyncSession {
             let roots = DeleteRoots::from_plan(&self.tree, &self.options.destination);
             let protected = protected_paths(&self.summary.download_tasks);
             let hidden = self.options.hidden_folder_paths.clone();
+            let removed = self.request.removed_files;
             let cancel = cancel.clone();
             let events = events.clone();
             blocking(move || {
-                delete_extra_files(&tasks, &roots, &protected, &hidden, &cancel, &events)
+                delete_extra_files(
+                    &tasks, &roots, &protected, &hidden, removed, &cancel, &events,
+                )
             })
             .await
             .unwrap_or_default()

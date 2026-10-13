@@ -138,6 +138,46 @@ pub fn delete_no_follow(path: &Path) -> io::Result<DeleteKind> {
     }
 }
 
+/// What happens to extra local files.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RemovedFiles {
+    /// Move them to the system Trash, so a wrong removal can be undone.
+    Trash,
+
+    /// Delete them permanently (Java's behaviour; for headless runs nobody empties a Trash for).
+    Delete,
+}
+
+/// Removes `path` without following it, as `removed` asks. A link is always removed as a link:
+/// the Trash would keep only the link, never its target.
+pub fn remove_no_follow(path: &Path, removed: RemovedFiles) -> io::Result<DeleteKind> {
+    match removed {
+        RemovedFiles::Delete => delete_no_follow(path),
+        RemovedFiles::Trash => trash_no_follow(path),
+    }
+}
+
+/// Moves `path` to the system Trash; a link is removed as a link.
+fn trash_no_follow(path: &Path) -> io::Result<DeleteKind> {
+    let metadata = match std::fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(DeleteKind::Missing),
+        Err(err) => return Err(err),
+    };
+    let file_type = metadata.file_type();
+    if file_type.is_symlink() {
+        remove_link(path, &metadata)?;
+        return Ok(DeleteKind::Link);
+    }
+    // A folder is moved whole, with any links inside it, so nothing below it is followed.
+    trash::delete(path).map_err(io::Error::other)?;
+    Ok(if file_type.is_dir() {
+        DeleteKind::Directory
+    } else {
+        DeleteKind::File
+    })
+}
+
 #[cfg(windows)]
 fn remove_link(path: &Path, metadata: &std::fs::Metadata) -> io::Result<()> {
     use std::os::windows::fs::{FileTypeExt as _, MetadataExt as _};
@@ -163,7 +203,8 @@ fn remove_link(path: &Path, _metadata: &std::fs::Metadata) -> io::Result<()> {
 /// its absolute local path has no `..` component and lies strictly below one of `roots`, and it
 /// is not in `protected`; otherwise it is reported as refused. The check is lexical, so
 /// links the user created above the entry (an addon folder on another disk) are honoured; the
-/// entry itself is never followed ([`delete_no_follow`]). Failures do not fail the
+/// entry itself is never followed ([`remove_no_follow`]); `removed` picks the Trash or a
+/// permanent delete. Failures do not fail the
 /// synchronization (Java ignores them); they are logged and reported. Emits
 /// `Phase(DeletingExtraFiles)` when there is something to delete. Blocking; stops between
 /// tasks once `cancel` is cancelled.
@@ -173,6 +214,7 @@ pub fn delete_extra_files(
     roots: &DeleteRoots,
     protected: &HashSet<PathBuf>,
     hidden_folder_paths: &BTreeSet<String>,
+    removed: RemovedFiles,
     cancel: &CancellationToken,
     events: &EventSender,
 ) -> CleanupReport {
@@ -199,11 +241,11 @@ pub fn delete_extra_files(
             report.skipped += 1;
             continue;
         }
-        match delete_no_follow(&path) {
+        match remove_no_follow(&path, removed) {
             Ok(DeleteKind::Missing) => report.skipped += 1,
             Ok(_) => report.deleted += 1,
             Err(err) => {
-                tracing::warn!("Failed to delete {}: {err}", path.display());
+                tracing::warn!("Failed to remove {}: {err}", path.display());
                 report.failed.push((path, err));
             }
         }
