@@ -8,8 +8,8 @@ use std::time::{Duration, Instant};
 
 use a3s_foundation::error::ErrorKind;
 use a3s_sync::download::{
-    CollectZips, DownloadEnd, DownloadReport, DownloadRequest, MAX_RESUME_RETRIES, NoZipSink,
-    ZipSink, download,
+    CollectZips, DISK_USAGE_INTERVAL, DownloadEnd, DownloadReport, DownloadRequest,
+    MAX_RESUME_RETRIES, NoZipSink, ZipSink, download,
 };
 use a3s_sync::{DownloadStatus, DownloadTask, EventError, EventSender, Outcome, Phase, SyncEvent};
 use a3s_transport::CancellationToken;
@@ -1091,7 +1091,9 @@ async fn busy_unzip_and_disk_usage() {
     let mut req = request(server.protocol(), 1);
     req.disk_usage_path = Some(dest.to_owned());
     let cancel = CancellationToken::new();
+    let started = Instant::now();
     let (report, events) = run(&req, &mut tasks, Arc::new(BusySink::default()), &cancel).await;
+    let elapsed = started.elapsed();
     assert!(matches!(report.end, DownloadEnd::Completed));
     let waiting: Vec<u32> = events
         .iter()
@@ -1102,8 +1104,14 @@ async fn busy_unzip_and_disk_usage() {
         .collect();
     assert!(waiting.len() >= 2, "{waiting:?}");
     assert!(waiting.iter().all(|&s| s == 0), "{waiting:?}");
+    // One sample per interval while the download runs: at least the 2.6 s stall, at most what
+    // the measured run time allows (slow CI runners stretch the run).
     let disk = count(&events, |e| matches!(e, SyncEvent::DiskUsage { .. }));
-    assert!((3..=7).contains(&disk), "{disk} disk usage events");
+    let most = (elapsed.as_secs_f64() / DISK_USAGE_INTERVAL.as_secs_f64()).floor() as usize + 1;
+    assert!(
+        (3..=most).contains(&disk),
+        "{disk} disk usage events in {elapsed:?}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
