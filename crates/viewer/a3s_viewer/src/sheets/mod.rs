@@ -1,17 +1,21 @@
 //! Sheets: short modal tasks over the dimmed main window, shown one at a time in queue order.
 
-mod add_repository;
+pub(crate) mod add_repository;
 mod exit;
 mod load_warnings;
+mod update_issues;
 mod welcome;
 
 use std::collections::VecDeque;
 
 use a3s_viewer_context::ViewerContext;
 
+use self::add_repository::{Mode, RepositoryForm};
 pub(crate) use self::exit::ExitPrompt;
+pub(crate) use self::update_issues::UpdateIssues;
 use self::welcome::Welcome;
 pub use self::welcome::WelcomeSetup;
+use crate::shell::Screen;
 use crate::toasts::Toaster;
 
 /// The kind of a sheet, as tests and callers see it.
@@ -28,6 +32,12 @@ pub enum SheetKind {
 
     /// Adding a repository.
     AddRepository,
+
+    /// Editing a repository's connection.
+    EditRepository,
+
+    /// Files that failed in the last download of a repository.
+    UpdateIssues,
 }
 
 /// A sheet and its state.
@@ -35,7 +45,8 @@ pub(crate) enum Sheet {
     Welcome(Box<Welcome>),
     LoadWarnings(Vec<String>),
     Exit(ExitPrompt),
-    AddRepository,
+    Repository(Box<RepositoryForm>),
+    UpdateIssues(UpdateIssues),
 }
 
 impl Sheet {
@@ -43,18 +54,31 @@ impl Sheet {
         Self::Welcome(Box::new(Welcome::new(setup)))
     }
 
+    pub(crate) fn add_repository(viewer: &ViewerContext) -> Self {
+        Self::Repository(Box::new(RepositoryForm::add(viewer)))
+    }
+
+    /// The Edit connection sheet of `name`; `None` when it does not exist.
+    pub(crate) fn edit_repository(viewer: &ViewerContext, name: &str) -> Option<Self> {
+        RepositoryForm::edit(viewer, name).map(|form| Self::Repository(Box::new(form)))
+    }
+
     fn kind(&self) -> SheetKind {
         match self {
             Self::Welcome(_) => SheetKind::Welcome,
             Self::LoadWarnings(_) => SheetKind::LoadWarnings,
             Self::Exit(_) => SheetKind::ExitConfirmation,
-            Self::AddRepository => SheetKind::AddRepository,
+            Self::Repository(form) => match form.mode() {
+                Mode::Add => SheetKind::AddRepository,
+                Mode::Edit(_) => SheetKind::EditRepository,
+            },
+            Self::UpdateIssues(_) => SheetKind::UpdateIssues,
         }
     }
 }
 
 /// What a closed sheet asks the window to do.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum SheetOutcome {
     /// Quit even though tasks run.
     QuitConfirmed,
@@ -64,6 +88,12 @@ pub(crate) enum SheetOutcome {
 
     /// Stay after a failed save: the background work starts again.
     Stay,
+
+    /// Show this screen, e.g. the repository just added.
+    Navigate(Screen),
+
+    /// Start the game without waiting for the failed files.
+    Play,
 }
 
 /// Whether the sheet stays open after this frame.
@@ -114,7 +144,8 @@ impl Sheets {
             Sheet::Welcome(welcome) => welcome.show(ctx, viewer, toasts),
             Sheet::LoadWarnings(warnings) => load_warnings::show(ctx, warnings),
             Sheet::Exit(prompt) => exit::show(ctx, prompt),
-            Sheet::AddRepository => add_repository::show(ctx),
+            Sheet::Repository(form) => form.show(ctx, viewer, toasts),
+            Sheet::UpdateIssues(issues) => issues.show(ctx, viewer, toasts),
         };
         match shown {
             Shown::Open => None,

@@ -1,5 +1,9 @@
 //! Profiles and addons.
 
+mod preset;
+
+pub use self::preset::use_event_preset;
+
 use crate::error::ContextError;
 use crate::tasks::Cx;
 

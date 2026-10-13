@@ -267,9 +267,13 @@ dependencies = [
  "a3s_foundation",
  "a3s_platform",
  "a3s_repo_files",
+ "a3s_sync",
+ "a3s_test_servers",
+ "a3s_transport",
  "a3s_types",
  "a3s_ui",
  "a3s_viewer_context",
+ "chrono",
  "eframe",
  "egui",
  "egui-toast",
@@ -281,6 +285,7 @@ dependencies = [
  "rfd",
  "tempfile",
  "thiserror 2.0.21",
+ "tokio",
  "tracing",
  "tray-icon",
 ]
@@ -289,6 +294,7 @@ dependencies = [
 name = "a3s_viewer_context"
 version = "0.1.0-alpha.1"
 dependencies = [
+ "a3s_addons",
  "a3s_foundation",
  "a3s_repo_files",
  "a3s_sync",

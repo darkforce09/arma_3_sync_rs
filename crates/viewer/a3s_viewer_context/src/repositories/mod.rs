@@ -1,10 +1,13 @@
 //! Repository checks and the per-repository runtime state.
 
 mod check;
+mod connection;
 
 use std::collections::BTreeMap;
 
 use a3s_sync::status::NotificationTracker;
+
+pub use self::connection::{ConnectionSummary, addon_count, fetch_autoconfig, test_connection};
 
 use crate::checker::{CheckTrigger, RepositoryCheckResult};
 use crate::error::ContextError;

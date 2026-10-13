@@ -1,5 +1,6 @@
 // Its own test binary: wgpu rendering on a CPU adapter, Linux only, regenerated with UPDATE_SNAPSHOTS=1.
-//! Headless wgpu snapshots of the main window with two repositories, one with updates.
+//! Headless wgpu snapshots of the main window with two repositories, one with updates, and of
+//! the Repository and Activity screens.
 #![cfg(target_os = "linux")]
 
 #[allow(
@@ -9,25 +10,202 @@
 #[path = "viewer/support.rs"]
 mod support;
 
+use std::collections::BTreeMap;
+use std::convert::Infallible;
+use std::sync::Arc;
+use std::time::{Duration, Instant, SystemTime};
+
+use a3s_foundation::error::ErrorKind;
+use a3s_sync::{EventError, SyncEvent, TransferProgress};
+use a3s_types::{Changelog, Changelogs, Event, Events, ServerInfo};
 use a3s_ui::theme::{self, ThemeMode};
+use a3s_viewer_context::sync::{
+    AddonChange, ChangeKind, DownloadRecord, DownloadResult, PlanState, SyncPlan,
+};
+use a3s_viewer_context::{TaskError, TaskKey, TaskKind, ViewerContext};
+use egui_kittest::kittest::Queryable as _;
 
-use crate::support::{Start, fixture_with};
+use crate::support::{Fixture, Start, fixture_with};
 
-fn snapshot(name: &str, mode: ThemeMode) {
+fn snapshot(name: &str, mode: ThemeMode, setup: impl FnOnce(&mut Fixture)) {
     let mut fixture = fixture_with(Start::default(), |builder| {
         builder.with_theme(mode.into()).wgpu()
     });
     theme::set_mode(&fixture.harness.ctx, mode);
+    fixture.harness.run();
+    setup(&mut fixture);
     fixture.harness.run();
     fixture.harness.snapshot(name);
 }
 
 #[test]
 fn shell_light() {
-    snapshot("shell_light", ThemeMode::Light);
+    snapshot("shell_light", ThemeMode::Light, |_| {});
 }
 
 #[test]
 fn shell_dark() {
-    snapshot("shell_dark", ThemeMode::Dark);
+    snapshot("shell_dark", ThemeMode::Dark, |_| {});
+}
+
+#[test]
+fn repository_light() {
+    snapshot("repository_light", ThemeMode::Light, show_repository);
+}
+
+#[test]
+fn repository_dark() {
+    snapshot("repository_dark", ThemeMode::Dark, show_repository);
+}
+
+#[test]
+fn activity_light() {
+    snapshot("activity_light", ThemeMode::Light, show_activity);
+}
+
+#[test]
+fn activity_dark() {
+    snapshot("activity_dark", ThemeMode::Dark, show_activity);
+}
+
+/// Alpha at server revision 2 with an event, two changelogs and a comparison.
+fn show_repository(fixture: &mut Fixture) {
+    let viewer = fixture.harness.state().viewer();
+    mutate(viewer, |state| {
+        let runtime = state.repositories.runtime_mut("Alpha");
+        runtime.metadata.server_info = Some(Arc::new(ServerInfo {
+            revision: 2,
+            ..ServerInfo::default()
+        }));
+        runtime.metadata.changelogs = Some(Arc::new(Changelogs {
+            list: vec![
+                Changelog {
+                    revision: 1,
+                    build_date: Some(1_704_067_200_000),
+                    new_addons: vec!["@new".to_owned()],
+                    updated_addons: vec!["@cba".to_owned()],
+                    ..Changelog::default()
+                },
+                Changelog {
+                    revision: 2,
+                    build_date: Some(1_704_153_600_000),
+                    updated_addons: vec!["@ace".to_owned()],
+                    deleted_addons: vec!["@old".to_owned()],
+                    ..Changelog::default()
+                },
+            ],
+        }));
+        runtime.metadata.events = Some(Arc::new(Events {
+            list: vec![Event {
+                name: "Sunday operation".to_owned(),
+                description: Some("Weekly co-op with the full mod set.".to_owned()),
+                addon_names: BTreeMap::from([
+                    ("@ace".to_owned(), false),
+                    ("@cba".to_owned(), false),
+                    ("@new".to_owned(), true),
+                ]),
+                ..Event::default()
+            }],
+        }));
+        state.sync.downloads.plans.insert(
+            "Alpha".to_owned(),
+            PlanState {
+                server_revision: Some(2),
+                result: Ok(SyncPlan {
+                    download_size: 1_320_000_000,
+                    file_count: 14,
+                    changes: vec![
+                        change("@ace", ChangeKind::Updated, 1_200_000_000),
+                        change("@new", ChangeKind::New, 120_000_000),
+                        change("@old", ChangeKind::Removed, 0),
+                    ],
+                }),
+            },
+        );
+    });
+    fixture.harness.get_by_label("Alpha").click();
+}
+
+/// A running download of Alpha and three recent results.
+fn show_activity(fixture: &mut Fixture) {
+    let viewer = fixture.harness.state().viewer();
+    let id = viewer
+        .cx()
+        .spawn_task(
+            TaskKey::repository(TaskKind::Download, "Alpha"),
+            true,
+            |task| async move {
+                let events = task.sync_events();
+                events.emit(SyncEvent::Transfer(TransferProgress {
+                    transferred: 450_000_000,
+                    total: 1_320_000_000,
+                    current_file: Some("@ace/addons/ace_main.pbo".to_owned()),
+                    current_file_percent: 40,
+                    remaining: Some(Duration::from_secs(600)),
+                }));
+                events.emit(SyncEvent::Speed {
+                    bytes_per_second: 12_500_000,
+                });
+                task.cancel.cancelled().await;
+                Err(TaskError::Cancelled)
+            },
+        )
+        .expect("task");
+    let start = Instant::now();
+    while viewer
+        .task_snapshot(id)
+        .is_none_or(|snapshot| snapshot.speed.is_none())
+    {
+        assert!(start.elapsed() < Duration::from_secs(10), "no progress");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let now = SystemTime::now();
+    mutate(viewer, |state| {
+        state.sync.downloads.recent = vec![
+            record("Beta", now, DownloadResult::Success { trashed: 1 }),
+            record(
+                "Alpha",
+                now,
+                DownloadResult::Issues(vec![
+                    EventError::new(ErrorKind::ReadTimeout, "Read timed out")
+                        .with_path("@cba/addons/cba_main.pbo"),
+                ]),
+            ),
+            record(
+                "Beta",
+                now,
+                DownloadResult::Failed(EventError::new(
+                    ErrorKind::ConnectionFailed,
+                    "Connection refused",
+                )),
+            ),
+        ];
+    });
+    fixture.harness.get_by_label("Activity").click();
+}
+
+fn change(name: &str, kind: ChangeKind, size: u64) -> AddonChange {
+    AddonChange {
+        name: name.to_owned(),
+        kind,
+        size,
+    }
+}
+
+fn record(repository: &str, finished: SystemTime, result: DownloadResult) -> DownloadRecord {
+    DownloadRecord {
+        repository: repository.to_owned(),
+        event: None,
+        finished,
+        result,
+    }
+}
+
+fn mutate(viewer: &ViewerContext, f: impl FnOnce(&mut a3s_viewer_context::AppState)) {
+    viewer
+        .mutate(None, |state| {
+            f(state);
+            Ok::<(), Infallible>(())
+        })
+        .ok();
 }

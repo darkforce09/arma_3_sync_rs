@@ -18,9 +18,20 @@ The window (`Shell`):
   runtime state (changed-addon count when updated, "…" while checking, "!" after a failed
   check) and Add repository, Publishing (repositories with a local build folder), and the last
   check time. Each row routes to a screen under `screens/`.
+- Repository screen: header with the URL, revision and mod count, the "…" menu (Edit
+  connection, Check now, Remove repository with an Undo toast), one primary button ("Update
+  <size>", "Resume <size>", "Up to date"), event cards with "Use preset", the changes a download
+  makes (new, updated, removed to the Trash, with sizes) and the collapsed changelog of the
+  revisions not downloaded yet. Opening it compares the repository with its download folder
+  when the last comparison is older than the server revision.
+- Activity screen: running downloads (progress, bytes, speed, time left, current files, Pause
+  and Stop), paused downloads (Resume, Stop) and the recent results ("Show issues").
 - Sheets (`egui::Modal`, one at a time): Welcome on the first start or while Java data waits for
   import (Arma 3 and mods folders through the system folder dialog, the legacy importer),
-  load warnings, quit confirmation (running tasks, failed save), Add repository.
+  load warnings, quit confirmation (running tasks, failed save), Add repository and Edit
+  connection (an auto-config link fills the fields; protocol, address, port, anonymous,
+  download folder; login, SSL validation and the proxy under Advanced; Test connection), and
+  Update issues (one plain line per failed file, Retry, Retry all, Copy report, Play anyway).
 - Toasts (egui-toast) for the context's events, including an Undo kind that runs a callback.
 - Settings and the tool windows as separate OS windows (deferred viewports).
 - Tray icon (StatusNotifierItem through `ksni` on Linux, `tray-icon` on Windows and macOS):

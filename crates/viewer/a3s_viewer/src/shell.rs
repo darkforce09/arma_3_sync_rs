@@ -14,7 +14,10 @@ use egui::{Frame, Ui, ViewportCommand};
 use crate::events::EventSink;
 use crate::launch::{self, PlayRequest};
 use crate::requests::WindowRequest;
-use crate::sheets::{ExitPrompt, Sheet, SheetKind, SheetOutcome, Sheets, WelcomeSetup};
+use crate::screens::ScreenCx;
+use crate::sheets::{
+    ExitPrompt, Sheet, SheetKind, SheetOutcome, Sheets, UpdateIssues, WelcomeSetup,
+};
 use crate::sidebar::{self, SidebarView};
 use crate::snapshot::Snapshot;
 use crate::toasts::Toaster;
@@ -58,6 +61,8 @@ impl Screen {
 pub(crate) enum Action {
     Navigate(Screen),
     AddRepository,
+    EditRepository(String),
+    ShowIssues(String),
     Play,
     SelectProfile(String),
     Open(SecondaryWindow),
@@ -182,6 +187,7 @@ impl Shell {
         }
         let mut sink = EventSink {
             toasts: &mut self.toasts,
+            sheets: &mut self.sheets,
             last_check: &mut self.last_check,
             hidden: self.hidden,
         };
@@ -233,13 +239,22 @@ impl Shell {
             });
         frames::paint_pane_divider(ui.painter(), sidebar.response.rect, def);
         actions.extend(sidebar.inner);
-        egui::CentralPanel::default()
+        let content = egui::CentralPanel::default()
             .frame(
                 Frame::new()
                     .fill(def.palette.window_background)
                     .inner_margin(16),
             )
-            .show(ui, |ui| screens::show(ui, &self.screen));
+            .show(ui, |ui| {
+                let mut screen = ScreenCx {
+                    viewer: &self.viewer,
+                    toasts: &mut self.toasts,
+                    actions: Vec::new(),
+                };
+                screens::show(ui, &self.screen, &mut screen);
+                screen.actions
+            });
+        actions.extend(content.inner);
 
         for action in actions {
             self.apply_with(&ctx, action, &snapshot);
@@ -248,6 +263,14 @@ impl Shell {
             Some(SheetOutcome::QuitConfirmed) => self.save_and_close(&ctx),
             Some(SheetOutcome::QuitWithoutSaving) => self.close(&ctx),
             Some(SheetOutcome::Stay) => self.viewer.start_background(),
+            Some(SheetOutcome::Navigate(screen)) => self.screen = screen,
+            Some(SheetOutcome::Play) => launch::request(
+                &self.viewer,
+                &PlayRequest {
+                    profile: snapshot.active_profile.clone(),
+                    update_first: false,
+                },
+            ),
             None => {}
         }
         self.windows.show(&ctx);
@@ -262,7 +285,15 @@ impl Shell {
     fn apply_with(&mut self, ctx: &egui::Context, action: Action, snapshot: &Snapshot) {
         match action {
             Action::Navigate(screen) => self.screen = screen,
-            Action::AddRepository => self.sheets.push(Sheet::AddRepository),
+            Action::AddRepository => self.sheets.push(Sheet::add_repository(&self.viewer)),
+            Action::EditRepository(name) => {
+                if let Some(sheet) = Sheet::edit_repository(&self.viewer, &name) {
+                    self.sheets.push(sheet);
+                }
+            }
+            Action::ShowIssues(name) => self
+                .sheets
+                .push(Sheet::UpdateIssues(UpdateIssues::new(name))),
             Action::Play => launch::request(
                 &self.viewer,
                 &PlayRequest {
@@ -403,6 +434,7 @@ fn stops_silently(kind: TaskKind) -> bool {
         kind,
         TaskKind::PeriodicCheck
             | TaskKind::CheckRepositories
+            | TaskKind::Compare
             | TaskKind::SelfUpdateCheck
             | TaskKind::PartialTransferTest
             | TaskKind::AddonScan

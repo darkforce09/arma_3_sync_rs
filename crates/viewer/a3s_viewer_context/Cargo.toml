@@ -18,6 +18,7 @@ workspace = true
 all-features = true
 
 [dependencies]
+a3s_addons.workspace = true
 a3s_foundation.workspace = true
 a3s_repo_files.workspace = true
 a3s_sync.workspace = true

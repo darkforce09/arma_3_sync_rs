@@ -1,6 +1,7 @@
-//! Synchronization: automatic updates after a periodic check.
+//! Synchronization: the user's downloads and the automatic updates after a periodic check.
 
 mod auto_update;
+mod download;
 
 use std::fmt;
 use std::sync::Arc;
@@ -15,6 +16,11 @@ use futures::future::BoxFuture;
 use crate::event::AppEvent;
 use crate::tasks::Cx;
 
+pub use self::download::{
+    AddonChange, ChangeKind, DownloadRecord, DownloadResult, Downloads, PlanState, RECENT_LIMIT,
+    SyncPlan, compare, download, forget, pause, retry, stop,
+};
+
 /// Synchronization commands.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
@@ -23,6 +29,41 @@ pub enum Command {
     AutoUpdate {
         /// The repositories.
         repositories: Vec<String>,
+    },
+
+    /// Compares a repository with its local folder ([`compare`]).
+    Compare {
+        /// The repository.
+        repository: String,
+    },
+
+    /// Downloads a repository, limited to the addons of `event` when set ([`download`]).
+    Download {
+        /// The repository.
+        repository: String,
+        /// The event.
+        event: Option<String>,
+    },
+
+    /// Downloads failed files again; every file still to download when `files` is empty
+    /// ([`retry`]).
+    Retry {
+        /// The repository.
+        repository: String,
+        /// Paths below the repository root.
+        files: Vec<String>,
+    },
+
+    /// Pauses a download; the next download resumes it ([`pause`]).
+    Pause {
+        /// The repository.
+        repository: String,
+    },
+
+    /// Stops a download and discards its progress ([`stop`]).
+    Stop {
+        /// The repository.
+        repository: String,
     },
 }
 
@@ -36,18 +77,31 @@ pub enum Event {
         /// The repositories, in name order.
         repositories: Vec<String>,
     },
+
+    /// A download started by the user ended (it was not paused or stopped); the result is also
+    /// first in [`Downloads::recent`].
+    DownloadFinished {
+        /// The repository.
+        repository: String,
+        /// How it ended.
+        result: DownloadResult,
+    },
 }
 
 /// Synchronization state.
 pub struct State {
     /// Where existing addon folders are, for auto-discovery during synchronizations.
     pub addons: Arc<dyn AddonLocator + Send + Sync>,
+
+    /// The user's comparisons, paused downloads and recent results.
+    pub downloads: Downloads,
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
             addons: Arc::new(NoAddons),
+            downloads: Downloads::default(),
         }
     }
 }
@@ -109,5 +163,6 @@ pub fn auto_update_due(cx: &Cx, repositories: &[String]) {
 pub(crate) fn handle(cx: &Cx, command: Command) {
     match command {
         Command::AutoUpdate { repositories } => auto_update_due(cx, &repositories),
+        other => download::handle(cx, other),
     }
 }
