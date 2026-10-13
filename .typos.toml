@@ -24,6 +24,7 @@ hiddden = "hiddden"
 occured = "occured"
 Incompete = "Incompete"
 priviledges = "priviledges"
+anormaly = "anormaly"
 LAF = "LAF"
 Laf = "Laf"
 # Java API names called by the fixture harness.
