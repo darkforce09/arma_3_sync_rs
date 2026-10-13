@@ -6,8 +6,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use a3s_sync::cleanup::{
-    DeleteKind, DeleteRoots, RemovedFiles, copy_directory, delete_extra_files, protected_paths,
-    remove_no_follow,
+    DeleteRoots, RemovedFiles, copy_directory, delete_extra_files, protected_paths,
 };
 use a3s_sync::plan::{plan_repository, select_all_except_root};
 use a3s_sync::{
@@ -94,6 +93,8 @@ fn deletes_files_and_folders() {
 #[test]
 fn links_are_removed_never_followed() {
     use std::os::unix::fs::symlink;
+
+    use a3s_sync::cleanup::{DeleteKind, remove_no_follow};
 
     let base = tempfile::tempdir().expect("tempdir");
     let dest = base.path().join("dest");

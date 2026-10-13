@@ -7,8 +7,10 @@ use tray_icon::{MouseButton, TrayIcon, TrayIconBuilder, TrayIconEvent};
 use super::{ICON_SIZE, MENU};
 use crate::requests::{RequestSender, WindowRequest};
 
-/// The tray icon; dropping it removes the icon.
-pub(super) struct Icon(TrayIcon);
+/// The tray icon. Only held: dropping the handle removes the icon from the tray.
+pub(super) struct Icon {
+    _icon: TrayIcon,
+}
 
 pub(super) fn spawn(requests: RequestSender, rgba: &[u8]) -> Result<Icon, String> {
     let menu = Menu::new();
@@ -40,6 +42,6 @@ pub(super) fn spawn(requests: RequestSender, rgba: &[u8]) -> Result<Icon, String
         .with_tooltip("Arma3Sync")
         .with_icon(icon)
         .build()
-        .map(Icon)
+        .map(|icon| Icon { _icon: icon })
         .map_err(|err| err.to_string())
 }
