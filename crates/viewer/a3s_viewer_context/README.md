@@ -17,6 +17,16 @@ synchronized in the background by `AutoUpdate` tasks when a `Synchronizer` is co
 exit: `prepare_exit`, `save_on_exit` (on failure the UI asks whether to exit anyway and, if the
 user stays, calls `start_background` again), then `shutdown`.
 
+The active profile's addons are scanned by an `AddonScan` task (`profiles::Command::ScanAddons`;
+the UI calls `profiles::ensure_scan` every frame, which asks again whenever the profile, its
+folders or its Arma 3 executable changed) into `profiles::State::scan`: the addon registry, the
+available-addons tree and each addon's size; the launch priority list is brought in line with it.
+`launch::Command::Play` runs a `Launch` task: optionally the downloads of the enabled addon
+groups' repositories (as `Download` tasks), then the launch plan of the active profile
+(`a3s_launch::plan_launch`), the companion apps and the game through the `launch::GameLauncher`
+in `launch::State` (tests put a recording launcher there). Launch problems never stop the game:
+they arrive as `launch::Event`s.
+
 Network access and time go through two seams, `RemoteChecker` and `Clock`, plus `Synchronizer`
 for background downloads; tests use fakes and `ManualClock`. Each domain (`repositories`,
 `sync`, `admin`, `profiles`, `launch`, `tools`) has its own `Command`, `Event` and `State`.

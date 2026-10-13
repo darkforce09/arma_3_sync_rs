@@ -81,6 +81,12 @@ impl SecondaryWindows {
         }
     }
 
+    /// Opens the Settings window on `pane`.
+    pub(crate) fn open_settings(&self, ctx: &egui::Context, pane: SettingsPane) {
+        self.state.lock().settings_pane = pane;
+        self.open(ctx, SecondaryWindow::Settings);
+    }
+
     /// Whether `window` is open.
     pub(crate) fn is_open(&self, window: SecondaryWindow) -> bool {
         self.state.lock().open.contains(&window)

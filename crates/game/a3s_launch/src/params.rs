@@ -232,7 +232,7 @@ fn collect_selected(directory: &TreeDirectory, names: &mut Vec<String>) {
 /// The lowercase addon keys to launch: the selected ones in priority order, then the remaining
 /// selected ones sorted like a Java `TreeSet<String>` (UTF-16 code units).
 // Mirrors service/LaunchService.java:313-341
-fn launch_addon_names(profile: &Profile) -> Vec<String> {
+pub fn launch_addon_names(profile: &Profile) -> Vec<String> {
     let mut selected: Vec<String> = selected_addon_names(&profile.tree)
         .iter()
         .map(|name| name.to_lowercase())

@@ -47,6 +47,7 @@ fn sheets_open_in_order_and_close() {
     let mut fixture = fixture(Start {
         load_warnings: vec!["The profiles could not be read.".to_owned()],
         welcome: Some(WelcomeSetup::default()),
+        ..Start::default()
     });
     let harness = &mut fixture.harness;
     assert_eq!(harness.state().sheet(), Some(SheetKind::Welcome));

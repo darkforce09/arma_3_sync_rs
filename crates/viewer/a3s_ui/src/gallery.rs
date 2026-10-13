@@ -205,6 +205,14 @@ impl CheckTreeModel for SampleTree {
             color
         })
     }
+
+    fn pill(&self, key: &String) -> Option<(String, ProgressTone)> {
+        match key.as_str() {
+            "@ace" => Some(("Ready".to_owned(), ProgressTone::Success)),
+            "@missing" => Some(("Missing".to_owned(), ProgressTone::Danger)),
+            _ => None,
+        }
+    }
 }
 
 /// The gallery state.

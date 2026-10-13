@@ -1,7 +1,7 @@
 //! The content area: one module per screen of the sidebar.
 
 mod activity;
-mod mods;
+pub(crate) mod mods;
 mod publishing;
 mod repository;
 mod servers;
@@ -9,12 +9,14 @@ mod servers;
 use a3s_ui::theme;
 use egui::{Align, Layout, RichText, Ui};
 
+pub(crate) use self::mods::{ModsCx, ModsScreen};
 use crate::shell::Screen;
 
 /// Shows `screen` in the content area.
 pub(crate) fn show(ui: &mut Ui, screen: &Screen) {
     match screen {
-        Screen::Mods => mods::show(ui),
+        // Shown by the shell, which owns its state.
+        Screen::Mods => {}
         Screen::Servers => servers::show(ui),
         Screen::Activity => activity::show(ui),
         Screen::Repository(name) => repository::show(ui, name),

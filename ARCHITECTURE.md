@@ -214,7 +214,10 @@ Wire compatibility is the requirement; these differences are deliberate.
   as empty instead of failing. `Arma3.cfg` keeps every byte outside the removed list and is
   cleaned on every OS where its folder is known (Java: Windows only). On Linux a Windows `.exe`
   starts through Steam (`steam -applaunch 107410 -noLauncher …`) with mod and mission paths in
-  Wine `Z:` form; auto-restart then follows the game in the process list.
+  Wine `Z:` form; auto-restart then follows the game in the process list. The viewer starts the
+  game even when selected addons are missing or updates before playing failed (it says so in a
+  toast; Java refused to launch), and "Update and play" downloads the repositories of the enabled
+  addon groups first.
 * **Updater:** `updater.toml` keys, defaults and dev fallbacks, the `a3s.json`, GitHub and
   `a3s.xml` metadata fields and `.a3s-updater-files` stay Java-compatible; the JVM properties
   `-Da3s.updater.*` become `A3S_UPDATER_*` environment variables. Differences: the default GitHub

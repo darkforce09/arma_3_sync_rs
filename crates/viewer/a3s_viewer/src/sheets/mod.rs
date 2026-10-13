@@ -2,11 +2,13 @@
 
 mod add_repository;
 mod exit;
+mod launcher_preset;
 mod load_warnings;
 mod welcome;
 
 use std::collections::VecDeque;
 
+use a3s_tools::preset::ImportResult;
 use a3s_viewer_context::ViewerContext;
 
 pub(crate) use self::exit::ExitPrompt;
@@ -28,6 +30,9 @@ pub enum SheetKind {
 
     /// Adding a repository.
     AddRepository,
+
+    /// Comparing an Arma 3 Launcher preset with the mods on this computer.
+    LauncherPreset,
 }
 
 /// A sheet and its state.
@@ -36,6 +41,7 @@ pub(crate) enum Sheet {
     LoadWarnings(Vec<String>),
     Exit(ExitPrompt),
     AddRepository,
+    LauncherPreset(Box<ImportResult>),
 }
 
 impl Sheet {
@@ -49,6 +55,7 @@ impl Sheet {
             Self::LoadWarnings(_) => SheetKind::LoadWarnings,
             Self::Exit(_) => SheetKind::ExitConfirmation,
             Self::AddRepository => SheetKind::AddRepository,
+            Self::LauncherPreset(_) => SheetKind::LauncherPreset,
         }
     }
 }
@@ -115,6 +122,7 @@ impl Sheets {
             Sheet::LoadWarnings(warnings) => load_warnings::show(ctx, warnings),
             Sheet::Exit(prompt) => exit::show(ctx, prompt),
             Sheet::AddRepository => add_repository::show(ctx),
+            Sheet::LauncherPreset(result) => launcher_preset::show(ctx, result, viewer, toasts),
         };
         match shown {
             Shown::Open => None,

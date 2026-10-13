@@ -39,7 +39,7 @@ pub(super) fn start(
 /// reconnect: nobody is there to confirm one.
 // Mirrors ui/repository/DownloadPanel.java:1181-1269,
 // ui/repository/workers/AddonsAutoUpdater.java:38-105
-async fn run(
+pub(crate) async fn run(
     task: TaskCtx,
     name: String,
     synchronizer: Arc<dyn Synchronizer>,

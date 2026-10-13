@@ -13,15 +13,30 @@ The window (`Shell`):
 
 - Unified toolbar: screen title, search field (⌘/Ctrl+F), the menu (Check now, Settings, Tools,
   Quit), the profile pop-up and the Play button ("Update and play" while a repository of the
-  active profile's addon groups has updates). Play calls `launch::request`, which only logs.
+  active profile's addon groups has updates). Play starts the context's Launch task (after the
+  updates of the enabled addon groups for "Update and play"); without a usable Arma 3 executable
+  a toast offers "Choose folder…" (Settings > Game). Once the game started, the "game launch"
+  preference hides the window to the tray, minimizes it, quits or does nothing.
 - Source-list sidebar: Library (Mods, Servers, Activity), Repositories with badges from the
   runtime state (changed-addon count when updated, "…" while checking, "!" after a failed
   check) and Add repository, Publishing (repositories with a local build folder), and the last
   check time. Each row routes to a screen under `screens/`.
+- Mods screen: All / Enabled / Load order. The tree shows the active profile's addon groups
+  (from repositories, events and the user) with a status pill per mod (Ready, Update, Not
+  installed with its size, Missing, Enabled twice) and the addons found on this computer by
+  folder; the toolbar search filters it, Space or the checkbox toggles a row and every change is
+  saved at once. "+" adds a group, a mods folder or a group from a repository, "−" removes the
+  selected group or folder (Undo in a toast); double-click renames a user group. "Event preset"
+  enables exactly an event's mods (`screens::mods::use_event_preset`, also for other screens).
+  Load order lists the enabled mods in the order the game loads them; dragging saves the
+  priority list. Dropping an Arma 3 Launcher preset (`.html`) opens a sheet comparing it with
+  the local mods, whose "Enable matched" adds a group with the matched mods.
 - Sheets (`egui::Modal`, one at a time): Welcome on the first start or while Java data waits for
   import (Arma 3 and mods folders through the system folder dialog, the legacy importer),
-  load warnings, quit confirmation (running tasks, failed save), Add repository.
-- Toasts (egui-toast) for the context's events, including an Undo kind that runs a callback.
+  load warnings, quit confirmation (running tasks, failed save), Add repository, Arma 3 Launcher
+  preset comparison.
+- Toasts (egui-toast) for the context's events, including an Undo kind that runs a callback and
+  an action kind whose button asks the window for an action.
 - Settings and the tool windows as separate OS windows (deferred viewports).
 - Tray icon (StatusNotifierItem through `ksni` on Linux, `tray-icon` on Windows and macOS):
   Show, Hide, Check now, Quit. Closing or minimizing hides into the tray when the "minimized"

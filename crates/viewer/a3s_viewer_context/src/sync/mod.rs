@@ -1,6 +1,6 @@
 //! Synchronization: automatic updates after a periodic check.
 
-mod auto_update;
+pub(crate) mod auto_update;
 
 use std::fmt;
 use std::sync::Arc;

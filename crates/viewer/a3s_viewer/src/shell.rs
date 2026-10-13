@@ -8,17 +8,20 @@ use a3s_foundation::error::UserFacing as _;
 use a3s_types::constants::MinimizationType;
 use a3s_ui::frames;
 use a3s_ui::theme;
-use a3s_viewer_context::{Change, Command, TaskKind, ViewerContext, repositories};
+use a3s_viewer_context::{
+    AppEvent, Change, Command, TaskKind, ViewerContext, profiles, repositories,
+};
 use egui::{Frame, Ui, ViewportCommand};
 
 use crate::events::EventSink;
 use crate::launch::{self, PlayRequest};
 use crate::requests::WindowRequest;
+use crate::screens::{ModsCx, ModsScreen};
 use crate::sheets::{ExitPrompt, Sheet, SheetKind, SheetOutcome, Sheets, WelcomeSetup};
 use crate::sidebar::{self, SidebarView};
 use crate::snapshot::Snapshot;
 use crate::toasts::Toaster;
-use crate::windows::{SecondaryWindow, SecondaryWindows};
+use crate::windows::{SecondaryWindow, SecondaryWindows, SettingsPane};
 use crate::{screens, shortcuts, toolbar};
 
 /// A screen of the content area, chosen in the sidebar.
@@ -61,10 +64,12 @@ pub(crate) enum Action {
     Play,
     SelectProfile(String),
     Open(SecondaryWindow),
+    OpenSettings(SettingsPane),
     CheckNow,
     FocusSearch,
     Show,
     Hide,
+    Minimize,
     Quit,
 }
 
@@ -103,6 +108,7 @@ pub struct Shell {
     screen: Screen,
     search: String,
     sheets: Sheets,
+    mods: ModsScreen,
     toasts: Toaster,
     windows: SecondaryWindows,
     requests: mpsc::Receiver<WindowRequest>,
@@ -129,6 +135,7 @@ impl Shell {
             screen: Screen::Mods,
             search: String::new(),
             sheets,
+            mods: ModsScreen::default(),
             toasts: Toaster::default(),
             windows: SecondaryWindows::default(),
             requests: setup.requests,
@@ -180,13 +187,28 @@ impl Shell {
         for request in requests {
             self.apply(ctx, Action::from(request));
         }
+        if let Err(err) = profiles::ensure_scan(&self.viewer) {
+            tracing::warn!("Cannot scan the addons: {err}");
+        }
+        let mut window_actions = Vec::new();
         let mut sink = EventSink {
             toasts: &mut self.toasts,
             last_check: &mut self.last_check,
             hidden: self.hidden,
         };
         for event in self.viewer.poll_events() {
+            if let AppEvent::Launch(event) = &event {
+                window_actions.extend(launch::on_event(
+                    event,
+                    &self.viewer,
+                    sink.toasts,
+                    self.tray_available,
+                ));
+            }
             sink.handle(event);
+        }
+        for action in window_actions {
+            self.apply(ctx, action);
         }
     }
 
@@ -239,7 +261,18 @@ impl Shell {
                     .fill(def.palette.window_background)
                     .inner_margin(16),
             )
-            .show(ui, |ui| screens::show(ui, &self.screen));
+            .show(ui, |ui| match &self.screen {
+                Screen::Mods => self.mods.show(
+                    ui,
+                    &mut ModsCx {
+                        viewer: &self.viewer,
+                        search: &self.search,
+                        toasts: &mut self.toasts,
+                        sheets: &mut self.sheets,
+                    },
+                ),
+                screen => screens::show(ui, screen),
+            });
 
         for action in actions {
             self.apply_with(&ctx, action, &snapshot);
@@ -252,6 +285,9 @@ impl Shell {
         }
         self.windows.show(&ctx);
         self.toasts.show(ui, &self.viewer);
+        for action in self.toasts.take_actions() {
+            self.apply(&ctx, action);
+        }
     }
 
     fn apply(&mut self, ctx: &egui::Context, action: Action) {
@@ -269,6 +305,7 @@ impl Shell {
                     profile: snapshot.active_profile.clone(),
                     update_first: snapshot.profile_has_updates,
                 },
+                &mut self.toasts,
             ),
             Action::SelectProfile(name) => {
                 let selected = self.viewer.mutate(Some(Change::Profile), |state| {
@@ -279,12 +316,14 @@ impl Shell {
                 }
             }
             Action::Open(window) => self.windows.open(ctx, window),
+            Action::OpenSettings(pane) => self.windows.open_settings(ctx, pane),
             Action::CheckNow => self.check_now(snapshot),
             Action::FocusSearch => {
                 ctx.memory_mut(|memory| memory.request_focus(toolbar::search_id()));
             }
             Action::Show => self.show_window(ctx),
             Action::Hide => self.hide_window(ctx),
+            Action::Minimize => ctx.send_viewport_cmd(ViewportCommand::Minimized(true)),
             Action::Quit => self.quit(ctx),
         }
     }
@@ -406,6 +445,7 @@ fn stops_silently(kind: TaskKind) -> bool {
             | TaskKind::SelfUpdateCheck
             | TaskKind::PartialTransferTest
             | TaskKind::AddonScan
+            | TaskKind::Launch
             | TaskKind::RptTail
     )
 }
