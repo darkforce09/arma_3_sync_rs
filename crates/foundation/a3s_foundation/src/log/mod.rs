@@ -35,6 +35,10 @@ pub const LOG_FILTER_VAR: &str = "A3S_LOG";
 /// every FTP control command, `PASS <password>` included. Both layers keep them at `debug`.
 pub const SECRET_TRACE_TARGETS: &[&str] = &["suppaftp"];
 
+/// Graphics-stack targets kept at `error` on stderr by default: their warnings describe the
+/// machine's GPU drivers (e.g. a Vulkan driver the loader skipped), not the application.
+pub const GPU_DRIVER_TARGETS: &[&str] = &["wgpu_hal", "wgpu_core", "naga"];
+
 /// Errors of [`init`].
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -144,10 +148,18 @@ pub fn init(config: &LogConfig) -> Result<LogHandle, Error> {
     Ok(LogHandle { file, log_file })
 }
 
-/// The stderr filter from `A3S_LOG`, else `warn`; an invalid value is returned as an error to
+/// The stderr filter from `A3S_LOG`, else `warn` with [`GPU_DRIVER_TARGETS`] at `error`; an invalid value is returned as an error to
 /// report once the subscriber is installed.
 fn stderr_filter() -> (EnvFilter, Option<Error>) {
-    let default = || EnvFilter::default().add_directive(LevelFilter::WARN.into());
+    let default = || {
+        GPU_DRIVER_TARGETS.iter().fold(
+            EnvFilter::default().add_directive(LevelFilter::WARN.into()),
+            |filter, target| match format!("{target}=error").parse() {
+                Ok(directive) => filter.add_directive(directive),
+                Err(_) => filter,
+            },
+        )
+    };
     match std::env::var(LOG_FILTER_VAR) {
         Ok(value) if !value.trim().is_empty() => match EnvFilter::try_new(&value) {
             Ok(filter) => (filter, None),
