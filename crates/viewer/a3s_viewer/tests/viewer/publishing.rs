@@ -88,14 +88,21 @@ fn open(harness: &mut Harness<'static, Shell>, name: &str) {
     });
 }
 
-fn wait_for_publish(harness: &mut Harness<'static, Shell>) {
+/// Clicks `label` and waits until the publish it starts has finished.
+///
+/// The click reaches the context through the command bus, so for a moment the previous run is
+/// still stored and no Publish task is registered. The new task replaces the run once it starts
+/// and is registered until it ends, so "the run changed and no task runs" means it finished.
+fn click_and_wait_for_publish(harness: &mut Harness<'static, Shell>, label: &str) {
+    let previous = publishing(harness.state(), NAME).run;
+    harness.get_by_label(label).click();
     harness.step();
     wait_until(harness, "the publish", |shell| {
         shell
             .viewer()
             .is_running(&TaskKey::repository(TaskKind::Publish, NAME))
             .is_none()
-            && publishing(shell, NAME).run.is_some()
+            && publishing(shell, NAME).run != previous
     });
 }
 
@@ -124,8 +131,7 @@ fn publish_builds_verifies_and_uploads() {
     assert_eq!(local.changed_files, 3);
     assert_eq!(local.mods, ["@Mod_A", "@Mod_B"]);
 
-    harness.get_by_label("Publish revision 1").click();
-    wait_for_publish(harness);
+    click_and_wait_for_publish(harness, "Publish revision 1");
 
     assert_eq!(statuses(harness.state()), vec![StepStatus::Done; 4]);
     let state = publishing(harness.state(), NAME);
@@ -162,8 +168,7 @@ fn a_failed_build_offers_retry_from_the_build() {
     });
     let harness = &mut fixture.harness;
     open(harness, NAME);
-    harness.get_by_label("Publish revision 1").click();
-    wait_for_publish(harness);
+    click_and_wait_for_publish(harness, "Publish revision 1");
 
     let failed = statuses(harness.state());
     assert_eq!(failed[0], StepStatus::Done);
@@ -171,8 +176,7 @@ fn a_failed_build_offers_retry_from_the_build() {
     assert_eq!(failed[2], StepStatus::Pending);
 
     std::fs::remove_file(&broken).expect("remove");
-    harness.get_by_label("Retry").click();
-    wait_for_publish(harness);
+    click_and_wait_for_publish(harness, "Retry");
     assert_eq!(statuses(harness.state()), vec![StepStatus::Done; 4]);
     assert!(server.base.join(".a3s/serverinfo").is_file());
 }
@@ -187,8 +191,7 @@ fn events_are_edited_saved_undone_and_uploaded() {
     });
     let harness = &mut fixture.harness;
     open(harness, NAME);
-    harness.get_by_label("Publish revision 1").click();
-    wait_for_publish(harness);
+    click_and_wait_for_publish(harness, "Publish revision 1");
 
     harness.get_by_label("Events").click();
     harness.run();
