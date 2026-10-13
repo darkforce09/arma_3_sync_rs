@@ -39,14 +39,12 @@ A crate may depend on crates from its own group or a group listed above it in th
 | **viewer** | | |
 | `a3s_ui` | Theme tokens (port of `ui/theme`), Geist fonts, Phosphor icon font, widgets. | `ui/theme`, `ui/components` |
 | `a3s_viewer_context` | Application state, command bus, event channel, background tasks with cancellation and coalesced progress, periodic repository check and automatic updates. No UI code. | `ui/Facade`, `controller/*`, `ui/main/tasks/*`, background parts of `ui/main/MainPanel` and `ui/repository/dialogs/progress/ProgressSynchronizationDialog` |
+| `a3s_viewer` | The desktop window: eframe application, unified toolbar with the Play button, source-list sidebar, screens, sheets, toasts, Settings and tool windows, tray icon, single instance. | `ui/main/MainPanel`, `ui/main/LaunchPanel`, `ui/main/dialogs/WelcomeDialog`, window start of `main/ArmA3Sync` |
 | **application** | | |
-| `arma3sync` | The `arma3sync` binary: command line, interactive console, build information. | `main/ArmA3Sync`, `console/*`, `version.properties` |
+| `arma3sync` | The `arma3sync` binary: command line, interactive console, window start, build information. | `main/ArmA3Sync`, `console/*`, `version.properties` |
 | **development** | | |
 | `a3s_dev_tools` | Java fixture harness wrapper: fixture regeneration, Java cross-checks. Dev-dependency only. | – |
 | `a3s_test_servers` | In-process FTP(S), SFTP, WebDAV, TCP relay and SOCKS servers for the network crates' tests. Dev-dependency only. | – |
-
-Planned parts (the viewer application) get a crate when its ttm ticket starts, inside the
-group that fits.
 
 ## Repository wire format
 
@@ -271,6 +269,10 @@ Wire compatibility is the requirement; these differences are deliberate.
   failed save on exit; a periodic check interrupted by exit skips its follow-up. Automatic
   updates move extra local files to the Trash. Progress events are coalesced per task, and an
   event emitted on the UI thread is seen at the next poll (Java runs it inline).
+* **Window** (local only): closing the main window hides it into the tray when the
+  "minimized" preference is Tray (Java always quits on close); `-run` starts hidden in the tray,
+  or shown when the desktop has no tray. Quitting asks first only while downloads, builds or
+  uploads run. The theme follows the system appearance.
 * **Insecure TLS override** is the environment variable `A3S_ALLOW_INSECURE_SSL=1` instead of
   Java's `-Da3s.allowInsecureSsl=true`.
 * **Game tools:** each bikey extraction has its own cancel token (Java's flag is never reset, so

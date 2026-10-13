@@ -16,8 +16,9 @@ intentional differences from Java.
 Prerequisites:
 
 * Rust: the version pinned in `rust-toolchain.toml` is installed automatically by `rustup`.
-* Linux: the egui/eframe system libraries (`libxkbcommon`, `libgtk-3` for file dialogs and tray,
-  `libxdo` for the tray on X11) and Mesa's lavapipe Vulkan driver for the UI snapshot tests.
+* Linux: the egui/eframe system library `libxkbcommon` and Mesa's lavapipe Vulkan driver for the
+  UI snapshot tests. Folder dialogs use the XDG desktop portal and the tray icon a
+  StatusNotifierItem over D-Bus, so the window needs no GTK.
 * Optional, for the Java cross-checks and fixture regeneration: JDK 25 (`scripts/java_env.sh`) and
   a checkout of the Java version in `java_version/Arma3Sync` (see
   [`tools/java_fixture_harness`](tools/java_fixture_harness/README.md)).

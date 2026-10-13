@@ -1,0 +1,97 @@
+//! The unified toolbar: screen title, search field, the menu, the profile pop-up and the Play
+//! button.
+
+use a3s_ui::frames;
+use a3s_ui::icon::icons;
+use a3s_ui::widgets::{popup_button, primary_button};
+use egui::{Align, Button, Id, Layout, RichText, TextEdit, Ui};
+
+use crate::shell::Action;
+use crate::shortcuts;
+use crate::snapshot::Snapshot;
+use crate::windows::SecondaryWindow;
+
+/// The id of the search field, for the focus shortcut.
+pub(crate) fn search_id() -> Id {
+    Id::new("a3s_viewer::search")
+}
+
+/// The Play button's label: it says whether updates come first.
+pub(crate) fn play_label(update_first: bool) -> String {
+    let text = if update_first {
+        "Update and play"
+    } else {
+        "Play"
+    };
+    format!("{} {text}", icons::PLAY)
+}
+
+/// Shows the toolbar; returns the actions the user took.
+pub(crate) fn show(
+    ui: &mut Ui,
+    title: &str,
+    snapshot: &Snapshot,
+    search: &mut String,
+) -> Vec<Action> {
+    let mut actions = Vec::new();
+    frames::toolbar(ui, |ui| {
+        ui.add_space(4.0);
+        ui.label(RichText::new(title).strong().size(15.0));
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            if primary_button(ui, &play_label(snapshot.profile_has_updates)).clicked() {
+                actions.push(Action::Play);
+            }
+            let mut profile = snapshot.active_profile.clone();
+            let options: Vec<(String, &str)> = snapshot
+                .profiles
+                .iter()
+                .map(|name| (name.clone(), name.as_str()))
+                .collect();
+            if popup_button(ui, "a3s_viewer::profile", &mut profile, &options)
+                .on_hover_text("Profile")
+                .changed()
+            {
+                actions.push(Action::SelectProfile(profile));
+            }
+            menu(ui, &mut actions);
+            ui.add(
+                TextEdit::singleline(search)
+                    .id(search_id())
+                    .hint_text(format!("{} Search", icons::MAGNIFYING_GLASS))
+                    .desired_width(200.0),
+            );
+        });
+    });
+    actions
+}
+
+fn menu(ui: &mut Ui, actions: &mut Vec<Action>) {
+    let ctx = ui.ctx().clone();
+    ui.menu_button(RichText::new(icons::DOTS_THREE_CIRCLE).size(18.0), |ui| {
+        if ui
+            .add(Button::new("Check now").shortcut_text(ctx.format_shortcut(&shortcuts::CHECK_NOW)))
+            .clicked()
+        {
+            actions.push(Action::CheckNow);
+        }
+        if ui
+            .add(Button::new("Settings…").shortcut_text(ctx.format_shortcut(&shortcuts::SETTINGS)))
+            .clicked()
+        {
+            actions.push(Action::Open(SecondaryWindow::Settings));
+        }
+        ui.menu_button("Tools", |ui| {
+            for tool in SecondaryWindow::TOOLS {
+                if ui.button(tool.title()).clicked() {
+                    actions.push(Action::Open(tool));
+                }
+            }
+        });
+        ui.separator();
+        if ui.button("Quit").clicked() {
+            actions.push(Action::Quit);
+        }
+    })
+    .response
+    .on_hover_text("More");
+}

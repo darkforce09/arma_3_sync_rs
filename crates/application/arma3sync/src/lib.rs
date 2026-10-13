@@ -1,7 +1,7 @@
 //! Arma3Sync: Arma 3 mod repository synchronization and launcher.
 //!
-//! The library half of the `arma3sync` binary: the command line ([`run`]), the interactive
-//! console and the build information baked into the binary.
+//! The library half of the `arma3sync` binary: the command line ([`run`]), the window
+//! (`a3s_viewer`), the interactive console and the build information baked into the binary.
 
 /// Writes one line to standard output; a closed output is ignored.
 macro_rules! say {
@@ -41,7 +41,8 @@ pub const EXIT_USAGE: u8 = 2;
 /// Entry point of the `arma3sync` binary.
 ///
 /// The elevated updater subcommand is handled before anything else; then the arguments are
-/// parsed, and a command runs with the application directories, logging and client data set up.
+/// parsed, and a command or the window runs with the application directories and logging set
+/// up.
 pub fn run() -> ExitCode {
     let args: Vec<OsString> = std::env::args_os().skip(1).collect();
     if args
@@ -53,14 +54,7 @@ pub fn run() -> ExitCode {
     }
     match cli::parse(&args) {
         cli::Invocation::Run { debug, command } => ExitCode::from(app::run(debug, command)),
-        cli::Invocation::Gui => {
-            // Mirrors main/ArmA3Sync.java:179-181
-            say_error!(
-                "The Arma3Sync window is not available yet; use a command.\n\n{}",
-                cli::help()
-            );
-            ExitCode::from(EXIT_FAILURE)
-        }
+        cli::Invocation::Gui { debug, window } => ExitCode::from(app::run_window(debug, window)),
         cli::Invocation::Info(text) => {
             say!("{}", text.trim_end());
             ExitCode::from(EXIT_SUCCESS)

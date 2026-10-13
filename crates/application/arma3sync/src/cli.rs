@@ -13,14 +13,28 @@ pub(crate) enum Invocation {
     /// Run a command; `debug` enables the diagnostic log file.
     Run { debug: bool, command: Command },
 
-    /// The graphical client (no arguments, `-dev`, `-run`, `-unlock`).
-    Gui,
+    /// The window (no command, `-dev`, `-run`, `-unlock`); `debug` enables the diagnostic log
+    /// file.
+    Gui { debug: bool, window: WindowMode },
 
     /// Help or version text was requested; print it and succeed.
     Info(String),
 
     /// The arguments are invalid; print the text and fail with a usage error.
     Usage(String),
+}
+
+/// How the window starts, from the Java client's window flags.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct WindowMode {
+    /// `-dev`: development mode.
+    pub dev: bool,
+
+    /// `-run`: started with the operating system, hidden in the tray.
+    pub run: bool,
+
+    /// Every mode but `-unlock` takes the single-instance lock.
+    pub single_instance: bool,
 }
 
 /// The commands of the command line.
@@ -104,7 +118,9 @@ Legacy flags (case-insensitive):
   -EXTRACT SOURCE TARGET          extract *.bikey files
   -SYNC NAME FOLDER true|false    synchronize with repository (true: exact content matching)
   -UPDATE                         check for ArmA3Sync updates
-  -DEBUG                          enable diagnostic logging";
+  -DEBUG                          enable diagnostic logging
+  -DEV, -RUN, -DEV -RUN, -UNLOCK  open the window in development mode, hidden in the tray,
+                                  or without the single-instance lock";
 
 /// The full help text.
 pub(crate) fn help() -> String {
@@ -131,7 +147,13 @@ pub(crate) fn parse(args: &[OsString]) -> Invocation {
                 debug: cli.debug || legacy_debug,
                 command,
             },
-            None => Invocation::Gui,
+            None => Invocation::Gui {
+                debug: cli.debug || legacy_debug,
+                window: WindowMode {
+                    single_instance: true,
+                    ..WindowMode::default()
+                },
+            },
         },
         Err(err) if err.use_stderr() => Invocation::Usage(err.render().to_string()),
         Err(err) => Invocation::Info(err.render().to_string()),
@@ -154,9 +176,20 @@ fn parse_legacy(args: &[&OsString], debug: bool) -> Option<Invocation> {
     let value = |index: usize| args[index].to_string_lossy().trim().to_owned();
     let flags: Vec<&str> = flags.iter().map(String::as_str).collect();
     let run = |command| Invocation::Run { debug, command };
+    let window = |dev, run, single_instance| Invocation::Gui {
+        debug,
+        window: WindowMode {
+            dev,
+            run,
+            single_instance,
+        },
+    };
     Some(match flags.as_slice() {
         [] => return None,
-        ["-dev" | "-run" | "-unlock"] | ["-dev", "-run"] => Invocation::Gui,
+        ["-dev"] => window(true, false, true),
+        ["-run"] => window(false, true, true),
+        ["-unlock"] => window(false, false, false),
+        ["-dev", "-run"] => window(true, true, true),
         ["-console"] => run(Command::Console { dev: false }),
         ["-dev", "-console"] => run(Command::Console { dev: true }),
         ["-build", _] => run(Command::Build {

@@ -1,6 +1,6 @@
 [package]
 name = "arma3sync"
-description = "The `arma3sync` binary: command line interface and interactive console."
+description = "The `arma3sync` binary: window, command line interface and interactive console."
 authors.workspace = true
 edition.workspace = true
 homepage.workspace = true
@@ -20,12 +20,14 @@ all-features = true
 [dependencies]
 a3s_admin.workspace = true
 a3s_foundation.workspace = true
+a3s_platform.workspace = true
 a3s_repo_files.workspace = true
 a3s_sync.workspace = true
 a3s_tools.workspace = true
 a3s_transport.workspace = true
 a3s_types.workspace = true
 a3s_updater.workspace = true
+a3s_viewer.workspace = true
 chrono.workspace = true
 clap.workspace = true
 parking_lot.workspace = true

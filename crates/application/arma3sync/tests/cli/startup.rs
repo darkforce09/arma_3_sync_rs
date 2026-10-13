@@ -5,8 +5,10 @@ use crate::support::{Env, assert_exit, closed_port};
 /// File name of the diagnostic log.
 const LOG_FILE: &str = "logs/arma3sync-rs.log";
 
+/// Without a display the window modes fail before they touch the data.
+#[cfg(target_os = "linux")]
 #[test]
-fn the_window_modes_fail_without_touching_the_data() {
+fn the_window_modes_need_a_display() {
     let env = Env::new();
     for args in [
         &[][..],
@@ -16,7 +18,14 @@ fn the_window_modes_fail_without_touching_the_data() {
         &["-dev", "-run"],
         &["--debug"],
     ] {
-        assert_exit(&env.run(args), 1);
+        let output = env
+            .command()
+            .env_remove("DISPLAY")
+            .env_remove("WAYLAND_DISPLAY")
+            .args(args)
+            .output()
+            .expect("run arma3sync");
+        assert_exit(&output, 1);
     }
     assert!(!env.dirs.config_dir().exists());
     assert!(!env.dirs.data_dir().exists());

@@ -1,4 +1,5 @@
-//! Start-up of a command: directories, logging, update leftovers and client data.
+//! Start-up of a command or the window: directories, logging, update leftovers and client
+//! data.
 
 use std::sync::Arc;
 
@@ -9,7 +10,10 @@ use a3s_repo_files::local::LocalStore;
 use a3s_repo_files::services::ClientData;
 use parking_lot::Mutex;
 
-use crate::cli::Command;
+use a3s_platform::single_instance::MSG_ALREADY_RUNNING;
+use a3s_viewer::{Exit, RunOptions};
+
+use crate::cli::{Command, WindowMode};
 use crate::{EXIT_FAILURE, EXIT_SUCCESS, build_info, commands, console};
 
 /// Environment variable that enables the diagnostic log when it equals `true` (ignoring case).
@@ -36,26 +40,9 @@ pub(crate) type CommandResult = Result<(), Failed>;
 /// Sets up the application and runs `command`; returns the process exit code.
 // Mirrors main/ArmA3Sync.java:36-61,105-116
 pub(crate) fn run(debug_flag: bool, command: Command) -> u8 {
-    let debug = debug_flag
-        || std::env::var(DEBUG_VAR).is_ok_and(|value| value.eq_ignore_ascii_case("true"));
-    let dirs = match resolve_dirs() {
-        Ok(dirs) => dirs,
-        Err(message) => {
-            init_logging(debug, None);
-            say_error!("{message}");
-            return EXIT_FAILURE;
-        }
+    let Some((dirs, _log)) = start(debug_flag) else {
+        return EXIT_FAILURE;
     };
-    let _log = init_logging(debug, Some(&dirs));
-    tracing::info!("{}", build_info::installed_version_line());
-    tracing::info!(
-        "Build {} ({}, {})",
-        build_info::GIT_HASH,
-        build_info::TARGET,
-        build_info::PROFILE
-    );
-    clean_update_leftovers();
-
     let runtime = match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .thread_name("a3s-runtime")
@@ -76,6 +63,62 @@ pub(crate) fn run(debug_flag: bool, command: Command) -> u8 {
         runtime,
     };
     dispatch(&app, command)
+}
+
+/// Opens the window; returns the process exit code.
+// Mirrors main/ArmA3Sync.java:194-265
+pub(crate) fn run_window(debug_flag: bool, window: WindowMode) -> u8 {
+    if !a3s_viewer::display_available() {
+        say_error!("Can't start Arma3Sync. GUI is missing.");
+        return EXIT_FAILURE;
+    }
+    let Some((dirs, _log)) = start(debug_flag) else {
+        return EXIT_FAILURE;
+    };
+    let options = RunOptions {
+        dirs,
+        dev_mode: window.dev,
+        run_mode: window.run,
+        single_instance: window.single_instance,
+    };
+    match a3s_viewer::run(&options) {
+        Ok(Exit::Closed) => EXIT_SUCCESS,
+        Ok(Exit::AlreadyRunning) => {
+            say_error!("{MSG_ALREADY_RUNNING}");
+            EXIT_FAILURE
+        }
+        Err(err) => {
+            tracing::error!("{err}");
+            say_error!("{err}");
+            EXIT_FAILURE
+        }
+    }
+}
+
+/// The start-up shared by every mode: directories, logging (the diagnostic log file with
+/// `debug_flag` or `A3S_DEBUG=true`), the version lines and the update leftovers. `None` when
+/// the directories cannot be created; the reason was printed.
+fn start(debug_flag: bool) -> Option<(AppDirs, Option<log::LogHandle>)> {
+    let debug = debug_flag
+        || std::env::var(DEBUG_VAR).is_ok_and(|value| value.eq_ignore_ascii_case("true"));
+    let dirs = match resolve_dirs() {
+        Ok(dirs) => dirs,
+        Err(message) => {
+            init_logging(debug, None);
+            say_error!("{message}");
+            return None;
+        }
+    };
+    let log = init_logging(debug, Some(&dirs));
+    tracing::info!("{}", build_info::installed_version_line());
+    tracing::info!(
+        "Build {} ({}, {})",
+        build_info::GIT_HASH,
+        build_info::TARGET,
+        build_info::PROFILE
+    );
+    clean_update_leftovers();
+    Some((dirs, log))
 }
 
 fn dispatch(app: &App, command: Command) -> u8 {
