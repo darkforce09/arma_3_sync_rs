@@ -13,10 +13,11 @@ use a3s_viewer_context::{
 };
 use egui::{Frame, Ui, ViewportCommand};
 
+use crate::desktop::Desktop;
 use crate::events::EventSink;
 use crate::launch::{self, PlayRequest};
 use crate::requests::WindowRequest;
-use crate::screens::{ModsScreen, ScreenCx};
+use crate::screens::{ScreenCx, ScreenStates};
 use crate::sheets::{
     ExitPrompt, Sheet, SheetKind, SheetOutcome, Sheets, UpdateIssues, WelcomeSetup,
 };
@@ -112,9 +113,9 @@ pub struct Shell {
     screen: Screen,
     search: String,
     sheets: Sheets,
-    mods: ModsScreen,
     toasts: Toaster,
     windows: SecondaryWindows,
+    screens: ScreenStates,
     requests: mpsc::Receiver<WindowRequest>,
     tray_available: bool,
     hidden: bool,
@@ -139,9 +140,9 @@ impl Shell {
             screen: Screen::Mods,
             search: String::new(),
             sheets,
-            mods: ModsScreen::default(),
             toasts: Toaster::default(),
-            windows: SecondaryWindows::default(),
+            windows: SecondaryWindows::new(Desktop::system(None)),
+            screens: ScreenStates::default(),
             requests: setup.requests,
             tray_available: false,
             hidden: setup.hidden,
@@ -157,6 +158,12 @@ impl Shell {
         if !available && self.hidden {
             self.show_window(ctx);
         }
+    }
+
+    /// The desktop the Settings window integrates with (autostart, shortcuts, the Arma 3 user
+    /// folder, the logs); the real one by default.
+    pub fn set_desktop(&mut self, desktop: Desktop) {
+        self.windows.set_desktop(desktop);
     }
 
     /// The context the window shows.
@@ -177,6 +184,11 @@ impl Shell {
     /// Whether the secondary window `window` is open.
     pub fn is_open(&self, window: SecondaryWindow) -> bool {
         self.windows.is_open(window)
+    }
+
+    /// The pane the Settings window shows, when it is open.
+    pub fn settings_pane(&self) -> Option<SettingsPane> {
+        self.windows.settings_pane()
     }
 
     /// The window's toasts.
@@ -278,7 +290,7 @@ impl Shell {
                     sheets: &mut self.sheets,
                     actions: Vec::new(),
                 };
-                screens::show(ui, &self.screen, &mut self.mods, &mut screen);
+                screens::show(ui, &self.screen, &mut self.screens, &mut screen);
                 screen.actions
             });
         actions.extend(content.inner);
@@ -301,7 +313,7 @@ impl Shell {
             ),
             None => {}
         }
-        self.windows.show(&ctx);
+        self.windows.show(&ctx, &self.viewer);
         self.toasts.show(ui, &self.viewer);
         for action in self.toasts.take_actions() {
             self.apply(&ctx, action);

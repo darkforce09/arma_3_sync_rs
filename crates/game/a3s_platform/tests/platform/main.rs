@@ -2,6 +2,7 @@
 
 mod autostart;
 mod detect;
+mod folders;
 mod process;
 mod registry;
 mod shortcut;

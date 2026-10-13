@@ -4,6 +4,7 @@ pub(crate) mod add_repository;
 mod exit;
 mod launcher_preset;
 mod load_warnings;
+pub(crate) mod server;
 mod update_issues;
 mod welcome;
 
@@ -14,6 +15,7 @@ use a3s_viewer_context::ViewerContext;
 
 use self::add_repository::{Mode, RepositoryForm};
 pub(crate) use self::exit::ExitPrompt;
+use self::server::ServerSheet;
 pub(crate) use self::update_issues::UpdateIssues;
 use self::welcome::Welcome;
 pub use self::welcome::WelcomeSetup;
@@ -43,6 +45,12 @@ pub enum SheetKind {
 
     /// Comparing an Arma 3 Launcher preset with the mods on this computer.
     LauncherPreset,
+
+    /// Adding a favourite server.
+    AddServer,
+
+    /// Editing a favourite server.
+    EditServer,
 }
 
 /// A sheet and its state.
@@ -53,6 +61,7 @@ pub(crate) enum Sheet {
     Repository(Box<RepositoryForm>),
     UpdateIssues(UpdateIssues),
     LauncherPreset(Box<ImportResult>),
+    Server(Box<ServerSheet>),
 }
 
 impl Sheet {
@@ -80,6 +89,8 @@ impl Sheet {
             },
             Self::UpdateIssues(_) => SheetKind::UpdateIssues,
             Self::LauncherPreset(_) => SheetKind::LauncherPreset,
+            Self::Server(sheet) if sheet.adds() => SheetKind::AddServer,
+            Self::Server(_) => SheetKind::EditServer,
         }
     }
 }
@@ -154,6 +165,7 @@ impl Sheets {
             Sheet::Repository(form) => form.show(ctx, viewer, toasts),
             Sheet::UpdateIssues(issues) => issues.show(ctx, viewer, toasts),
             Sheet::LauncherPreset(result) => launcher_preset::show(ctx, result, viewer, toasts),
+            Sheet::Server(sheet) => sheet.show(ctx, viewer, toasts),
         };
         match shown {
             Shown::Open => None,

@@ -118,6 +118,26 @@ pub struct LauncherOptions {
     pub nologs: bool,
     pub arma3_exe_path: Option<String>,
     pub steam_exe_path: Option<String>,
+
+    /// How the game starts on Linux. Not part of the Java class, which always runs the
+    /// executable; the legacy importer leaves it at the default.
+    pub game_start: GameStart,
+}
+
+/// How the game starts on Linux.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GameStart {
+    /// Through Steam for a Windows `.exe` (the game then runs under Proton), the executable
+    /// itself otherwise.
+    #[default]
+    Automatic,
+
+    /// Always through Steam.
+    Steam,
+
+    /// The executable itself.
+    Executable,
 }
 
 /// A program started together with the game

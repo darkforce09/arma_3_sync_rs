@@ -148,7 +148,7 @@ pub fn set_status(viewer: &ViewerContext, name: &str, status: RepositoryStatus) 
         .ok();
 }
 
-fn repository(name: &str) -> Repository {
+pub fn repository(name: &str) -> Repository {
     Repository::new(
         name,
         Protocol::new(
@@ -163,7 +163,7 @@ fn repository(name: &str) -> Repository {
 }
 
 /// A profile whose tree holds the addon group made from `repository`.
-fn profile_with_group(name: &str, repository: &str) -> Profile {
+pub fn profile_with_group(name: &str, repository: &str) -> Profile {
     let mut profile = Profile::new(name);
     let mut group = TreeDirectory::new(repository);
     group.modset_type = Some(ModsetType::Repository);

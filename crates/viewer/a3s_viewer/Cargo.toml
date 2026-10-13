@@ -28,6 +28,7 @@ a3s_tools.workspace = true
 a3s_transport.workspace = true
 a3s_types.workspace = true
 a3s_ui.workspace = true
+a3s_updater.workspace = true
 a3s_viewer_context.workspace = true
 chrono.workspace = true
 eframe = { workspace = true, features = ["accesskit", "default_fonts", "wgpu", "wayland", "x11"] }

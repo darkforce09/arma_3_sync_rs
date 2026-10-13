@@ -604,6 +604,7 @@ fn launcher_options() -> LauncherOptions {
         nologs: true,
         arma3_exe_path: Some("C:\\Arma 3\\arma3_x64.exe".to_owned()),
         steam_exe_path: Some("C:\\Steam\\steam.exe".to_owned()),
+        game_start: Default::default(),
     }
 }
 

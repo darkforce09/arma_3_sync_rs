@@ -275,6 +275,7 @@ dependencies = [
  "a3s_transport",
  "a3s_types",
  "a3s_ui",
+ "a3s_updater",
  "a3s_viewer_context",
  "chrono",
  "eframe",

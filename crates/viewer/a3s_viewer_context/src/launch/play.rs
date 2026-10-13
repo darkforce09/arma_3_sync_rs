@@ -104,7 +104,6 @@ async fn run(task: TaskCtx, update_first: bool) -> Result<(), TaskError> {
         profile: Some(&profile),
         configuration: &configuration,
         registry: &scan.registry,
-        linux_mode: environment.linux_mode,
         steam: environment.steam.clone(),
         arma3_documents_dir: environment.arma3_documents_dir.clone(),
         restart_guard: RestartGuard::default(),

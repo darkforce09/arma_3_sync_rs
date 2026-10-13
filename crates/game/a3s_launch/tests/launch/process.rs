@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use a3s_addons::AddonRegistry;
 use a3s_foundation::paths::Os;
 use a3s_launch::cfg::ARMA3_CFG;
-use a3s_launch::command::{CommandSpec, LaunchMethod, LaunchPlan, LinuxLaunchMode};
+use a3s_launch::command::{CommandSpec, LaunchMethod, LaunchPlan};
 use a3s_launch::params::{ModPathStyle, RunParameterInput, determine_run_parameters};
 use a3s_launch::{
     Arma3LaunchRequest, EventSink, LaunchError, LaunchEvent, LaunchHandle, LaunchTarget,
@@ -133,7 +133,6 @@ impl Launch {
             profile: Some(&self.profile),
             configuration: &self.configuration,
             registry: &self.registry,
-            linux_mode: LinuxLaunchMode::Auto,
             steam: self.steam.clone(),
             arma3_documents_dir: Some(self.documents.clone()),
             restart_guard: self.guard,

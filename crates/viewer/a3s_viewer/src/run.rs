@@ -12,10 +12,12 @@ use a3s_repo_files::local::LocalStore;
 use a3s_repo_files::services::{ClientData, LoadOutcome};
 use a3s_viewer_context::{ContextError, ContextOptions, RepaintHook, ViewerContext};
 
+use crate::desktop::Desktop;
 use crate::requests::{self, RequestSender, WindowRequest};
 use crate::sheets::WelcomeSetup;
 use crate::shell::{Shell, ShellSetup};
 use crate::tray::Tray;
+use crate::windows::Appearance;
 
 /// The window title and the name eframe knows the application by.
 const APP_NAME: &str = "Arma3Sync";
@@ -105,8 +107,10 @@ pub fn run(options: &RunOptions) -> Result<Exit, ViewerError> {
 
     let store = Arc::new(LocalStore::new(&options.dirs));
     let welcome = welcome_setup(&store);
+    let log_dir = options.dirs.log_dir();
     let LoadOutcome { data, warnings } = ClientData::load(store);
     let size = saved_size(&data);
+    let appearance = Appearance::from_look(data.preferences().look_and_feel);
     let repaint_ctx = ctx.clone();
     let viewer = ViewerContext::new(
         data,
@@ -146,9 +150,10 @@ pub fn run(options: &RunOptions) -> Result<Exit, ViewerError> {
         Box::new(move |creation| {
             let ctx = &creation.egui_ctx;
             a3s_ui::install(ctx);
-            ctx.set_theme(egui::ThemePreference::System);
+            ctx.set_theme(appearance.theme());
             let tray = Tray::spawn(&requests);
             let mut shell = Shell::new(viewer, setup);
+            shell.set_desktop(Desktop::system(Some(log_dir)));
             shell.set_tray_available(ctx, tray.is_some());
             Ok(Box::new(ViewerApp { shell, _tray: tray }))
         }),

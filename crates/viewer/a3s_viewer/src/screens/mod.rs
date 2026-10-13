@@ -12,10 +12,18 @@ use a3s_ui::theme;
 use a3s_viewer_context::ViewerContext;
 use egui::{Align, Layout, RichText, Ui};
 
-pub(crate) use self::mods::ModsScreen;
+use self::mods::ModsScreen;
+use self::servers::ServersScreen;
 use crate::sheets::Sheets;
 use crate::shell::{Action, Screen};
 use crate::toasts::Toaster;
+
+/// The state screens keep between frames, kept by the window.
+#[derive(Default)]
+pub(crate) struct ScreenStates {
+    mods: ModsScreen,
+    servers: ServersScreen,
+}
 
 /// What a screen works with besides its `Ui` and its own state.
 pub(crate) struct ScreenCx<'a> {
@@ -30,11 +38,11 @@ pub(crate) struct ScreenCx<'a> {
     pub(crate) actions: Vec<Action>,
 }
 
-/// Shows `screen` in the content area; `mods` is the Mods screen's state, kept by the window.
-pub(crate) fn show(ui: &mut Ui, screen: &Screen, mods: &mut ModsScreen, cx: &mut ScreenCx<'_>) {
+/// Shows `screen` in the content area.
+pub(crate) fn show(ui: &mut Ui, screen: &Screen, states: &mut ScreenStates, cx: &mut ScreenCx<'_>) {
     match screen {
-        Screen::Mods => mods.show(ui, cx),
-        Screen::Servers => servers::show(ui),
+        Screen::Mods => states.mods.show(ui, cx),
+        Screen::Servers => states.servers.show(ui, cx),
         Screen::Activity => activity::show(ui, cx),
         Screen::Repository(name) => repository::show(ui, name, cx),
         Screen::Publishing(name) => publishing::show(ui, name),

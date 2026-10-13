@@ -4,22 +4,19 @@ use std::path::PathBuf;
 
 use a3s_foundation::paths::{Os, PlatformEnv};
 use a3s_launch::{
-    EventSink, LaunchError, LaunchHandle, LaunchPlan, LinuxLaunchMode, RunOptions, SteamCommand,
-    find_steam_command, launch_external_applications, spawn_plan,
+    EventSink, LaunchError, LaunchHandle, LaunchPlan, RunOptions, SteamCommand, find_steam_command,
+    launch_external_applications, spawn_plan,
 };
 use a3s_platform::folders::{SystemFolders, arma3_documents_dir};
 use a3s_platform::process::SystemProcessProbe;
 use a3s_platform::registry::SystemRegistry;
 use a3s_types::local::ExternalApplication;
 
-/// Where and how the game runs on this computer.
+/// Where the game runs on this computer.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LaunchEnvironment {
     /// The operating system.
     pub os: Os,
-
-    /// How the game starts on Linux.
-    pub linux_mode: LinuxLaunchMode,
 
     /// The Steam client, if found.
     pub steam: Option<SteamCommand>,
@@ -55,7 +52,6 @@ impl GameLauncher for SystemLauncher {
         let env = PlatformEnv::current().ok();
         LaunchEnvironment {
             os,
-            linux_mode: LinuxLaunchMode::Auto,
             steam: env.as_ref().and_then(find_steam_command),
             arma3_documents_dir: env
                 .as_ref()

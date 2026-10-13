@@ -12,7 +12,8 @@ button does. This is the one crate that spawns the game.
 - `command`, `elevation`, `steam`: pure planning of the exact command for every OS: BattlEye's
   `2 1` prefix, UAC elevation through PowerShell `-EncodedCommand`, `.bat` through
   `cmd /C start ""`, `.sh` through bash, and on Linux the Steam/Proton launch
-  (`steam -applaunch 107410 -noLauncher …`, mod paths in Wine `Z:` form).
+  (`steam -applaunch 107410 -noLauncher …`, mod paths in Wine `Z:` form), chosen by the
+  `LinuxLaunchMode` that `plan_launch` takes from the profile's `GameStart` setting.
 - `runner`: `spawn_plan` runs a plan on the `a3s-launch-arma3` thread, sends `LaunchEvent`s to an
   `EventSink` and restarts the game when auto-restart is on, until `stop_auto_restart` or the
   fast-exit guard stops it. Nothing kills the game.

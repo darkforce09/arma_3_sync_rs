@@ -48,17 +48,41 @@ The window (`Shell`):
   connection (an auto-config link fills the fields; protocol, address, port, anonymous,
   download folder; login, SSL validation and the proxy under Advanced; Test connection), Update
   issues (one plain line per failed file, Retry, Retry all, Copy report, Play anyway; during
-  "Update and play" the game starts anyway and the sheet offers no Play), and the Arma 3
-  Launcher preset comparison.
+  "Update and play" the game starts anyway and the sheet offers no Play), the Arma 3 Launcher
+  preset comparison, and Add server and Edit server.
 - Toasts (egui-toast) for the context's events, including an Undo kind that runs a callback and
-  an action kind whose button asks the window for an action.
-- Settings and the tool windows as separate OS windows (deferred viewports).
+  an action kind whose button asks the window for an action (e.g. "Choose folder…" opens
+  Settings at the Game pane).
+- Servers screen: the favourite servers with address, preset and a saved-password mark; Join
+  stores the server (and its preset as the default addon group) in the configuration's
+  `server_name`/`default_modset`, which the launch reads; add (+), edit (double-click, the
+  server sheet), remove with Undo.
+- Settings (`SettingsWindow`, its own OS window through an immediate viewport, with its own
+  toasts). Every change is written at once through `ViewerContext::mutate` and the
+  `ClientData` services; there is no OK or Apply.
+  - General: appearance (stored in the preferences' look-and-feel field: the Java "Noire" look
+    is Dark, its other named looks Light, the default look Auto), the window when the game
+    starts, open at login (`a3s_platform::autostart`, entry with `-run`), keep running in the
+    tray, the check frequency (rescheduled at once), update notifications of every repository,
+    and the version with an update check (`a3s_updater`, no download).
+  - Game, per profile: Arma 3 folder, start through Steam or the executable (Linux; the
+    profile's `game_start`, which Play uses), BattlEye, in-game name (the Arma 3 profiles next
+    to the Arma 3 user folder), common flags, "Customize…" sheets for performance and developer
+    options, and the command line planned by `a3s_launch::plan_launch` (the same planning as
+    Play) over a background addon scan.
+  - Profiles: add, rename (double-click), duplicate, remove with Undo, desktop shortcut.
+  - Downloads: mods folder, connections, speed limit and timeouts, written to every repository
+    (the client keeps them per repository).
+  - Network: the proxy. Companion apps: external applications, also by dropping a program
+    onto the pane. Data: Java data import, auto-config import and export, the logs folder.
+- The tool windows as separate OS windows (deferred viewports).
 - Tray icon (StatusNotifierItem through `ksni` on Linux, `tray-icon` on Windows and macOS):
   Show, Hide, Check now, Quit. Closing or minimizing hides into the tray when the "minimized"
   preference says Tray; otherwise closing quits (prepare, save, close).
 - Shortcuts: ⌘/Ctrl+R check now, ⌘/Ctrl+, Settings, ⌘/Ctrl+F search.
 
-Tests drive `Shell` headless with `egui_kittest`: call `logic` then `show` per frame.
+Tests drive `Shell` headless with `egui_kittest`: call `logic` then `show` per frame; the
+Settings window is tested alone (`SettingsWindow::show`) over a `Desktop::isolated` home folder.
 `tests/snapshots.rs` renders through wgpu on lavapipe (Linux); regenerate with
 `UPDATE_SNAPSHOTS=1`.
 

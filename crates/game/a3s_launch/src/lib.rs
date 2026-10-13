@@ -43,9 +43,6 @@ pub struct Arma3LaunchRequest<'a> {
     pub configuration: &'a Configuration,
     pub registry: &'a AddonRegistry,
 
-    /// How the game starts on Linux.
-    pub linux_mode: LinuxLaunchMode,
-
     /// The Steam client, for a Steam launch ([`find_steam_command`]).
     pub steam: Option<SteamCommand>,
 
@@ -73,7 +70,8 @@ pub struct PlannedLaunch {
 /// profile.
 ///
 /// Computes the run parameters ([`determine_run_parameters`], mod paths in Wine form for a Steam
-/// launch) and plans the command, with auto-restart as the profile says. A missing executable
+/// launch) and plans the command, started on Linux as the profile's `game_start` says
+/// ([`LinuxLaunchMode`]) and with auto-restart as the profile says. A missing executable
 /// setting, an executable that cannot run on this OS and a missing Steam client fail here.
 // Mirrors service/LaunchService.java:129-155
 pub fn plan_launch(request: &Arma3LaunchRequest<'_>) -> Result<Option<PlannedLaunch>, LaunchError> {
@@ -88,7 +86,7 @@ pub fn plan_launch(request: &Arma3LaunchRequest<'_>) -> Result<Option<PlannedLau
         .map(Path::new)
         .ok_or(LaunchError::ExecutableLocation)?;
 
-    let method = command::arma3_method(request.os, exe, options, request.linux_mode)?;
+    let method = command::arma3_method(request.os, exe, options, options.game_start.into())?;
     let mod_path_style = if method == LaunchMethod::Steam {
         ModPathStyle::WineZDrive
     } else {

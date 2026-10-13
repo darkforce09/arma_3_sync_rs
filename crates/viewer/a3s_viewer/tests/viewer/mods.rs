@@ -5,12 +5,12 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use a3s_foundation::paths::Os;
-use a3s_launch::{EventSink, LaunchError, LaunchHandle, LaunchPlan, LinuxLaunchMode, RunOptions};
+use a3s_launch::{EventSink, LaunchError, LaunchHandle, LaunchPlan, RunOptions};
 use a3s_repo_files::services::ClientData;
 use a3s_types::constants::RepositoryStatus;
 use a3s_types::local::{ExternalApplication, Profile, TreeNode};
 use a3s_ui::icon::icons;
-use a3s_viewer::{SheetKind, Shell};
+use a3s_viewer::{SettingsPane, SheetKind, Shell};
 use a3s_viewer_context::launch::{GameLauncher, LaunchEnvironment};
 use egui::accesskit::Role;
 use egui::{Key, Modifiers};
@@ -161,7 +161,6 @@ impl GameLauncher for RecordingLauncher {
     fn environment(&self) -> LaunchEnvironment {
         LaunchEnvironment {
             os: Os::Linux,
-            linux_mode: LinuxLaunchMode::Direct,
             steam: None,
             arma3_documents_dir: None,
         }
@@ -231,11 +230,7 @@ fn play_without_arma_3_offers_to_choose_it() {
     harness.run();
     harness.get_by_label("Choose folder…").click();
     harness.run();
-    assert!(
-        harness
-            .state()
-            .is_open(a3s_viewer::SecondaryWindow::Settings)
-    );
+    assert_eq!(harness.state().settings_pane(), Some(SettingsPane::Game));
 }
 
 /// A file dropped on the window.

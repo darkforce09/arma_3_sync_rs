@@ -20,7 +20,7 @@ pub mod wire;
 
 pub use addon::Addon;
 pub use configuration::{
-    Acre2Options, AcreOptions, BikeyExtractOptions, Configuration, ExternalApplication,
+    Acre2Options, AcreOptions, BikeyExtractOptions, Configuration, ExternalApplication, GameStart,
     LauncherOptions, Proxy, RptOptions, TfarOptions, favorite_server_java_cmp,
 };
 pub use export::AutoConfigExport;

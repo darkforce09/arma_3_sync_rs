@@ -13,9 +13,9 @@ use a3s_launch::command::{
 };
 use a3s_launch::elevation::{elevated_command, elevation_script};
 use a3s_launch::steam::{FLATPAK_STEAM_APP, SteamCommand};
-use a3s_launch::{Arma3LaunchRequest, LaunchError, launch_arma3};
+use a3s_launch::{Arma3LaunchRequest, LaunchError, launch_arma3, plan_launch};
 use a3s_platform::process::FixedProcessProbe;
-use a3s_types::local::{Configuration, LauncherOptions, Profile};
+use a3s_types::local::{Configuration, GameStart, LauncherOptions, Profile};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 
@@ -313,7 +313,6 @@ fn steam_not_found_fails_before_launching() {
         profile: Some(&profile),
         configuration: &configuration,
         registry: &registry,
-        linux_mode: LinuxLaunchMode::Auto,
         steam: None,
         arma3_documents_dir: None,
         restart_guard: Default::default(),
@@ -402,5 +401,45 @@ fn finds_steam() {
         Some(SteamCommand {
             prefix: vec![bin.path().join("steam").into_os_string()],
         })
+    );
+}
+
+#[test]
+fn the_profile_game_start_chooses_the_linux_launch() {
+    let configuration = Configuration::default();
+    let registry = AddonRegistry::new();
+    let method = |exe: &str, start: GameStart| {
+        let mut profile = Profile::new("p");
+        profile.launcher_options.arma3_exe_path = Some(exe.to_owned());
+        profile.launcher_options.game_start = start;
+        let request = Arma3LaunchRequest {
+            os: Os::Linux,
+            profile: Some(&profile),
+            configuration: &configuration,
+            registry: &registry,
+            steam: Some(SteamCommand {
+                prefix: os_strings(&["steam"]),
+            }),
+            arma3_documents_dir: None,
+            restart_guard: Default::default(),
+            steam_watch: Default::default(),
+        };
+        plan_launch(&request)
+            .expect("planned")
+            .expect("profile")
+            .plan
+            .method
+    };
+    let windows_exe = "/games/Arma 3/arma3_x64.exe";
+    let native = "/games/Arma 3/arma3_x64";
+    assert_eq!(
+        method(windows_exe, GameStart::Automatic),
+        LaunchMethod::Steam
+    );
+    assert_eq!(method(native, GameStart::Automatic), LaunchMethod::Direct);
+    assert_eq!(method(native, GameStart::Steam), LaunchMethod::Steam);
+    assert_eq!(
+        method(windows_exe, GameStart::Executable),
+        LaunchMethod::Direct
     );
 }

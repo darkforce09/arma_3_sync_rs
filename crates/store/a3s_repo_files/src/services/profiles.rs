@@ -140,14 +140,24 @@ impl ClientData {
     /// writes and keeps it. `false` writes nothing; `f` must not change the name.
     pub fn update_active_profile(&mut self, f: impl FnOnce(&mut Profile) -> bool) -> Result<bool> {
         let active = self.configuration.profile_name.clone();
-        let Some(profile) = self.profiles.get(&active) else {
-            return Err(ServiceError::ProfileNotFound(active));
+        self.update_profile(&active, f)
+    }
+
+    /// Runs `f` on a copy of the profile `name` and, when it returns `true` ("changed"),
+    /// writes and keeps it. `false` writes nothing; `f` must not change the name.
+    pub fn update_profile(
+        &mut self,
+        name: &str,
+        f: impl FnOnce(&mut Profile) -> bool,
+    ) -> Result<bool> {
+        let Some(profile) = self.profiles.get(name) else {
+            return Err(ServiceError::ProfileNotFound(name.to_owned()));
         };
         let mut next = profile.clone();
         if !f(&mut next) {
             return Ok(false);
         }
-        if next.name != active {
+        if next.name != name {
             return Err(ServiceError::NameChange);
         }
         self.commit_profile(next)?;
@@ -292,4 +302,5 @@ fn duplicate_launcher_options(source: &LauncherOptions, target: &mut LauncherOpt
     target.auto_restart = source.auto_restart;
     target.launch_arma3_as_administrator = source.launch_arma3_as_administrator;
     target.arma3_exe_path.clone_from(&source.arma3_exe_path);
+    target.game_start = source.game_start;
 }

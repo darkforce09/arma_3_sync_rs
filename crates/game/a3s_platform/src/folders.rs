@@ -110,3 +110,57 @@ pub fn log_export_dir(env: &PlatformEnv, folders: &dyn SpecialFolders) -> Option
         folders.home()
     }
 }
+
+/// The Arma 3 profile names of the user (the `-name=` choices), sorted.
+///
+/// They are the folders inside the `Arma 3 - Other Profiles` folder next to
+/// `arma3_documents_dir`, with `%20` decoded to a space and `%2e` to a dot as Arma 3 encodes
+/// them. Empty when there is no such folder.
+// Mirrors ui/main/LauncherOptionsPanel.java:119-139
+pub fn game_profile_names(arma3_documents_dir: &Path) -> Vec<String> {
+    let Some(documents) = arma3_documents_dir.parent() else {
+        return Vec::new();
+    };
+    let Ok(entries) = std::fs::read_dir(documents) else {
+        return Vec::new();
+    };
+    let mut names: Vec<String> = entries
+        .flatten()
+        .filter(|entry| {
+            let name = entry.file_name().to_string_lossy().to_uppercase();
+            name.contains("ARMA 3") && name.contains("OTHER PROFILES")
+        })
+        .filter_map(|entry| std::fs::read_dir(entry.path()).ok())
+        .flat_map(|profiles| profiles.flatten())
+        .map(|profile| {
+            profile
+                .file_name()
+                .to_string_lossy()
+                .replace("%20", " ")
+                .replace("%2e", ".")
+        })
+        .collect();
+    names.sort();
+    names.dedup();
+    names
+}
+
+/// Opens `dir` in the system file manager (Explorer, Finder, or the `xdg-open` handler); the
+/// opener is reaped on the `a3s-file-manager` thread, so this returns at once.
+pub fn open_in_file_manager(env: &PlatformEnv, dir: &Path) -> crate::Result<()> {
+    let program = match env.os() {
+        Os::Windows => "explorer",
+        Os::MacOs => "open",
+        Os::Linux | Os::OtherUnix => "xdg-open",
+        Os::Other => return Err(crate::Error::Unsupported),
+    };
+    let mut child = std::process::Command::new(program)
+        .arg(dir)
+        .spawn()
+        .map_err(|source| crate::Error::io(dir, source))?;
+    std::thread::Builder::new()
+        .name("a3s-file-manager".to_owned())
+        .spawn(move || child.wait().map(drop))
+        .map(drop)
+        .map_err(|source| crate::Error::io(dir, source))
+}
