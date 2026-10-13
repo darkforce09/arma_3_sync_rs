@@ -6,18 +6,31 @@ mod publishing;
 mod repository;
 mod servers;
 
+use std::time::{Duration, SystemTime};
+
 use a3s_ui::theme;
+use a3s_viewer_context::ViewerContext;
 use egui::{Align, Layout, RichText, Ui};
 
-use crate::shell::Screen;
+use crate::shell::{Action, Screen};
+use crate::toasts::Toaster;
+
+/// What a screen works with besides its `Ui`.
+pub(crate) struct ScreenCx<'a> {
+    pub(crate) viewer: &'a ViewerContext,
+    pub(crate) toasts: &'a mut Toaster,
+
+    /// What the screen asks the window to do, applied after the frame.
+    pub(crate) actions: Vec<Action>,
+}
 
 /// Shows `screen` in the content area.
-pub(crate) fn show(ui: &mut Ui, screen: &Screen) {
+pub(crate) fn show(ui: &mut Ui, screen: &Screen, cx: &mut ScreenCx<'_>) {
     match screen {
         Screen::Mods => mods::show(ui),
         Screen::Servers => servers::show(ui),
-        Screen::Activity => activity::show(ui),
-        Screen::Repository(name) => repository::show(ui, name),
+        Screen::Activity => activity::show(ui, cx),
+        Screen::Repository(name) => repository::show(ui, name, cx),
         Screen::Publishing(name) => publishing::show(ui, name),
     }
 }
@@ -32,4 +45,50 @@ fn empty_state(ui: &mut Ui, icon: &str, title: &str, line: &str) {
         ui.label(RichText::new(title).heading());
         ui.label(RichText::new(line).color(palette.text_secondary));
     });
+}
+
+/// A section title above a group.
+fn section_title(ui: &mut Ui, text: &str) {
+    ui.add_space(16.0);
+    ui.label(RichText::new(text).strong());
+    ui.add_space(4.0);
+}
+
+/// `bytes` as `1.12 MB`.
+pub(crate) fn size_text(bytes: u64) -> String {
+    a3s_foundation::format::size(i64::try_from(bytes).unwrap_or(i64::MAX))
+}
+
+/// A remaining time as `about 3 min`.
+fn time_left_text(remaining: Duration) -> String {
+    let seconds = remaining.as_secs();
+    match seconds {
+        0..60 => "less than a minute left".to_owned(),
+        60..3600 => format!("about {} min left", seconds.div_ceil(60)),
+        _ => format!(
+            "about {} h {} min left",
+            seconds / 3600,
+            (seconds % 3600) / 60
+        ),
+    }
+}
+
+/// How long ago `then` was, as `5 min ago`.
+fn ago_text(then: SystemTime, now: SystemTime) -> String {
+    let seconds = now.duration_since(then).unwrap_or_default().as_secs();
+    match seconds {
+        0..60 => "just now".to_owned(),
+        60..3600 => format!("{} min ago", seconds / 60),
+        3600..86_400 => format!("{} h ago", seconds / 3600),
+        _ => format!("{} days ago", seconds / 86_400),
+    }
+}
+
+/// `count` with the singular or plural noun: `1 mod`, `3 mods`.
+pub(crate) fn count_text(count: usize, singular: &str, plural: &str) -> String {
+    if count == 1 {
+        format!("1 {singular}")
+    } else {
+        format!("{count} {plural}")
+    }
 }

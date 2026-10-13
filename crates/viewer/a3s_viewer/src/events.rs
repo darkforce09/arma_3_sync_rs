@@ -7,11 +7,14 @@ use a3s_viewer_context::repositories::{self, UPDATES_AVAILABLE_MESSAGE};
 use a3s_viewer_context::{AppEvent, CheckOutcome, TaskEvent, TaskOutcome, sync};
 
 use crate::notify;
+use crate::screens::count_text;
+use crate::sheets::{Sheet, Sheets, UpdateIssues};
 use crate::toasts::Toaster;
 
 /// The parts of the window an event changes.
 pub(crate) struct EventSink<'a> {
     pub(crate) toasts: &'a mut Toaster,
+    pub(crate) sheets: &'a mut Sheets,
     pub(crate) last_check: &'a mut Option<SystemTime>,
     pub(crate) hidden: bool,
 }
@@ -25,6 +28,9 @@ impl EventSink<'_> {
                     "Updating {} in the background",
                     repositories.join(", ")
                 ));
+            }
+            AppEvent::Sync(sync::Event::DownloadFinished { repository, result }) => {
+                self.download_finished(repository, result);
             }
             AppEvent::Error { error, .. } => self.toasts.error(error.message),
             AppEvent::Task(TaskEvent::Finished { info, outcome }) => match outcome {
@@ -44,6 +50,33 @@ impl EventSink<'_> {
                 TaskOutcome::Completed | TaskOutcome::Cancelled => {}
             },
             _ => {}
+        }
+    }
+
+    /// A download ended: a toast, and the issues sheet when files failed.
+    fn download_finished(&mut self, repository: String, result: sync::DownloadResult) {
+        match result {
+            sync::DownloadResult::Success { trashed } => {
+                self.toasts.success(format!("{repository} is up to date"));
+                if trashed > 0 {
+                    self.toasts.info(format!(
+                        "Moved {} to the Trash",
+                        count_text(trashed, "mod", "mods")
+                    ));
+                }
+            }
+            sync::DownloadResult::Issues(errors) => {
+                self.toasts.warning(format!(
+                    "{repository}: {} not updated",
+                    count_text(errors.len(), "file", "files")
+                ));
+                self.sheets
+                    .push(Sheet::UpdateIssues(UpdateIssues::new(repository)));
+            }
+            sync::DownloadResult::Failed(error) => {
+                self.toasts
+                    .error(format!("Could not update {repository}: {}", error.message));
+            }
         }
     }
 

@@ -17,6 +17,15 @@ synchronized in the background by `AutoUpdate` tasks when a `Synchronizer` is co
 exit: `prepare_exit`, `save_on_exit` (on failure the UI asks whether to exit anyway and, if the
 user stays, calls `start_background` again), then `shutdown`.
 
+The user's downloads are `sync` commands: `Compare` checks a repository against its download
+folder and publishes the changes (`sync::Downloads::plans`), keeping the checked session so
+`Download` starts at once; `Pause` cancels and keeps the session for the next `Download` to
+resume, `Stop` discards it, `Retry` downloads failed files again. Extra local files go to the
+Trash. Each finished download is recorded in `sync::Downloads::recent` and announced with
+`sync::Event::DownloadFinished`. `profiles::use_event_preset` selects an event's mods in the
+active profile; `repositories::test_connection` and `fetch_autoconfig` serve the repository
+sheet.
+
 Network access and time go through two seams, `RemoteChecker` and `Clock`, plus `Synchronizer`
 for background downloads; tests use fakes and `ManualClock`. Each domain (`repositories`,
 `sync`, `admin`, `profiles`, `launch`, `tools`) has its own `Command`, `Event` and `State`.

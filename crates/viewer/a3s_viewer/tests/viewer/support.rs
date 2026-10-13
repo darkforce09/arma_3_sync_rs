@@ -29,6 +29,9 @@ pub struct Fixture {
 pub struct Start {
     pub load_warnings: Vec<String>,
     pub welcome: Option<WelcomeSetup>,
+
+    /// Repositories stored besides `Alpha` and `Beta`.
+    pub repositories: Vec<Repository>,
 }
 
 /// Repositories `Alpha` (in the Default profile's addon groups, with updates) and `Beta`
@@ -59,7 +62,10 @@ pub fn fixture_with(
             profile_with_group("Default", "Alpha"),
             Profile::new("Training"),
         ],
-        vec![repository("Alpha"), beta],
+        [repository("Alpha"), beta]
+            .into_iter()
+            .chain(start.repositories)
+            .collect(),
     );
     let viewer = ViewerContext::new(
         client,

@@ -33,6 +33,8 @@ pub enum TaskKind {
     PeriodicCheck,
     /// A check of repositories asked for by the user.
     CheckRepositories,
+    /// A comparison of a repository with its local folder, before a download.
+    Compare,
     /// A synchronization started by the user.
     Download,
     /// An automatic synchronization after a periodic check.
@@ -68,6 +70,7 @@ impl TaskKind {
     pub fn label(self) -> &'static str {
         match self {
             Self::PeriodicCheck | Self::CheckRepositories => "Checking repositories",
+            Self::Compare => "Comparing local files",
             Self::Download => "Synchronizing",
             Self::AutoUpdate => "Updating automatically",
             Self::Build => "Building the repository",
