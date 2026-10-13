@@ -21,14 +21,16 @@ const NOTE_DURATION: Duration = Duration::from_secs(5);
 /// How long an error or an undoable note stays.
 const LONG_DURATION: Duration = Duration::from_secs(8);
 
-/// Where egui-toast keeps the live toasts in the context memory.
+/// Where egui-toast keeps the live toasts of the main window in the context memory.
 fn toasts_id() -> Id {
     Id::new("a3s_viewer::toasts")
 }
 
-/// The toasts of the main window. Toasts added before the next frame are shown then.
-#[derive(Default)]
+/// The toasts of one window (the main window's by default). Toasts added before the next frame
+/// are shown then.
 pub struct Toaster {
+    /// Where egui-toast keeps this window's live toasts in the context memory.
+    id: Id,
     pending: Vec<Toast>,
 
     /// Undo actions by the custom toast kind of their toast.
@@ -39,7 +41,24 @@ pub struct Toaster {
     next_kind: u32,
 }
 
+impl Default for Toaster {
+    fn default() -> Self {
+        Self::with_id(toasts_id())
+    }
+}
+
 impl Toaster {
+    /// The toasts of a window whose live toasts are kept under `id`.
+    pub(crate) fn with_id(id: Id) -> Self {
+        Self {
+            id,
+            pending: Vec::new(),
+            undo: BTreeMap::new(),
+            clicked: Arc::default(),
+            next_kind: 0,
+        }
+    }
+
     /// A neutral note.
     pub fn info(&mut self, text: impl Into<String>) {
         self.note(ToastKind::Info, text.into(), NOTE_DURATION);
@@ -91,7 +110,7 @@ impl Toaster {
     /// Shows the toasts, then runs the Undo actions clicked in this frame and forgets those
     /// whose note is gone.
     pub(crate) fn show(&mut self, ui: &mut Ui, viewer: &ViewerContext) {
-        let mut toasts = Toasts::with_id(toasts_id())
+        let mut toasts = Toasts::with_id(self.id)
             .anchor(Align2::RIGHT_BOTTOM, (-16.0, -16.0))
             .direction(egui::Direction::BottomUp)
             .order(Order::Tooltip);
@@ -113,7 +132,7 @@ impl Toaster {
             }
         }
         let live: Vec<ToastKind> = ui.data(|data| {
-            data.get_temp::<Vec<Toast>>(toasts_id())
+            data.get_temp::<Vec<Toast>>(self.id)
                 .unwrap_or_default()
                 .iter()
                 .map(|toast| toast.kind)

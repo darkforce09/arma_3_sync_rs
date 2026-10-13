@@ -67,6 +67,7 @@ fn sample_launcher_options() -> LauncherOptions {
         nologs: false,
         arma3_exe_path: s("/srv/arma3/SampleRepo/arma3_x64.exe"),
         steam_exe_path: s("/srv/arma3/SampleRepo/steam.exe"),
+        game_start: Default::default(),
     }
 }
 

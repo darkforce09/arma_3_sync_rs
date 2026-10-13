@@ -7,7 +7,7 @@ use std::process::{Command, Stdio};
 
 use a3s_foundation::paths::Os;
 use a3s_types::java_string::java_trim;
-use a3s_types::local::LauncherOptions;
+use a3s_types::local::{GameStart, LauncherOptions};
 
 use crate::LaunchError;
 use crate::elevation::elevated_command;
@@ -94,6 +94,17 @@ pub enum LinuxLaunchMode {
 
     /// Always through Steam.
     Steam,
+}
+
+impl From<GameStart> for LinuxLaunchMode {
+    /// The profile's stored choice.
+    fn from(start: GameStart) -> Self {
+        match start {
+            GameStart::Automatic => Self::Auto,
+            GameStart::Steam => Self::Steam,
+            GameStart::Executable => Self::Direct,
+        }
+    }
 }
 
 /// How a launch starts the game.

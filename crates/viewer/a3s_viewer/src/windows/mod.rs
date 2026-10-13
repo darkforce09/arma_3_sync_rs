@@ -1,5 +1,5 @@
 //! Windows besides the main one: Settings and the tool windows, each its own OS window
-//! (an egui deferred viewport; embedded as an in-app window where the backend has only one).
+//! (an egui viewport; embedded as an in-app window where the backend has only one).
 
 mod settings;
 mod tools;
@@ -7,10 +7,13 @@ mod tools;
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
+use a3s_viewer_context::ViewerContext;
 use egui::{ViewportBuilder, ViewportClass, ViewportId};
 use parking_lot::Mutex;
 
-pub use self::settings::SettingsPane;
+pub(crate) use self::settings::Appearance;
+pub use self::settings::{SettingsPane, SettingsWindow};
+use crate::desktop::Desktop;
 
 /// A window opened from the main window's menu.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -48,7 +51,7 @@ impl SecondaryWindow {
 
     fn builder(self) -> ViewportBuilder {
         let (size, min) = match self {
-            Self::Settings => ([720.0, 480.0], [560.0, 360.0]),
+            Self::Settings => ([760.0, 560.0], [600.0, 400.0]),
             Self::GameLog => ([760.0, 520.0], [420.0, 260.0]),
             Self::ServerKeys | Self::RadioPlugin => ([520.0, 360.0], [360.0, 240.0]),
         };
@@ -59,65 +62,87 @@ impl SecondaryWindow {
     }
 }
 
-/// Which secondary windows are open, shared with their viewport callbacks.
-#[derive(Debug, Default)]
-struct OpenWindows {
-    open: BTreeSet<SecondaryWindow>,
-    settings_pane: SettingsPane,
-}
-
-/// The secondary windows. Call [`Self::show`] every frame of the main window: a deferred
-/// viewport closes when its parent stops showing it.
-#[derive(Clone, Debug, Default)]
+/// The secondary windows. Call [`Self::show`] every frame of the main window: a viewport
+/// closes when its parent stops showing it.
+///
+/// Settings is an immediate viewport, drawn within the main window's frame so it can use the
+/// context; the tool windows are deferred viewports.
 pub(crate) struct SecondaryWindows {
-    state: Arc<Mutex<OpenWindows>>,
+    tools: Arc<Mutex<BTreeSet<SecondaryWindow>>>,
+    settings: Option<SettingsWindow>,
+    desktop: Desktop,
 }
 
 impl SecondaryWindows {
+    pub(crate) fn new(desktop: Desktop) -> Self {
+        Self {
+            tools: Arc::default(),
+            settings: None,
+            desktop,
+        }
+    }
+
+    /// The desktop the Settings window integrates with, from the next time it opens.
+    pub(crate) fn set_desktop(&mut self, desktop: Desktop) {
+        self.desktop = desktop;
+    }
+
     /// Opens `window`, or brings it to the front when it is open.
-    pub(crate) fn open(&self, ctx: &egui::Context, window: SecondaryWindow) {
-        if !self.state.lock().open.insert(window) {
+    pub(crate) fn open(&mut self, ctx: &egui::Context, window: SecondaryWindow) {
+        let opened = if window == SecondaryWindow::Settings {
+            let closed = self.settings.is_none();
+            if closed {
+                self.settings = Some(SettingsWindow::new(self.desktop.clone()));
+            }
+            closed
+        } else {
+            self.tools.lock().insert(window)
+        };
+        if !opened {
             ctx.send_viewport_cmd_to(window.viewport_id(), egui::ViewportCommand::Focus);
         }
     }
 
     /// Whether `window` is open.
     pub(crate) fn is_open(&self, window: SecondaryWindow) -> bool {
-        self.state.lock().open.contains(&window)
+        if window == SecondaryWindow::Settings {
+            self.settings.is_some()
+        } else {
+            self.tools.lock().contains(&window)
+        }
     }
 
     /// Shows every open window.
-    pub(crate) fn show(&self, ctx: &egui::Context) {
-        let open: Vec<SecondaryWindow> = self.state.lock().open.iter().copied().collect();
+    pub(crate) fn show(&mut self, ctx: &egui::Context, viewer: &ViewerContext) {
+        if let Some(settings) = &mut self.settings {
+            let window = SecondaryWindow::Settings;
+            let close =
+                ctx.show_viewport_immediate(window.viewport_id(), window.builder(), |ui, class| {
+                    let close = ui.ctx().input(|i| i.viewport().close_requested());
+                    in_window(ui, class, |ui| settings.show(ui, viewer));
+                    close
+                });
+            if close {
+                self.settings = None;
+            }
+        }
+
+        let open: Vec<SecondaryWindow> = self.tools.lock().iter().copied().collect();
         for window in open {
-            let state = Arc::clone(&self.state);
+            let tools = Arc::clone(&self.tools);
             ctx.show_viewport_deferred(window.viewport_id(), window.builder(), move |ui, class| {
                 let close = ui.ctx().input(|i| i.viewport().close_requested());
-                content(ui, class, window, &state);
+                in_window(ui, class, |ui| tools::show(ui, window));
                 if close {
-                    state.lock().open.remove(&window);
+                    tools.lock().remove(&window);
                 }
             });
         }
     }
 }
 
-fn content(
-    ui: &mut egui::Ui,
-    class: ViewportClass,
-    window: SecondaryWindow,
-    state: &Mutex<OpenWindows>,
-) {
-    let body = |ui: &mut egui::Ui| match window {
-        SecondaryWindow::Settings => {
-            let mut pane = state.lock().settings_pane;
-            settings::show(ui, &mut pane);
-            state.lock().settings_pane = pane;
-        }
-        SecondaryWindow::ServerKeys | SecondaryWindow::RadioPlugin | SecondaryWindow::GameLog => {
-            tools::show(ui, window);
-        }
-    };
+/// Runs `body` in the viewport: directly when embedded, else over the window background.
+fn in_window(ui: &mut egui::Ui, class: ViewportClass, body: impl FnOnce(&mut egui::Ui)) {
     if class == ViewportClass::EmbeddedWindow {
         body(ui);
     } else {

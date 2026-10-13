@@ -29,8 +29,8 @@ use a3s_jserial::{Graph, Node, NodeId, Value};
 use super::wire as local_wire;
 use super::{
     Acre2Options, AcreOptions, AutoConfigExport, BikeyExtractOptions, Configuration,
-    ExternalApplication, FileAttributes, LauncherOptions, Preferences, Profile, Proxy, Repository,
-    RptOptions, TfarOptions, TreeDirectory, TreeLeaf, TreeNode,
+    ExternalApplication, FileAttributes, GameStart, LauncherOptions, Preferences, Profile, Proxy,
+    Repository, RptOptions, TfarOptions, TreeDirectory, TreeLeaf, TreeNode,
 };
 use crate::constants::{
     CheckRepositoriesFrequency, DEFAULT_PROFILE_NAME, GAME_VERSION_ARMA3, IconResize, LookAndFeel,
@@ -697,6 +697,7 @@ impl<'g, 'w> Lenient<'g, 'w> {
             nologs: self.bool(id, "nologs")?,
             arma3_exe_path: self.string(id, "arma3ExePath")?,
             steam_exe_path: self.string(id, "steamExePath")?,
+            game_start: GameStart::default(),
         })
     }
 

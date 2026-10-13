@@ -264,11 +264,14 @@ dependencies = [
 name = "a3s_viewer"
 version = "0.1.0-alpha.1"
 dependencies = [
+ "a3s_addons",
  "a3s_foundation",
+ "a3s_launch",
  "a3s_platform",
  "a3s_repo_files",
  "a3s_types",
  "a3s_ui",
+ "a3s_updater",
  "a3s_viewer_context",
  "eframe",
  "egui",

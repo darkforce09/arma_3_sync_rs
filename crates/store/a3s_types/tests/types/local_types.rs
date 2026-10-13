@@ -148,6 +148,7 @@ fn launcher_options_defaults() {
         nologs: false,
         arma3_exe_path: None,
         steam_exe_path: None,
+        game_start: Default::default(),
     };
     assert_eq!(l, expected);
 }

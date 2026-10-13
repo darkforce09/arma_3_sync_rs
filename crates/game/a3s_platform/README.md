@@ -7,7 +7,8 @@ Operating-system integration of the client, one module per concern:
 - `detect`, `steam`: the Arma 3, Steam and TeamSpeak 3 folders, the Arma 3 RPT folder, the Java
   client's install folders; Steam libraries (`libraryfolders.vdf`, `appmanifest_*.acf`) and
   Proton prefixes on Linux.
-- `folders`: Documents, Desktop and home, the Arma 3 user folder and the log-export folder.
+- `folders`: Documents, Desktop and home, the Arma 3 user folder, the Arma 3 profile names, the
+  log-export folder, and opening a folder in the file manager.
 - `process`: "is Arma 3 / TeamSpeak / Steam running" (`tasklist` on Windows, `/proc` on Linux).
 - `autostart`: start with the OS (per-user `Run` value, XDG autostart entry, macOS LaunchAgent).
 - `shortcut`: desktop shortcuts (`.lnk` on Windows, `.desktop` on Linux).

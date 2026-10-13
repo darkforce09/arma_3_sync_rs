@@ -7,8 +7,11 @@
 //! [`Shell`] is the whole per-frame UI without eframe, so tests drive it headless with
 //! `egui_kittest`: call [`Shell::logic`] then [`Shell::show`] once per frame, as eframe does.
 
+mod desktop;
 mod events;
+mod fields;
 mod launch;
+mod legacy_import;
 mod notify;
 mod picker;
 mod requests;
@@ -24,9 +27,10 @@ mod toolbar;
 mod tray;
 mod windows;
 
+pub use self::desktop::Desktop;
 pub use self::requests::{RequestSender, WindowRequest, channel};
 pub use self::run::{Exit, RunOptions, ViewerError, display_available, run};
 pub use self::sheets::{SheetKind, WelcomeSetup};
 pub use self::shell::{Screen, Shell, ShellSetup};
 pub use self::toasts::{Toaster, UndoAction};
-pub use self::windows::{SecondaryWindow, SettingsPane};
+pub use self::windows::{SecondaryWindow, SettingsPane, SettingsWindow};

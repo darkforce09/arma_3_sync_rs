@@ -456,6 +456,7 @@ fn rich_profile(name: &str) -> Profile {
         nologs: true,
         arma3_exe_path: s("arma3.exe"),
         steam_exe_path: s("steam.exe"),
+        game_start: Default::default(),
     };
     profile
 }
@@ -1280,5 +1281,35 @@ fn import_merges_without_overwriting_repositories() {
     assert!(matches!(
         data.import_autoconfig(&tmp.path().join("missing.a3s.autoconfig")),
         Err(ServiceError::AutoConfigRead(_))
+    ));
+}
+
+#[test]
+fn update_profile_writes_a_profile_that_is_not_active() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut data = load(tmp.path());
+    data.create_profile("Other").unwrap();
+    assert!(
+        data.update_profile("Other", |p| {
+            p.additional_parameters = Some("-x".to_owned());
+            true
+        })
+        .unwrap()
+    );
+    assert_eq!(data.active_profile_name(), "Default");
+    let reloaded = load(tmp.path());
+    let other = reloaded.profile("Other").unwrap();
+    assert_eq!(other.additional_parameters.as_deref(), Some("-x"));
+
+    assert!(matches!(
+        data.update_profile("Other", |p| {
+            p.name = "Renamed".to_owned();
+            true
+        }),
+        Err(ServiceError::NameChange)
+    ));
+    assert!(matches!(
+        data.update_profile("Missing", |_| true),
+        Err(ServiceError::ProfileNotFound(_))
     ));
 }

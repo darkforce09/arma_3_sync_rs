@@ -3,6 +3,7 @@
 mod add_repository;
 mod exit;
 mod load_warnings;
+pub(crate) mod server;
 mod welcome;
 
 use std::collections::VecDeque;

@@ -11,6 +11,7 @@ use a3s_ui::theme;
 use a3s_viewer_context::{Change, Command, TaskKind, ViewerContext, repositories};
 use egui::{Frame, Ui, ViewportCommand};
 
+use crate::desktop::Desktop;
 use crate::events::EventSink;
 use crate::launch::{self, PlayRequest};
 use crate::requests::WindowRequest;
@@ -105,6 +106,7 @@ pub struct Shell {
     sheets: Sheets,
     toasts: Toaster,
     windows: SecondaryWindows,
+    screens: screens::ScreenStates,
     requests: mpsc::Receiver<WindowRequest>,
     tray_available: bool,
     hidden: bool,
@@ -130,7 +132,8 @@ impl Shell {
             search: String::new(),
             sheets,
             toasts: Toaster::default(),
-            windows: SecondaryWindows::default(),
+            windows: SecondaryWindows::new(Desktop::system(None)),
+            screens: screens::ScreenStates::default(),
             requests: setup.requests,
             tray_available: false,
             hidden: setup.hidden,
@@ -146,6 +149,12 @@ impl Shell {
         if !available && self.hidden {
             self.show_window(ctx);
         }
+    }
+
+    /// The desktop the Settings window integrates with (autostart, shortcuts, the Arma 3 user
+    /// folder, the logs); the real one by default.
+    pub fn set_desktop(&mut self, desktop: Desktop) {
+        self.windows.set_desktop(desktop);
     }
 
     /// The context the window shows.
@@ -239,7 +248,15 @@ impl Shell {
                     .fill(def.palette.window_background)
                     .inner_margin(16),
             )
-            .show(ui, |ui| screens::show(ui, &self.screen));
+            .show(ui, |ui| {
+                screens::show(
+                    ui,
+                    &self.screen,
+                    &mut self.screens,
+                    &self.viewer,
+                    &mut self.toasts,
+                );
+            });
 
         for action in actions {
             self.apply_with(&ctx, action, &snapshot);
@@ -250,7 +267,7 @@ impl Shell {
             Some(SheetOutcome::Stay) => self.viewer.start_background(),
             None => {}
         }
-        self.windows.show(&ctx);
+        self.windows.show(&ctx, &self.viewer);
         self.toasts.show(ui, &self.viewer);
     }
 
