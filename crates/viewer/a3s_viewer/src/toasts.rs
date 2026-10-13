@@ -21,14 +21,15 @@ const NOTE_DURATION: Duration = Duration::from_secs(5);
 /// How long an error or an undoable note stays.
 const LONG_DURATION: Duration = Duration::from_secs(8);
 
-/// Where egui-toast keeps the live toasts in the context memory.
+/// Where egui-toast keeps the main window's live toasts in the context memory.
 fn toasts_id() -> Id {
     Id::new("a3s_viewer::toasts")
 }
 
-/// The toasts of the main window. Toasts added before the next frame are shown then.
-#[derive(Default)]
+/// The toasts of a window. Toasts added before the next frame are shown then.
 pub struct Toaster {
+    /// Where egui-toast keeps this window's toasts; each window has its own.
+    id: Id,
     pending: Vec<Toast>,
 
     /// Undo actions by the custom toast kind of their toast.
@@ -40,6 +41,17 @@ pub struct Toaster {
 }
 
 impl Toaster {
+    /// The toasts of the window that keeps them under `id`.
+    pub(crate) fn with_id(id: Id) -> Self {
+        Self {
+            id,
+            pending: Vec::new(),
+            undo: BTreeMap::new(),
+            clicked: Arc::default(),
+            next_kind: 0,
+        }
+    }
+
     /// A neutral note.
     pub fn info(&mut self, text: impl Into<String>) {
         self.note(ToastKind::Info, text.into(), NOTE_DURATION);
@@ -91,7 +103,20 @@ impl Toaster {
     /// Shows the toasts, then runs the Undo actions clicked in this frame and forgets those
     /// whose note is gone.
     pub(crate) fn show(&mut self, ui: &mut Ui, viewer: &ViewerContext) {
-        let mut toasts = Toasts::with_id(toasts_id())
+        for undo in self.show_toasts(ui) {
+            undo(viewer);
+        }
+    }
+
+    /// Shows the toasts of a window that adds no undoable notes.
+    pub(crate) fn show_notes(&mut self, ui: &mut Ui) {
+        debug_assert!(self.undo.is_empty(), "undoable notes need `show`");
+        self.show_toasts(ui);
+    }
+
+    /// Shows the toasts; returns the Undo actions clicked in this frame.
+    fn show_toasts(&mut self, ui: &mut Ui) -> Vec<UndoAction> {
+        let mut toasts = Toasts::with_id(self.id)
             .anchor(Align2::RIGHT_BOTTOM, (-16.0, -16.0))
             .direction(egui::Direction::BottomUp)
             .order(Order::Tooltip);
@@ -107,13 +132,12 @@ impl Toaster {
         toasts.show(ui);
 
         let clicked = std::mem::take(&mut *self.clicked.lock());
-        for kind in clicked {
-            if let Some(undo) = self.undo.remove(&kind) {
-                undo(viewer);
-            }
-        }
+        let undo: Vec<UndoAction> = clicked
+            .into_iter()
+            .filter_map(|kind| self.undo.remove(&kind))
+            .collect();
         let live: Vec<ToastKind> = ui.data(|data| {
-            data.get_temp::<Vec<Toast>>(toasts_id())
+            data.get_temp::<Vec<Toast>>(self.id)
                 .unwrap_or_default()
                 .iter()
                 .map(|toast| toast.kind)
@@ -121,6 +145,13 @@ impl Toaster {
         });
         self.undo
             .retain(|kind, _| live.contains(&ToastKind::Custom(*kind)));
+        undo
+    }
+}
+
+impl Default for Toaster {
+    fn default() -> Self {
+        Self::with_id(toasts_id())
     }
 }
 

@@ -269,6 +269,7 @@ dependencies = [
  "a3s_repo_files",
  "a3s_sync",
  "a3s_test_servers",
+ "a3s_tools",
  "a3s_transport",
  "a3s_types",
  "a3s_ui",
@@ -296,8 +297,10 @@ version = "0.1.0-alpha.1"
 dependencies = [
  "a3s_addons",
  "a3s_foundation",
+ "a3s_platform",
  "a3s_repo_files",
  "a3s_sync",
+ "a3s_tools",
  "a3s_transport",
  "a3s_types",
  "futures",

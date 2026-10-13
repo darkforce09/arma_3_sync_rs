@@ -20,8 +20,10 @@ all-features = true
 [dependencies]
 a3s_addons.workspace = true
 a3s_foundation.workspace = true
+a3s_platform.workspace = true
 a3s_repo_files.workspace = true
 a3s_sync.workspace = true
+a3s_tools.workspace = true
 a3s_transport.workspace = true
 a3s_types.workspace = true
 futures.workspace = true

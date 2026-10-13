@@ -7,6 +7,7 @@ mod tools;
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
+use a3s_viewer_context::Cx;
 use egui::{ViewportBuilder, ViewportClass, ViewportId};
 use parking_lot::Mutex;
 
@@ -60,15 +61,16 @@ impl SecondaryWindow {
 }
 
 /// Which secondary windows are open, shared with their viewport callbacks.
-#[derive(Debug, Default)]
+#[derive(Default)]
 struct OpenWindows {
     open: BTreeSet<SecondaryWindow>,
     settings_pane: SettingsPane,
+    tools: tools::ToolWindows,
 }
 
 /// The secondary windows. Call [`Self::show`] every frame of the main window: a deferred
 /// viewport closes when its parent stops showing it.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub(crate) struct SecondaryWindows {
     state: Arc<Mutex<OpenWindows>>,
 }
@@ -86,16 +88,19 @@ impl SecondaryWindows {
         self.state.lock().open.contains(&window)
     }
 
-    /// Shows every open window.
-    pub(crate) fn show(&self, ctx: &egui::Context) {
+    /// Shows every open window; the tool windows work through `cx`.
+    pub(crate) fn show(&self, ctx: &egui::Context, cx: &Cx) {
         let open: Vec<SecondaryWindow> = self.state.lock().open.iter().copied().collect();
         for window in open {
             let state = Arc::clone(&self.state);
+            let cx = cx.clone();
             ctx.show_viewport_deferred(window.viewport_id(), window.builder(), move |ui, class| {
                 let close = ui.ctx().input(|i| i.viewport().close_requested());
-                content(ui, class, window, &state);
+                content(ui, class, window, &state, &cx);
                 if close {
-                    state.lock().open.remove(&window);
+                    let mut state = state.lock();
+                    state.open.remove(&window);
+                    state.tools.close(window, &cx);
                 }
             });
         }
@@ -107,6 +112,7 @@ fn content(
     class: ViewportClass,
     window: SecondaryWindow,
     state: &Mutex<OpenWindows>,
+    cx: &Cx,
 ) {
     let body = |ui: &mut egui::Ui| match window {
         SecondaryWindow::Settings => {
@@ -115,7 +121,10 @@ fn content(
             state.lock().settings_pane = pane;
         }
         SecondaryWindow::ServerKeys | SecondaryWindow::RadioPlugin | SecondaryWindow::GameLog => {
-            tools::show(ui, window);
+            // Taken out so no lock is held while the window draws.
+            let mut tools = std::mem::take(&mut state.lock().tools);
+            tools.show(ui, window, cx);
+            state.lock().tools = tools;
         }
     };
     if class == ViewportClass::EmbeddedWindow {

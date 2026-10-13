@@ -16,6 +16,7 @@ pub mod detect;
 pub mod folders;
 pub mod process;
 pub mod registry;
+pub mod reveal;
 pub mod shortcut;
 pub mod single_instance;
 pub mod steam;

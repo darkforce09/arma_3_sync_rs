@@ -168,6 +168,11 @@ impl Shell {
         self.sheets.current()
     }
 
+    /// Opens the secondary window `window`, as its menu item does.
+    pub fn open(&self, ctx: &egui::Context, window: SecondaryWindow) {
+        self.windows.open(ctx, window);
+    }
+
     /// Whether the secondary window `window` is open.
     pub fn is_open(&self, window: SecondaryWindow) -> bool {
         self.windows.is_open(window)
@@ -273,7 +278,7 @@ impl Shell {
             ),
             None => {}
         }
-        self.windows.show(&ctx);
+        self.windows.show(&ctx, self.viewer.cx());
         self.toasts.show(ui, &self.viewer);
     }
 

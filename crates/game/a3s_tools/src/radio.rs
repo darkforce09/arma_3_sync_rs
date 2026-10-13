@@ -9,6 +9,7 @@ mod specs;
 pub mod strings;
 mod ts3;
 mod validate;
+mod version;
 
 pub use install::{
     Acre2Report, ERROR_TITLE, InstallStepError, STATUS_FAIL, STATUS_OK, TfarReport, install_acre2,
@@ -23,6 +24,7 @@ pub use validate::{
     Acre2Form, Acre2Plan, InstallerIssue, IssueKind, TfarForm, TfarPlan, Ts3ProcessProbe,
     validate_acre2, validate_tfar,
 };
+pub use version::{file_version, plugin_version};
 
 /// The label shown when a value cannot be determined.
 pub const UNKNOWN: &str = "Unknown";

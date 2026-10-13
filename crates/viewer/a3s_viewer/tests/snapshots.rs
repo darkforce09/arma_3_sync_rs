@@ -1,6 +1,6 @@
 // Its own test binary: wgpu rendering on a CPU adapter, Linux only, regenerated with UPDATE_SNAPSHOTS=1.
 //! Headless wgpu snapshots of the main window with two repositories, one with updates, and of
-//! the Repository and Activity screens.
+//! the Repository and Activity screens, and of the tool windows.
 #![cfg(target_os = "linux")]
 
 #[allow(
@@ -25,7 +25,11 @@ use a3s_viewer_context::sync::{
 use a3s_viewer_context::{TaskError, TaskKey, TaskKind, ViewerContext};
 use egui_kittest::kittest::Queryable as _;
 
-use crate::support::{Fixture, Start, fixture_with};
+use a3s_viewer::SecondaryWindow;
+
+use crate::support::{
+    Fixture, Start, add_mod, enable_mods, fixture_with, open, radio_folders, wait_for_label, write,
+};
 
 fn snapshot(name: &str, mode: ThemeMode, setup: impl FnOnce(&mut Fixture)) {
     let mut fixture = fixture_with(Start::default(), |builder| {
@@ -208,4 +212,106 @@ fn mutate(viewer: &ViewerContext, f: impl FnOnce(&mut a3s_viewer_context::AppSta
             Ok::<(), Infallible>(())
         })
         .ok();
+}
+
+/// A snapshot of a tool window over the main window. The temporary folders the window shows
+/// stay until the snapshot is taken; `setup` returns the labels to mask (temporary paths).
+fn tool_snapshot(
+    name: &str,
+    mode: ThemeMode,
+    setup: impl FnOnce(&mut Fixture, &std::path::Path) -> Vec<String>,
+) {
+    let mut fixture = fixture_with(Start::default(), |builder| {
+        builder.with_theme(mode.into()).wgpu()
+    });
+    theme::set_mode(&fixture.harness.ctx, mode);
+    fixture.harness.run();
+    let dir = tempfile::tempdir().expect("temp dir");
+    let masked = setup(&mut fixture, dir.path());
+    // Enough frames for the window to fade in.
+    fixture.harness.run_steps(40);
+    for label in masked {
+        // Right-aligned labels: a fixed width from their right edge hides any path length.
+        let mut rect = fixture.harness.get_by_label(&label).rect();
+        rect.min.x = rect.max.x - 260.0;
+        fixture.harness.mask(rect);
+    }
+    fixture.harness.snapshot(name);
+}
+
+fn show_server_keys(fixture: &mut Fixture, dir: &std::path::Path) -> Vec<String> {
+    let mods = dir.join("mods");
+    add_mod(&mods, "@ace", &["ace_3.bikey"]);
+    add_mod(&mods, "@cba", &["cba_3.bikey"]);
+    add_mod(&mods, "@unsigned", &[]);
+    let target = dir.join("keys");
+    std::fs::create_dir_all(&target).expect("target");
+    let viewer = fixture.harness.state().viewer();
+    enable_mods(viewer, &mods, &["@ace", "@cba", "@unsigned"]);
+    let target = target.display().to_string();
+    viewer
+        .mutate(None, |state| {
+            state
+                .client
+                .set_bikey_target_directory(Some(target.clone()))
+        })
+        .expect("target");
+    open(&mut fixture.harness, SecondaryWindow::ServerKeys);
+    wait_for_label(&mut fixture.harness, "Copy 2 keys");
+    vec![target]
+}
+
+fn show_radio_plugin(fixture: &mut Fixture, dir: &std::path::Path) -> Vec<String> {
+    let viewer = fixture.harness.state().viewer();
+    let ts3 = radio_folders(viewer, dir, &[]);
+    open(&mut fixture.harness, SecondaryWindow::RadioPlugin);
+    wait_for_label(&mut fixture.harness, "Install plugin");
+    vec![ts3.display().to_string()]
+}
+
+fn show_game_log(fixture: &mut Fixture, dir: &std::path::Path) -> Vec<String> {
+    write(
+        &dir.join("Arma3_x64_2026-10-13_20-00-00.rpt"),
+        b"20:00:01 Starting mission\n20:00:02 Warning Message: No entry 'bin\\config.bin/CfgWeapons'\n20:00:03 Error in expression <player setPos _pos>\n20:00:04 Mission loaded\n",
+    );
+    let folder = dir.display().to_string();
+    fixture
+        .harness
+        .state()
+        .viewer()
+        .mutate(None, |state| state.client.set_rpt_path(Some(folder)))
+        .expect("folder");
+    open(&mut fixture.harness, SecondaryWindow::GameLog);
+    wait_for_label(&mut fixture.harness, "20:00:04 Mission loaded");
+    Vec::new()
+}
+
+#[test]
+fn server_keys_light() {
+    tool_snapshot("server_keys_light", ThemeMode::Light, show_server_keys);
+}
+
+#[test]
+fn server_keys_dark() {
+    tool_snapshot("server_keys_dark", ThemeMode::Dark, show_server_keys);
+}
+
+#[test]
+fn radio_plugin_light() {
+    tool_snapshot("radio_plugin_light", ThemeMode::Light, show_radio_plugin);
+}
+
+#[test]
+fn radio_plugin_dark() {
+    tool_snapshot("radio_plugin_dark", ThemeMode::Dark, show_radio_plugin);
+}
+
+#[test]
+fn game_log_light() {
+    tool_snapshot("game_log_light", ThemeMode::Light, show_game_log);
+}
+
+#[test]
+fn game_log_dark() {
+    tool_snapshot("game_log_dark", ThemeMode::Dark, show_game_log);
 }

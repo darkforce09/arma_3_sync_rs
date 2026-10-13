@@ -33,7 +33,17 @@ The window (`Shell`):
   download folder; login, SSL validation and the proxy under Advanced; Test connection), and
   Update issues (one plain line per failed file, Retry, Retry all, Copy report, Play anyway).
 - Toasts (egui-toast) for the context's events, including an Undo kind that runs a callback.
-- Settings and the tool windows as separate OS windows (deferred viewports).
+- Settings and the tool windows as separate OS windows (deferred viewports). Each tool window
+  has its own toasts for its results:
+  - Server keys: the enabled mods of the active profile (From), the target folder (To, saved
+    as soon as it is chosen), the keys found with the mods without a key behind a disclosure,
+    and "Copy N keys".
+  - Radio plugin: TFAR or ACRE 2; the plugin in the mod, the TeamSpeak 3 folder (stored or
+    detected, "Change…") and version, the installed plugin, a warning while TeamSpeak runs
+    or the folders are incomplete, and "Install plugin" / "Update plugin".
+  - Game log: the newest RPT log followed live (or an older one from the file pop-up),
+    monospace and coloured by line type, a filter field, "Errors only", "Show in folder"; the
+    view follows the end unless scrolled up.
 - Tray icon (StatusNotifierItem through `ksni` on Linux, `tray-icon` on Windows and macOS):
   Show, Hide, Check now, Quit. Closing or minimizing hides into the tray when the "minimized"
   preference says Tray; otherwise closing quits (prepare, save, close).

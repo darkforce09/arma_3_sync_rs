@@ -4,3 +4,4 @@
 mod shell;
 mod support;
 mod sync;
+mod tools;
