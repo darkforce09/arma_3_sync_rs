@@ -106,6 +106,9 @@ pub(super) struct GamePane {
     /// The Steam client, looked up once.
     steam: OnceCell<Option<SteamCommand>>,
     addons: Addons,
+
+    /// The memory allocators of the Arma 3 `Dll` folder, by the executable they were read for.
+    allocators: Option<(Option<String>, Vec<String>)>,
 }
 
 impl GamePane {
@@ -177,9 +180,13 @@ impl GamePane {
         });
 
         let closed = match self.customize {
-            Some(Customize::Performance) => sheet(ui.ctx(), "Performance", |ui| {
-                performance_rows(ui, &mut profile.launcher_options);
-            }),
+            Some(Customize::Performance) => {
+                let allocators =
+                    self.allocators(profile.launcher_options.arma3_exe_path.as_deref());
+                sheet(ui.ctx(), "Performance", |ui| {
+                    performance_rows(ui, &mut profile.launcher_options, &allocators);
+                })
+            }
             Some(Customize::Developer) => sheet(ui.ctx(), "Developer", |ui| {
                 self.developer_rows(ui, &mut profile);
             }),
@@ -296,14 +303,41 @@ impl GamePane {
         });
     }
 
+    /// The memory allocators (`.dll` files) of the `Dll` folder beside `exe`, read once per
+    /// executable.
+    // Mirrors ui/main/LauncherOptionsPanel.java:802-832
+    fn allocators(&mut self, exe: Option<&str>) -> Vec<String> {
+        let key = exe.map(str::to_owned);
+        if self
+            .allocators
+            .as_ref()
+            .is_none_or(|(read_for, _)| *read_for != key)
+        {
+            let found = exe
+                .and_then(|exe| Path::new(exe).parent())
+                .map(|folder| dll_names(&folder.join("Dll")))
+                .unwrap_or_default();
+            self.allocators = Some((key, found));
+        }
+        self.allocators
+            .as_ref()
+            .map(|(_, names)| names.clone())
+            .unwrap_or_default()
+    }
+
     fn developer_rows(&mut self, ui: &mut Ui, profile: &mut Profile) {
         let options = &mut profile.launcher_options;
         frames::group(ui, |ui| {
-            toggle_row(ui, "File patching", &mut options.file_patching);
+            toggle_row(ui, "File patching", &mut options.file_patching).on_hover_text(
+                "The game also loads unpacked files, for mod makers (-filePatching).",
+            );
             frames::group_separator(ui);
-            toggle_row(ui, "No logs", &mut options.nologs);
+            toggle_row(ui, "No logs", &mut options.nologs)
+                .on_hover_text("The game writes no RPT log (-nologs).");
             frames::group_separator(ui);
-            toggle_row(ui, "Check signatures", &mut options.check_signatures);
+            toggle_row(ui, "Check signatures", &mut options.check_signatures).on_hover_text(
+                "The game checks the signatures of the mods' PBO files (-checkSignatures).",
+            );
             if Os::current() == Os::Windows {
                 frames::group_separator(ui);
                 toggle_row(
@@ -313,7 +347,8 @@ impl GamePane {
                 );
             }
             frames::group_separator(ui);
-            toggle_row(ui, "Mission file", &mut options.mission_file);
+            toggle_row(ui, "Mission file", &mut options.mission_file)
+                .on_hover_text("The game opens this mission in the editor.");
             frames::group_separator(ui);
             form_row(ui, "Mission", |ui| {
                 if button(ui, "Choose…").clicked() {
@@ -346,6 +381,27 @@ impl GamePane {
     }
 }
 
+/// The names without extension of the `.dll` files in `folder`, sorted.
+fn dll_names(folder: &Path) -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir(folder) else {
+        return Vec::new();
+    };
+    let mut names: Vec<String> = entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("dll"))
+        })
+        .filter_map(|path| {
+            path.file_stem()
+                .map(|stem| stem.to_string_lossy().into_owned())
+        })
+        .collect();
+    names.sort();
+    names
+}
+
 /// Shows a "Customize…" sheet; whether it was closed.
 fn sheet(ctx: &egui::Context, title: &str, add_contents: impl FnOnce(&mut Ui)) -> bool {
     let action = Dialog::new(("a3s_viewer::settings::customize", title), title)
@@ -359,23 +415,49 @@ fn sheet(ctx: &egui::Context, title: &str, add_contents: impl FnOnce(&mut Ui)) -
     action != DialogAction::None
 }
 
+// The explanations mirror ui/main/LauncherOptionsPanel.java:693-713
 fn option_rows(ui: &mut Ui, options: &mut LauncherOptions) {
-    let rows: [(&str, &mut bool); 5] = [
-        ("Skip the intro", &mut options.no_splash_screen),
-        ("Empty world", &mut options.default_world),
-        ("Windowed", &mut options.window_mode),
-        ("Keep running in the background", &mut options.no_pause),
-        ("Show script errors", &mut options.show_script_errors),
+    let rows: [(&str, &str, &mut bool); 6] = [
+        (
+            "Skip the intro",
+            "No splash screens at start (-nosplash).",
+            &mut options.no_splash_screen,
+        ),
+        (
+            "Empty world",
+            "No world is loaded behind the main menu, which starts faster (-world=empty).",
+            &mut options.default_world,
+        ),
+        (
+            "Windowed",
+            "The game runs in a window instead of full screen (-window).",
+            &mut options.window_mode,
+        ),
+        (
+            "Keep running in the background",
+            "The game does not pause when another window is in front (-noPause).",
+            &mut options.no_pause,
+        ),
+        (
+            "Show script errors",
+            "Script errors appear on screen (-showScriptErrors).",
+            &mut options.show_script_errors,
+        ),
+        (
+            "Restart when it closes",
+            "Arma3Sync starts the game again each time it closes, e.g. for a server.",
+            &mut options.auto_restart,
+        ),
     ];
-    for (index, (label, on)) in rows.into_iter().enumerate() {
+    for (index, (label, help, on)) in rows.into_iter().enumerate() {
         if index > 0 {
             frames::group_separator(ui);
         }
-        toggle_row(ui, label, on);
+        toggle_row(ui, label, on).on_hover_text(help);
     }
 }
 
-fn performance_rows(ui: &mut Ui, options: &mut LauncherOptions) {
+fn performance_rows(ui: &mut Ui, options: &mut LauncherOptions, allocators: &[String]) {
     let cpus = std::thread::available_parallelism().map_or(1, usize::from);
     let cpu_labels: Vec<String> = (1..=cpus).map(|n| n.to_string()).collect();
     let mut cpu_choices: Vec<(i32, &str)> = vec![(0, "Automatic")];
@@ -397,7 +479,8 @@ fn performance_rows(ui: &mut Ui, options: &mut LauncherOptions) {
                 &mut options.cpu_count_selection,
                 &cpu_choices,
             )
-        });
+        })
+        .on_hover_text("How many processor cores the game uses (-cpuCount).");
         frames::group_separator(ui);
         labelled_row(ui, "Extra threads", |ui| {
             text_choice(
@@ -406,7 +489,8 @@ fn performance_rows(ui: &mut Ui, options: &mut LauncherOptions) {
                 &mut options.ex_threads_selection,
                 &["0", "1", "3", "5", "7"],
             )
-        });
+        })
+        .on_hover_text("Extra threads for file, texture and geometry work (-exThreads).");
         frames::group_separator(ui);
         labelled_row(ui, "Maximum memory (MB)", |ui| {
             let memory: Vec<&str> = memory.iter().map(String::as_str).collect();
@@ -416,20 +500,27 @@ fn performance_rows(ui: &mut Ui, options: &mut LauncherOptions) {
                 &mut options.max_memory_selection,
                 &memory,
             )
-        });
+        })
+        .on_hover_text("The most memory the game may use (-maxMem).");
         frames::group_separator(ui);
         labelled_row(ui, "Memory allocator", |ui| {
+            let mut values = vec!["system"];
+            values.extend(allocators.iter().map(String::as_str));
             text_choice(
                 ui,
                 "a3s_viewer::settings::malloc",
                 &mut options.malloc_selection,
-                &["system"],
+                &values,
             )
-        });
+        })
+        .on_hover_text("The memory allocator of the Arma 3 Dll folder the game uses (-malloc).");
         frames::group_separator(ui);
-        toggle_row(ui, "Huge pages", &mut options.huge_pages);
+        toggle_row(ui, "Huge pages", &mut options.huge_pages).on_hover_text(
+            "Faster memory access where the system has huge pages set up (-hugepages).",
+        );
         frames::group_separator(ui);
-        toggle_row(ui, "Hyper-threading", &mut options.enable_ht);
+        toggle_row(ui, "Hyper-threading", &mut options.enable_ht)
+            .on_hover_text("The game uses every hyper-threaded core (-enableHT).");
     });
 }
 

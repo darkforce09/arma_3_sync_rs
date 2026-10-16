@@ -314,9 +314,12 @@ impl ModsModel {
     /// The label of `node`.
     pub(crate) fn label(&self, node: &ModNode) -> String {
         match node {
-            ModNode::Group(path) => edit::node(self.tree(), path)
-                .map(|node| node.name().to_owned())
-                .unwrap_or_default(),
+            ModNode::Group(path) => match edit::node(self.tree(), path) {
+                // Mirrors dto/TreeLeafDTO.java:66-95
+                Some(TreeNode::Leaf(leaf)) if leaf.optional => format!("{} (optional)", leaf.name),
+                Some(node) => node.name().to_owned(),
+                None => String::new(),
+            },
             ModNode::Computer => "On this computer".to_owned(),
             ModNode::Folder(Some(index)) => self
                 .folders()
@@ -647,5 +650,33 @@ impl CheckTreeModel for TreeView<'_> {
             ModNode::Group(path) => self.model.status(path).map(ModStatus::pill),
             _ => None,
         }
+    }
+
+    /// Where a mod from this computer is.
+    fn tooltip(&self, key: &ModNode) -> Option<String> {
+        let ModNode::Local(key) = key else {
+            return None;
+        };
+        let addon = self.model.scan.as_ref()?.registry.get(key)?;
+        Some(
+            Path::new(&addon.path)
+                .join(&addon.name)
+                .display()
+                .to_string(),
+        )
+    }
+
+    /// A mod from this computer can be dragged into a user group.
+    fn draggable(&self, key: &ModNode) -> bool {
+        matches!(key, ModNode::Local(_))
+    }
+
+    fn accepts_drop(&self, target: &ModNode, dragged: &ModNode) -> bool {
+        matches!(dragged, ModNode::Local(_))
+            && !self.model.is_leaf(target)
+            && self
+                .model
+                .top_group(target)
+                .is_some_and(|group| group.modset_type.is_none())
     }
 }

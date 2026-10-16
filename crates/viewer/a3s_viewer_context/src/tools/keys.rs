@@ -1,4 +1,5 @@
-//! Server keys: the `.bikey` files of the active profile's enabled mods, copied into one folder.
+//! Server keys: the `.bikey` files of the active profile's enabled mods, or of any folder,
+//! copied into one folder.
 
 use std::path::{Path, PathBuf};
 
@@ -24,11 +25,27 @@ pub struct KeysState {
     pub last_copy: Option<KeyCopy>,
 }
 
-/// The keys of a profile's enabled mods.
+/// Where keys are looked for.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum KeySource {
+    /// The enabled mods of this profile.
+    Profile(String),
+
+    /// Everything below this folder, e.g. a server's mods folder.
+    Folder(PathBuf),
+}
+
+impl Default for KeySource {
+    fn default() -> Self {
+        Self::Profile(String::new())
+    }
+}
+
+/// The keys found in a [`KeySource`].
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct KeyScan {
-    /// The profile.
-    pub profile: String,
+    /// Where they were looked for.
+    pub source: KeySource,
 
     /// Each enabled mod found on disk, in tree order.
     pub mods: Vec<ModKeys>,
@@ -53,13 +70,13 @@ impl KeyScan {
     }
 }
 
-/// One enabled mod and its keys.
+/// One enabled mod (or the searched folder) and its keys.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ModKeys {
-    /// The mod folder name.
+    /// The folder name.
     pub name: String,
 
-    /// The mod folder.
+    /// The folder.
     pub folder: PathBuf,
 
     /// Its `.bikey` files.
@@ -118,8 +135,52 @@ pub fn find_keys(cx: &Cx) -> Result<TaskId, ContextError> {
             })
             .await?;
             let mut scan = found.ok_or(TaskError::Cancelled)?;
-            scan.profile = name;
+            scan.source = KeySource::Profile(name);
             task.cx.state().write().tools.keys.scan = Some(scan);
+            Ok(())
+        },
+    )
+}
+
+/// The stored folder whose keys are looked for instead of the enabled mods.
+pub fn keys_source_folder(state: &AppState) -> Option<PathBuf> {
+    state
+        .client
+        .configuration()
+        .bikey_extract_options
+        .source_directory_path
+        .as_deref()
+        .filter(|path| !path.is_empty())
+        .map(PathBuf::from)
+}
+
+/// Stores the folder whose keys are looked for instead of the enabled mods.
+pub fn set_keys_source(cx: &Cx, folder: &Path) -> Result<(), ServiceError> {
+    cx.state()
+        .write()
+        .client
+        .set_bikey_source_directory(Some(folder.display().to_string()))
+}
+
+/// Finds every key below `folder` into [`KeysState::scan`].
+// Mirrors ui/tools/bikey/BiKeyExtractorDialog.java:228-263
+pub fn find_keys_in_folder(cx: &Cx, folder: PathBuf) -> Result<TaskId, ContextError> {
+    cx.spawn_task(
+        TaskKey::new(TaskKind::ExtractBikeys),
+        true,
+        move |task| async move {
+            let searched = folder.clone();
+            let keys = blocking(&task, move |cancel| bikey::find_bikeys(&searched, cancel))
+                .await?
+                .ok_or(TaskError::Cancelled)?;
+            let name = folder.file_name().map_or_else(
+                || folder.display().to_string(),
+                |n| n.to_string_lossy().into_owned(),
+            );
+            task.cx.state().write().tools.keys.scan = Some(KeyScan {
+                source: KeySource::Folder(folder.clone()),
+                mods: vec![ModKeys { name, folder, keys }],
+            });
             Ok(())
         },
     )
@@ -200,7 +261,7 @@ fn scan_keys(profile: &Profile, found: &AddonScan, cancel: &CancelToken) -> Opti
         });
     }
     Some(KeyScan {
-        profile: profile.name.clone(),
+        source: KeySource::Profile(profile.name.clone()),
         mods,
     })
 }

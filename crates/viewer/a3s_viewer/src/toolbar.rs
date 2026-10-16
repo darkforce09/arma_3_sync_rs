@@ -41,6 +41,14 @@ pub(crate) fn show(
             if primary_button(ui, &play_label(snapshot.profile_has_updates)).clicked() {
                 actions.push(Action::Play);
             }
+            if snapshot.restarting
+                && ui
+                    .button(format!("{} Stop restarting", icons::STOP))
+                    .on_hover_text("Arma 3 is not started again when it closes")
+                    .clicked()
+            {
+                actions.push(Action::StopAutoRestart);
+            }
             let mut profile = snapshot.active_profile.clone();
             let options: Vec<(String, &str)> = snapshot
                 .profiles

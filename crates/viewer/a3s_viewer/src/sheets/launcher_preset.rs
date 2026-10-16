@@ -46,16 +46,7 @@ pub(super) fn show(
                         .map(|m| m.local_name.as_deref().unwrap_or(&m.name))
                         .chain(result.matched_dlc.iter().map(|dlc| dlc.name.as_str())),
                 );
-                section(
-                    ui,
-                    "Missing",
-                    ProgressTone::Danger,
-                    result
-                        .missing
-                        .iter()
-                        .map(|m| m.name.as_str())
-                        .chain(result.missing_dlc.iter().map(|dlc| dlc.name.as_str())),
-                );
+                missing(ui, result);
             });
     });
     match action {
@@ -65,6 +56,49 @@ pub(super) fn show(
             Shown::Closed(None)
         }
         DialogAction::Cancel | DialogAction::Close => Shown::Closed(None),
+    }
+}
+
+/// The mods and CDLCs of the preset that are not on this computer, each with its Workshop or
+/// store page.
+// Mirrors ui/main/AddonsPanel.java:1122-1190
+fn missing(ui: &mut Ui, result: &ImportResult) {
+    let count = result.missing.len() + result.missing_dlc.len();
+    if count == 0 {
+        return;
+    }
+    let palette = theme::palette(ui.ctx());
+    let color = palette.status_color(ProgressTone::Danger);
+    ui.add_space(6.0);
+    ui.label(RichText::new(format!("Missing ({count})")).strong());
+    let rows = result
+        .missing
+        .iter()
+        .map(|m| {
+            (
+                m.name.as_str(),
+                format!("Workshop {}", m.published_id),
+                m.url.as_str(),
+            )
+        })
+        .chain(result.missing_dlc.iter().map(|dlc| {
+            (
+                dlc.name.as_str(),
+                format!("CDLC {}", dlc.steam_app_id),
+                dlc.url.as_str(),
+            )
+        }));
+    for (name, detail, url) in rows {
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(icons::X_CIRCLE).color(color));
+            ui.label(name);
+            ui.label(RichText::new(detail).small().color(palette.text_secondary));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if !url.is_empty() {
+                    ui.hyperlink_to("Open in Steam", url);
+                }
+            });
+        });
     }
 }
 

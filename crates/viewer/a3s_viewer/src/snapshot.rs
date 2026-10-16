@@ -56,6 +56,9 @@ pub(crate) struct Snapshot {
 
     /// A repository check is running.
     pub(crate) checking: bool,
+
+    /// The game runs and starts again when it closes (the profile's auto-restart).
+    pub(crate) restarting: bool,
 }
 
 impl Snapshot {
@@ -91,8 +94,17 @@ impl Snapshot {
         let profile_has_updates = repositories.iter().any(|row| {
             matches!(row.badge, Badge::Updates(_)) && profile_repositories.contains(&row.name)
         });
+        let restarting = state
+            .launch
+            .game
+            .as_ref()
+            .is_some_and(|game| !game.is_finished())
+            && client
+                .launcher_options()
+                .is_some_and(|options| options.auto_restart);
         Self {
             checking: repositories.iter().any(|row| row.badge == Badge::Checking),
+            restarting,
             repositories,
             publishing,
             profiles: client.profile_names(),

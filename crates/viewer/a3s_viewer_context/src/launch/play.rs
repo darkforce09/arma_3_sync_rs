@@ -239,23 +239,28 @@ async fn update(task: &TaskCtx) {
 /// Where the addons enabled in the groups made from `repository` are in its content: the
 /// paths below its root of the addon folders with their names (any case).
 fn enabled_addon_paths(state: &AppState, repository: &str) -> Vec<String> {
-    let Some(profile) = state.client.active_profile() else {
-        return Vec::new();
-    };
-    let mut names = BTreeSet::new();
-    for group in profile
-        .tree
-        .directories()
-        .filter(|group| group.modset_repository_name.as_deref() == Some(repository))
-    {
-        selected_leaf_names(group, &mut names);
-    }
+    let names = enabled_addon_names(state, repository);
     let Some(sync) = state.repositories.runtime(repository).metadata.sync else {
         return Vec::new();
     };
     let mut paths = Vec::new();
     addon_paths(&sync, "", &names, &mut paths);
     paths
+}
+
+/// The addons enabled in the groups made from `repository`, lowercase.
+fn enabled_addon_names(state: &AppState, repository: &str) -> BTreeSet<String> {
+    let mut names = BTreeSet::new();
+    if let Some(profile) = state.client.active_profile() {
+        for group in profile
+            .tree
+            .directories()
+            .filter(|group| group.modset_repository_name.as_deref() == Some(repository))
+        {
+            selected_leaf_names(group, &mut names);
+        }
+    }
+    names
 }
 
 fn selected_leaf_names(directory: &TreeDirectory, names: &mut BTreeSet<String>) {
@@ -292,18 +297,30 @@ fn addon_paths(
     }
 }
 
-/// The repositories of the enabled addon groups whose last check found updates.
+/// The repositories of the enabled addon groups whose last check found updates, or with an
+/// enabled addon that is not on this computer.
 fn outdated_repositories(state: &AppState) -> Vec<String> {
     let Some(profile) = state.client.active_profile() else {
         return Vec::new();
     };
     enabled_modset_repositories(profile)
         .into_iter()
+        .filter(|name| state.client.repository(name).is_ok())
         .filter(|name| {
             state.repositories.runtime(name).status == RepositoryStatus::Updated
-                && state.client.repository(name).is_ok()
+                || has_missing_enabled_addon(state, name)
         })
         .collect()
+}
+
+/// Whether an addon enabled in the groups made from `repository` is not on this computer.
+fn has_missing_enabled_addon(state: &AppState, repository: &str) -> bool {
+    let Some(scan) = &state.profiles.scan else {
+        return false;
+    };
+    enabled_addon_names(state, repository)
+        .iter()
+        .any(|name| !scan.registry.contains(name))
 }
 
 fn launch_event_error(error: &LaunchError) -> EventError {

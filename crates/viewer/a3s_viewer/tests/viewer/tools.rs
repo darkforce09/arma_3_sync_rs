@@ -48,6 +48,38 @@ fn server_keys_are_found_and_copied() {
 }
 
 #[test]
+fn server_keys_of_a_folder_are_copied() {
+    let mut fixture = fixture(Start::default());
+    let dir = tempfile::tempdir().expect("temp dir");
+    let server_mods = dir.path().join("server_mods");
+    add_mod(&server_mods, "@ace", &["ace_3.bikey"]);
+    add_mod(&server_mods, "@cba", &["cba_3.bikey"]);
+    let target = dir.path().join("server/keys");
+    fs::create_dir_all(&target).expect("target");
+    let viewer = fixture.harness.state().viewer();
+    viewer
+        .mutate(None, |state| {
+            state
+                .client
+                .set_bikey_target_directory(Some(target.display().to_string()))?;
+            state
+                .client
+                .set_bikey_source_directory(Some(server_mods.display().to_string()))
+        })
+        .expect("folders");
+
+    let harness = &mut fixture.harness;
+    open(harness, SecondaryWindow::ServerKeys);
+    harness.get_by_label("A folder").click();
+    harness.run();
+    wait_for_label(harness, "Copy 2 keys");
+    harness.get_by_label("Copy 2 keys").click();
+    wait_for(harness, "the copied keys", |_| {
+        target.join("ace_3.bikey").is_file() && target.join("cba_3.bikey").is_file()
+    });
+}
+
+#[test]
 fn radio_plugin_installs_into_teamspeak() {
     let mut fixture = fixture(Start::default());
     let dir = tempfile::tempdir().expect("temp dir");

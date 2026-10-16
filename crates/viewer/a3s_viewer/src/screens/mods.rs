@@ -6,9 +6,9 @@ mod load_order;
 mod model;
 
 use std::path::PathBuf;
-use std::sync::mpsc;
+use std::sync::{Arc, mpsc};
 
-use a3s_addons::add_groups_from_repository;
+use a3s_addons::{add_groups_from_events, add_groups_from_repository};
 use a3s_foundation::error::UserFacing as _;
 use a3s_foundation::format;
 use a3s_tools::preset::{ImportResult, import_preset};
@@ -16,15 +16,15 @@ use a3s_types::Event;
 use a3s_types::local::{Addon, Profile, TreeNode};
 use a3s_ui::icon::icons;
 use a3s_ui::theme;
-use a3s_ui::widgets::{CheckTree, CheckTreeEvent, segmented};
+use a3s_ui::widgets::{CheckTree, CheckTreeEvent, CheckTreeModel, segmented};
 use a3s_viewer_context::launch::launch_order;
 use a3s_viewer_context::{Change, ViewerContext, profiles};
 use egui::{Align, Key, Layout, Pos2, RichText, Ui};
 
 use self::model::{ModNode, ModsModel, TreeView};
 use super::ScreenCx;
-use crate::picker::FolderPicker;
-use crate::sheets::Sheet;
+use crate::picker::{FilePicker, FolderPicker};
+use crate::sheets::{PresetExport, Sheet};
 use crate::toasts::Toaster;
 
 /// The segments of the screen.
@@ -33,16 +33,20 @@ const SEGMENTS: [&str; 3] = ["All", "Enabled", "Load order"];
 /// The segment showing the load order.
 const LOAD_ORDER: usize = 2;
 
+/// The id of the mods tree, which keeps its expanded rows.
+const TREE_ID: &str = "a3s_viewer::mods::tree";
+
 /// The state of the Mods screen, kept across frames.
 pub(crate) struct ModsScreen {
     segment: usize,
     tree: CheckTree,
     model: Option<ModsModel>,
     picker: FolderPicker,
+    preset_picker: FilePicker,
     context_menu: Option<(ModNode, Pos2)>,
 
-    /// The group being renamed and the text typed so far.
-    rename: Option<(String, String)>,
+    /// The group being renamed (child indices from the root) and the text typed so far.
+    rename: Option<(Vec<usize>, String)>,
 
     /// The preset being read and compared on a worker thread.
     preset: Option<mpsc::Receiver<Result<ImportResult, String>>>,
@@ -52,9 +56,10 @@ impl Default for ModsScreen {
     fn default() -> Self {
         Self {
             segment: 0,
-            tree: CheckTree::new("a3s_viewer::mods::tree").default_expanded(true),
+            tree: CheckTree::new(TREE_ID).default_expanded(true),
             model: None,
             picker: FolderPicker::default(),
+            preset_picker: FilePicker::default(),
             context_menu: None,
             rename: None,
             preset: None,
@@ -74,7 +79,7 @@ impl ModsScreen {
                 None => self.model = ModsModel::take(&state),
             }
         }
-        self.poll_background(cx);
+        self.poll_background(ui.ctx(), cx);
         self.take_dropped_preset(ui.ctx(), cx);
         if self.model.is_none() {
             super::empty_state(
@@ -97,6 +102,7 @@ impl ModsScreen {
                 ui.horizontal(|ui| {
                     segmented(ui, &mut self.segment, &SEGMENTS);
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        self.mods_menu(ui, cx);
                         Self::event_preset_menu(ui, cx);
                     });
                 });
@@ -128,8 +134,18 @@ impl ModsScreen {
             match event {
                 CheckTreeEvent::Toggled(node) => self.toggle(cx, &node),
                 CheckTreeEvent::RowDoubleClicked(node) => self.start_rename(&node),
-                CheckTreeEvent::ContextMenu(node, pos) => self.context_menu = Some((node, pos)),
+                CheckTreeEvent::ContextMenu(node, pos) if self.has_menu(&node) => {
+                    self.context_menu = Some((node, pos));
+                }
                 CheckTreeEvent::Key(node, Key::Delete) => self.remove(cx, &node),
+                CheckTreeEvent::Dropped {
+                    dragged: ModNode::Local(key),
+                    target: ModNode::Group(path),
+                } => {
+                    edit_profile(cx.viewer, cx.toasts, Change::AddonSelection, |profile| {
+                        edit::add_to_directory(&mut profile.tree, &path, &key)
+                    });
+                }
                 _ => {}
             }
         }
@@ -238,18 +254,27 @@ impl ModsScreen {
         }
     }
 
+    /// Whether `node` is a group of a user group (or one itself), which can be renamed.
+    fn renamable(&self, node: &ModNode) -> bool {
+        let ModNode::Group(path) = node else {
+            return false;
+        };
+        let model = self.model();
+        matches!(edit::node(model.tree(), path), Some(TreeNode::Directory(_)))
+            && model
+                .top_group(node)
+                .is_some_and(|group| group.modset_type.is_none())
+    }
+
     fn start_rename(&mut self, node: &ModNode) {
+        if !self.renamable(node) {
+            return;
+        }
         let ModNode::Group(path) = node else {
             return;
         };
-        if path.len() != 1 {
-            return;
-        }
-        if let Some(group) = self.model().top_group(node)
-            && group.modset_type.is_none()
-        {
-            self.rename = Some((group.name.clone(), group.name.clone()));
-        }
+        let name = self.model().label(node);
+        self.rename = Some((path.clone(), name));
     }
 
     fn footer(&mut self, ui: &mut Ui, cx: &mut ScreenCx<'_>) {
@@ -257,13 +282,14 @@ impl ModsScreen {
         ui.horizontal(|ui| {
             ui.menu_button(RichText::new(icons::PLUS).size(15.0), |ui| {
                 if ui.button("New group").clicked() {
-                    let mut name = None;
+                    let mut added = None;
                     edit_profile(cx.viewer, cx.toasts, Change::Group, |profile| {
-                        name = Some(edit::add_group(&mut profile.tree));
+                        let name = edit::add_group(&mut profile.tree);
+                        added = edit::group_index(&profile.tree, &name).map(|i| (i, name));
                         true
                     });
-                    if let Some(name) = name {
-                        self.rename = Some((name.clone(), name));
+                    if let Some((index, name)) = added {
+                        self.rename = Some((vec![index], name));
                     }
                 }
                 if ui.button("Add mods folder…").clicked() {
@@ -277,9 +303,15 @@ impl ModsScreen {
                         .open(ui.ctx(), "Choose a mods folder", start.as_deref());
                 }
                 Self::repository_groups_menu(ui, cx);
+                Self::event_groups_menu(ui, cx);
+                ui.separator();
+                if ui.button("Import Arma 3 Launcher preset…").clicked() {
+                    self.preset_picker
+                        .open(ui.ctx(), "Arma 3 Launcher preset", None);
+                }
             })
             .response
-            .on_hover_text("Add a group or a mods folder");
+            .on_hover_text("Add a group, a mods folder or a preset");
             let selected = self.selected_node().filter(|node| self.removable(node));
             let remove = ui
                 .add_enabled(
@@ -338,7 +370,7 @@ impl ModsScreen {
                         .metadata
                         .sync
                         .clone();
-                    edit_profile(cx.viewer, cx.toasts, Change::Group, |profile| {
+                    let before = edit_profile(cx.viewer, cx.toasts, Change::Group, |profile| {
                         add_groups_from_repository(
                             &mut profile.tree,
                             &[(name.as_str(), sync.as_deref())],
@@ -346,29 +378,47 @@ impl ModsScreen {
                         );
                         true
                     });
+                    if let Some(before) = before {
+                        cx.toasts.undoable(
+                            format!("Added the group {name}"),
+                            undo_profile(before, Change::Group),
+                        );
+                    }
+                }
+            }
+        });
+    }
+
+    /// "Group from event": a group with the mods of one event of a repository.
+    // Mirrors ui/main/dialogs/ModdsetsSelectionDialog.java:125-164
+    fn event_groups_menu(ui: &mut Ui, cx: &mut ScreenCx<'_>) {
+        let events = repository_events(cx.viewer);
+        if events.is_empty() {
+            return;
+        }
+        ui.menu_button("Group from event", |ui| {
+            for (repository, event) in &events {
+                if ui
+                    .button(format!("{} ({repository})", event.name))
+                    .clicked()
+                {
+                    let before = edit_profile(cx.viewer, cx.toasts, Change::Group, |profile| {
+                        add_groups_from_events(&mut profile.tree, &[(repository, event)], false);
+                        true
+                    });
+                    if let Some(before) = before {
+                        cx.toasts.undoable(
+                            format!("Added the group {}", event.name),
+                            undo_profile(before, Change::Group),
+                        );
+                    }
                 }
             }
         });
     }
 
     fn event_preset_menu(ui: &mut Ui, cx: &mut ScreenCx<'_>) {
-        let events: Vec<(String, Event)> = {
-            let state = cx.viewer.read();
-            state
-                .client
-                .repositories()
-                .flat_map(|repository| {
-                    state
-                        .repositories
-                        .runtime(&repository.name)
-                        .metadata
-                        .events_list()
-                        .into_iter()
-                        .map(|event| (repository.name.clone(), event.clone()))
-                        .collect::<Vec<_>>()
-                })
-                .collect()
-        };
+        let events = repository_events(cx.viewer);
         ui.add_enabled_ui(!events.is_empty(), |ui| {
             ui.menu_button(format!("{} Event preset", icons::CALENDAR_DOTS), |ui| {
                 for (repository, event) in &events {
@@ -381,8 +431,57 @@ impl ModsScreen {
                 }
             })
             .response
-            .on_hover_text("Enable exactly the mods of an event");
+            .on_hover_text("Enable exactly the mods of an event")
+            .on_disabled_hover_text("No repository has events yet.");
         });
+    }
+
+    /// The screen's "⋯" menu: expand or collapse every group, disable every mod, scan again.
+    fn mods_menu(&self, ui: &mut Ui, cx: &mut ScreenCx<'_>) {
+        ui.menu_button(RichText::new(icons::DOTS_THREE_CIRCLE).size(16.0), |ui| {
+            if ui.button("Expand all").clicked() {
+                self.expand_all(ui.ctx(), true);
+            }
+            if ui.button("Collapse all").clicked() {
+                self.expand_all(ui.ctx(), false);
+            }
+            ui.separator();
+            if ui.button("Disable all mods").clicked() {
+                let before =
+                    edit_profile(cx.viewer, cx.toasts, Change::AddonSelection, |profile| {
+                        edit::disable_all(&mut profile.tree)
+                    });
+                if let Some(before) = before {
+                    cx.toasts.undoable(
+                        "Disabled all mods",
+                        undo_profile(before, Change::AddonSelection),
+                    );
+                }
+            }
+            if ui.button("Rescan mods folders").clicked()
+                && let Err(err) = profiles::rescan(cx.viewer)
+            {
+                cx.toasts.error(err.user_message());
+            }
+        })
+        .response
+        .on_hover_text("More");
+    }
+
+    /// Expands (`open`) or collapses every row that has children.
+    // Mirrors ui/main/AddonsPanel.java:968-986
+    fn expand_all(&self, ctx: &egui::Context, open: bool) {
+        let Some(model) = &self.model else {
+            return;
+        };
+        let view = TreeView::new(model, "", false);
+        let mut pending = CheckTreeModel::roots(&view);
+        while let Some(node) = pending.pop() {
+            if !CheckTreeModel::is_leaf(&view, &node) {
+                CheckTree::set_expanded(ctx, TREE_ID, &node, open);
+                pending.extend(CheckTreeModel::children(&view, &node));
+            }
+        }
     }
 
     fn context_menu_ui(&mut self, ctx: &egui::Context, cx: &mut ScreenCx<'_>) {
@@ -419,16 +518,40 @@ impl ModsScreen {
                 }
             }
         }
-        if let ModNode::Group(path) = node
-            && path.len() == 1
-            && self
-                .model()
-                .top_group(node)
-                .is_some_and(|group| group.modset_type.is_none())
-            && ui.button("Rename…").clicked()
-        {
+        if self.renamable(node) && ui.button("Rename…").clicked() {
             self.start_rename(node);
             chosen = true;
+        }
+        if let ModNode::Group(path) = node
+            && let [index] = path.as_slice()
+        {
+            if ui.button("Duplicate").clicked() {
+                self.duplicate(cx, *index);
+                chosen = true;
+            }
+            if ui
+                .button("Export as Arma 3 Launcher preset…")
+                .on_hover_text("A preset with the group's enabled mods")
+                .clicked()
+            {
+                self.export(ui.ctx(), cx, node);
+                chosen = true;
+            }
+        }
+        if let ModNode::Folder(Some(index)) = node {
+            for (label, by) in [("Move up", -1), ("Move down", 1)] {
+                if ui
+                    .button(label)
+                    .on_hover_text("When two folders hold a mod of the same name, the upper wins")
+                    .clicked()
+                {
+                    let index = *index;
+                    edit_profile(cx.viewer, cx.toasts, Change::AddonFiles, |profile| {
+                        edit::move_item(&mut profile.addon_search_directories, index, by)
+                    });
+                    chosen = true;
+                }
+            }
         }
         if self.removable(node) && ui.button("Remove").clicked() {
             self.remove(cx, node);
@@ -437,10 +560,60 @@ impl ModsScreen {
         chosen
     }
 
-    fn rename_ui(&mut self, ctx: &egui::Context, cx: &mut ScreenCx<'_>) {
-        let Some((old, text)) = &mut self.rename else {
+    /// Whether the context menu of `node` has items; rows without any open no menu.
+    fn has_menu(&self, node: &ModNode) -> bool {
+        match node {
+            ModNode::Local(_) => !self.model().user_groups().is_empty(),
+            ModNode::Group(path) => path.len() == 1 || self.renamable(node) || self.removable(node),
+            ModNode::Folder(Some(_)) => true,
+            ModNode::Computer | ModNode::Folder(None) => false,
+        }
+    }
+
+    /// Copies the top-level group at `index` as a user group, then renames it.
+    fn duplicate(&mut self, cx: &mut ScreenCx<'_>, index: usize) {
+        let mut added = None;
+        let before = edit_profile(cx.viewer, cx.toasts, Change::Group, |profile| {
+            let name = edit::duplicate_group(&mut profile.tree, index);
+            added =
+                name.and_then(|name| edit::group_index(&profile.tree, &name).map(|i| (i, name)));
+            added.is_some()
+        });
+        if let (Some(before), Some((index, name))) = (before, added) {
+            cx.toasts.undoable(
+                format!("Added the group {name}"),
+                undo_profile(before, Change::Group),
+            );
+            self.rename = Some((vec![index], name));
+        }
+    }
+
+    /// Opens the export of the enabled mods of the top-level group `node`.
+    fn export(&self, ctx: &egui::Context, cx: &mut ScreenCx<'_>, node: &ModNode) {
+        let model = self.model();
+        let (Some(group), Some(scan)) = (model.top_group(node), model.scan.as_ref()) else {
+            cx.toasts
+                .info("The mods folders are still being scanned; try again in a moment.");
             return;
         };
+        let store = Arc::clone(cx.viewer.read().client.store());
+        cx.sheets
+            .push(Sheet::PresetExport(Box::new(PresetExport::new(
+                ctx,
+                group.clone(),
+                Arc::new(scan.registry.clone()),
+                store,
+            ))));
+    }
+
+    fn rename_ui(&mut self, ctx: &egui::Context, cx: &mut ScreenCx<'_>) {
+        let Some((path, text)) = &mut self.rename else {
+            return;
+        };
+        let problem = self
+            .model
+            .as_ref()
+            .and_then(|model| edit::rename_problem(model.tree(), path, text));
         let mut done = None;
         egui::Modal::new(egui::Id::new("a3s_viewer::mods::rename")).show(ctx, |ui| {
             ui.set_width(320.0);
@@ -451,9 +624,19 @@ impl ModsScreen {
                 field.request_focus();
             }
             let enter = field.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
+            if let Some(problem) = problem {
+                ui.label(
+                    RichText::new(problem)
+                        .small()
+                        .color(theme::palette(ui.ctx()).status_danger),
+                );
+            }
             ui.add_space(8.0);
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if a3s_ui::widgets::primary_button(ui, "Rename").clicked() || enter {
+                let rename = ui.add_enabled_ui(problem.is_none(), |ui| {
+                    a3s_ui::widgets::primary_button(ui, "Rename")
+                });
+                if rename.inner.clicked() || (enter && problem.is_none()) {
                     done = Some(true);
                 }
                 if a3s_ui::widgets::button(ui, "Cancel").clicked()
@@ -465,9 +648,9 @@ impl ModsScreen {
         });
         match done {
             Some(true) => {
-                let (old, new) = (old.clone(), text.clone());
+                let (path, new) = (path.clone(), text.clone());
                 edit_profile(cx.viewer, cx.toasts, Change::Group, |profile| {
-                    edit::rename_group(&mut profile.tree, &old, &new)
+                    edit::rename_at(&mut profile.tree, &path, &new)
                 });
                 self.rename = None;
             }
@@ -476,8 +659,12 @@ impl ModsScreen {
         }
     }
 
-    /// Takes the chosen mods folder and the compared preset once they are ready.
-    fn poll_background(&mut self, cx: &mut ScreenCx<'_>) {
+    /// Takes the chosen mods folder, the chosen preset and the compared preset once they are
+    /// ready.
+    fn poll_background(&mut self, ctx: &egui::Context, cx: &mut ScreenCx<'_>) {
+        if let Some(path) = self.preset_picker.poll() {
+            self.start_preset_import(ctx, cx, path);
+        }
         if let Some(folder) = self.picker.poll() {
             let folder = folder.display().to_string();
             let added = cx.viewer.mutate(Some(Change::AddonFiles), |state| {
@@ -526,6 +713,12 @@ impl ModsScreen {
         }) else {
             return;
         };
+        self.start_preset_import(ctx, cx, path);
+    }
+
+    /// Reads the preset at `path` and compares it with the mods on this computer, on a worker
+    /// thread (it reads every mod's `meta.cpp`).
+    fn start_preset_import(&mut self, ctx: &egui::Context, cx: &mut ScreenCx<'_>, path: PathBuf) {
         let addons: Vec<Addon> = self
             .model
             .as_ref()
@@ -573,6 +766,25 @@ pub(crate) fn use_event_preset(
         Ok(false) => toasts.info(format!("The mods of {} are already in use", event.name)),
         Err(err) => toasts.error(err.user_message()),
     }
+}
+
+/// Every event of every repository, with its repository's name.
+fn repository_events(viewer: &ViewerContext) -> Vec<(String, Event)> {
+    let state = viewer.read();
+    state
+        .client
+        .repositories()
+        .flat_map(|repository| {
+            state
+                .repositories
+                .runtime(&repository.name)
+                .metadata
+                .events_list()
+                .into_iter()
+                .map(|event| (repository.name.clone(), event.clone()))
+                .collect::<Vec<_>>()
+        })
+        .collect()
 }
 
 /// The enabled addons of the active profile in load order.

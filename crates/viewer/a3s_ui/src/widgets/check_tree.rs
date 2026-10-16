@@ -98,8 +98,8 @@ pub fn default_tree_icon(is_leaf: bool, expanded: bool) -> &'static str {
 
 /// The data behind a [`CheckTree`].
 pub trait CheckTreeModel {
-    /// Node key; must be unique within the tree.
-    type Key: Clone + Eq + Hash + std::fmt::Debug;
+    /// Node key; must be unique within the tree. It is also the payload of a dragged row.
+    type Key: Clone + Eq + Hash + std::fmt::Debug + Send + Sync + 'static;
 
     /// Top-level nodes.
     fn roots(&self) -> Vec<Self::Key>;
@@ -130,6 +130,21 @@ pub trait CheckTreeModel {
     fn pill(&self, _key: &Self::Key) -> Option<(String, ProgressTone)> {
         None
     }
+
+    /// Text shown while the pointer rests on the row, e.g. where a mod is.
+    fn tooltip(&self, _key: &Self::Key) -> Option<String> {
+        None
+    }
+
+    /// Whether the row can be dragged onto another row.
+    fn draggable(&self, _key: &Self::Key) -> bool {
+        false
+    }
+
+    /// Whether the dragged row `dragged` can be dropped on `target`.
+    fn accepts_drop(&self, _target: &Self::Key, _dragged: &Self::Key) -> bool {
+        false
+    }
 }
 
 /// What happened in a [`CheckTree`] this frame.
@@ -149,6 +164,13 @@ pub enum CheckTreeEvent<K> {
     Key(K, Key),
     /// The row was expanded (`true`) or collapsed (`false`).
     Expanded(K, bool),
+    /// The row `dragged` was dropped on the row `target`, which accepts it.
+    Dropped {
+        /// The dragged row.
+        dragged: K,
+        /// The row it was dropped on.
+        target: K,
+    },
 }
 
 struct VisibleRow<K> {
@@ -421,7 +443,34 @@ impl CheckTree {
         );
 
         // Registered first so the expander and checkbox, registered later, win the hit test.
-        let row_response = ui.interact(rect, row_id, Sense::CLICK);
+        let sense = if model.draggable(key) {
+            Sense::click_and_drag()
+        } else {
+            Sense::CLICK
+        };
+        let row_response = ui.interact(rect, row_id, sense);
+        let row_response = match model.tooltip(key) {
+            Some(text) => row_response.on_hover_text(text),
+            None => row_response,
+        };
+        if row_response.drag_started() {
+            egui::DragAndDrop::set_payload(ui.ctx(), key.clone());
+        }
+        if row_response.dragged() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+        }
+        let drop_hovered = row_response
+            .dnd_hover_payload::<M::Key>()
+            .is_some_and(|dragged| *dragged != *key && model.accepts_drop(key, &dragged));
+        if let Some(dragged) = row_response.dnd_release_payload::<M::Key>()
+            && *dragged != *key
+            && model.accepts_drop(key, &dragged)
+        {
+            events.push(CheckTreeEvent::Dropped {
+                dragged: (*dragged).clone(),
+                target: key.clone(),
+            });
+        }
         row_response.widget_info(|| {
             WidgetInfo::selected(
                 WidgetType::SelectableLabel,
@@ -557,6 +606,14 @@ impl CheckTree {
         painter.galley(text_pos.min, galley, text_color);
         if let Some((text, tone)) = model.pill(key) {
             paint_status_pill(ui, pos2(rect.right() - 4.0, rect.center().y), &text, tone);
+        }
+        if drop_hovered {
+            ui.painter().rect_stroke(
+                rect.shrink(1.0),
+                CornerRadius::same(4),
+                Stroke::new(1.5, def.palette.accent_primary),
+                StrokeKind::Inside,
+            );
         }
         rect
     }

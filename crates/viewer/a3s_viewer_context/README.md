@@ -41,10 +41,11 @@ for one at once) into `profiles::State::scan`: the addon registry, the available
 and each addon's size; the launch priority list is brought in line with it.
 `launch::Command::Play` runs a `Launch` task: it enables the preset group of the server it
 joins, then optionally the user's downloads of the enabled mods of the enabled addon
-groups' repositories that have updates (`sync::download_selection`, so failed files reach
-`sync::Downloads::recent` and `sync::Event::DownloadFinished` like any download), then the
-launch plan of the active profile (`a3s_launch::plan_launch`), the companion apps and the game
-through the `launch::GameLauncher` in `launch::State` (tests put a recording launcher there).
+groups' repositories that have updates or lack one of those mods
+(`sync::download_selection`, so failed files reach `sync::Downloads::recent` and
+`sync::Event::DownloadFinished` like any download), then the launch plan of the active profile
+(`a3s_launch::plan_launch`), the companion apps and the game through the
+`launch::GameLauncher` in `launch::State` (tests put a recording launcher there).
 Update and launch problems never stop the game: launch problems arrive as `launch::Event`s.
 
 Repository administration is `admin`: `refresh` reads the published repository (download
@@ -59,13 +60,14 @@ the next build carries and the upload publishes, and `upload_events` uploads the
 the next build writes to the repository's `.a3s/autoconfig`.
 
 The tool windows call `tools` functions with the context's `Cx` and read `tools::State`:
-`find_keys` and `copy_keys` (the `.bikey` files of the active profile's enabled mods, into the
-stored target folder), `inspect_radio` and `install_radio` (the TFAR or ACRE 2 plugin of the
-mods, TeamSpeak 3's folder, version and installed plugin, the copy as a task), `follow_log` and
-`stop_log` (the newest or a chosen RPT log tailed into `tools::LogState`, each line classified
-as error, warning or other). The keys and the radio mod are looked up in `profiles::State::scan`
-when it matches the active profile, else in a fresh scan of it. OS lookups (TeamSpeak and RPT folders, running processes) go
-through `tools::Platform`, which tests replace.
+`find_keys`, `find_keys_in_folder` and `copy_keys` (the `.bikey` files of the active profile's
+enabled mods or of a stored source folder, into the stored target folder), `inspect_radio`
+and `install_radio` (the TFAR or ACRE 2 plugin of the mods, TeamSpeak 3's folder, version and
+installed plugin, the copy as a task), `follow_log` and `stop_log` (the newest or a chosen RPT
+log tailed into `tools::LogState`, each line classified as error, warning or other). The keys
+and the radio mod are looked up in `profiles::State::scan` when it matches the active profile,
+else in a fresh scan of it. OS lookups (TeamSpeak and RPT folders, running processes, a running
+Arma 3) go through `tools::Platform`, which tests replace.
 
 Network access and time go through two seams, `RemoteChecker` and `Clock`, plus `Synchronizer`
 for background downloads; tests use fakes and `ManualClock`. Each domain (`repositories`,

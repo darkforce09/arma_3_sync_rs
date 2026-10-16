@@ -15,9 +15,12 @@ The window (`Shell`):
   folders, Settings, Tools, Quit), the profile pop-up and the Play button ("Update and play"
   while a repository with an enabled mod of the active profile has updates). Play starts the
   context's Launch task (after downloading the enabled mods of those repositories for "Update
-  and play"); without a usable Arma 3 executable
-  a toast offers "Choose folder…" (Settings > Game). Once the game started, the "game launch"
-  preference hides the window to the tray, minimizes it, quits or does nothing.
+  and play"); without a usable Arma 3 executable a toast offers "Choose folder…" (Settings >
+  Game). Before starting, mods enabled twice stop it with an explanation, and enabled mods not
+  on this computer ask first ("Update and play" when a repository has them, "Play without
+  them", Cancel). Once the game started, the "game launch" preference hides the window to the
+  tray, minimizes it, quits or does nothing; while it restarts by itself, "Stop restarting"
+  ends that.
 - Source-list sidebar: Library (Mods, Servers, Activity), Repositories with badges from the
   runtime state (changed-addon count when updated, "…" while checking, "!" after a failed
   check, with its reason as tooltip) and Add repository, Publishing (repositories with a local
@@ -30,12 +33,19 @@ The window (`Shell`):
   Missing, Enabled twice) and the addons found on this computer by folder (scanned again after
   every download and on "Rescan mods folders"; the groups made from a repository or its events
   follow it after each check and download, keeping their enabled mods); the toolbar search
-  filters it, Space or the checkbox toggles a row and every change is saved at once. "+" adds a
-  group, a mods folder or a group from a repository, "−" removes the selected group or folder
-  (Undo in a toast); double-click renames a user group. "Event preset" enables exactly an
-  event's mods. Load order lists the enabled mods in the order the game loads them; dragging
-  saves the priority list. Dropping an Arma 3 Launcher preset (`.html`) opens a sheet comparing
-  it with the local mods, whose "Enable matched" adds a group with the matched mods.
+  filters it, Space or the checkbox toggles a row and every change is saved at once; a mod
+  dragged from "On this computer" onto a user group joins it; a mod's tooltip says where it is
+  and optional event mods say "(optional)". "+" adds a group, a mods folder, a group from a
+  repository or from an event (Undo), or imports an Arma 3 Launcher preset; "−" removes the
+  selected group or folder (Undo in a toast); the "⋯" menu expands or collapses every group,
+  disables every mod (Undo) or scans again. The context menu renames a user group at any depth
+  (double-click too; a refused name says why), duplicates a group, exports a group's enabled
+  mods as an Arma 3 Launcher preset (asking for the Workshop ids it cannot find, remembered for
+  the next export), moves a mods folder up or down (the upper folder wins a duplicate name) and
+  removes. "Event preset" enables exactly an event's mods. Load order lists the enabled mods in
+  the order the game loads them; dragging saves the priority list. A preset dropped or
+  imported opens a sheet comparing it with the local mods (missing ones with their Workshop id
+  and "Open in Steam"), whose "Enable matched" adds a group with the matched mods.
 - Repository screen: header with the URL, revision, mod count and download folder, the "…"
   menu (Edit connection, Download settings, Publish from this computer, Check now, Remove
   repository with an Undo toast), a notice with the reason of a failed check, one primary
@@ -100,17 +110,18 @@ The window (`Shell`):
     (`a3s_updater`, no download).
   - Game, per profile: Arma 3 folder, start through Steam or the executable (Linux; the
     profile's `game_start`, which Play uses), BattlEye, in-game name (the Arma 3 profiles next
-    to the Arma 3 user folder), common flags, "Customize…" sheets for performance and developer
-    options, and the command line planned by `a3s_launch::plan_launch` (the same planning as
-    Play) over a background addon scan.
+    to the Arma 3 user folder), common flags and "Restart when it closes", "Customize…" sheets
+    for performance (the memory allocators of the Arma 3 `Dll` folder) and developer options,
+    each option explained in its tooltip, and the command line planned by
+    `a3s_launch::plan_launch` (the same planning as Play) over a background addon scan.
   - Profiles: add, rename (double-click), duplicate, remove with Undo, desktop shortcut.
   - Network: the proxy. Companion apps: external applications, also by dropping a program
     onto the pane. Data: Java data import, auto-config import and export, the logs folder.
 - The tool windows, each its own OS window (an immediate viewport, like Settings) with its own
   toasts for its results:
-  - Server keys: the enabled mods of the active profile (From), the target folder (To, saved
-    as soon as it is chosen), the keys found with the mods without a key behind a disclosure,
-    and "Copy N keys".
+  - Server keys: from the enabled mods of the active profile or from any folder (stored), the
+    target folder (To, saved as soon as it is chosen), the keys found with the mods without a
+    key behind a disclosure, and "Copy N keys".
   - Radio plugin: TFAR or ACRE 2; the plugin in the mod, the TeamSpeak 3 folder (stored or
     detected, "Change…") and version, the installed plugin, a warning while TeamSpeak runs
     or the folders are incomplete, and "Install plugin" / "Update plugin".

@@ -7,6 +7,8 @@ mod game_running;
 mod launcher_preset;
 mod load_warnings;
 mod path_list;
+mod play_check;
+mod preset_export;
 mod report;
 pub(crate) mod server;
 mod update_issues;
@@ -24,6 +26,8 @@ pub(crate) use self::exit::ExitPrompt;
 pub(crate) use self::game_running::GameRunning;
 use self::path_list::PathList;
 pub use self::path_list::PathListKind;
+pub(crate) use self::play_check::PlayCheck;
+pub(crate) use self::preset_export::PresetExport;
 use self::report::ReportSheet;
 use self::server::ServerSheet;
 pub(crate) use self::update_issues::UpdateIssues;
@@ -66,8 +70,14 @@ pub enum SheetKind {
     /// An update asks first because Arma 3 is running.
     GameRunning,
 
+    /// Play found enabled mods that are missing or enabled twice.
+    PlayCheck,
+
     /// Comparing an Arma 3 Launcher preset with the mods on this computer.
     LauncherPreset,
+
+    /// Exporting an addon group as an Arma 3 Launcher preset.
+    PresetExport,
 
     /// Adding a favourite server.
     AddServer,
@@ -92,7 +102,9 @@ pub(crate) enum Sheet {
     UpdateIssues(UpdateIssues),
     Report(ReportSheet),
     GameRunning(GameRunning),
+    PlayCheck(PlayCheck),
     LauncherPreset(Box<ImportResult>),
+    PresetExport(Box<PresetExport>),
     Server(Box<ServerSheet>),
     UploadConnection(Box<UploadConnection>),
     PathList(PathList),
@@ -160,7 +172,9 @@ impl Sheet {
             Self::UpdateIssues(_) => SheetKind::UpdateIssues,
             Self::Report(_) => SheetKind::DownloadReport,
             Self::GameRunning(_) => SheetKind::GameRunning,
+            Self::PlayCheck(_) => SheetKind::PlayCheck,
             Self::LauncherPreset(_) => SheetKind::LauncherPreset,
+            Self::PresetExport(_) => SheetKind::PresetExport,
             Self::Server(sheet) if sheet.adds() => SheetKind::AddServer,
             Self::Server(_) => SheetKind::EditServer,
             Self::UploadConnection(_) => SheetKind::UploadConnection,
@@ -186,6 +200,9 @@ pub(crate) enum SheetOutcome {
 
     /// Start the game without waiting for the failed files.
     Play,
+
+    /// Start the game after its check was answered; `update_first` downloads the missing mods.
+    PlayChecked { update_first: bool },
 }
 
 /// Whether the sheet stays open after this frame.
@@ -237,7 +254,9 @@ impl Sheets {
             Sheet::UpdateIssues(issues) => issues.show(ctx, viewer, toasts),
             Sheet::Report(report) => report.show(ctx, toasts),
             Sheet::GameRunning(sheet) => sheet.show(ctx, viewer, toasts),
+            Sheet::PlayCheck(check) => check.show(ctx),
             Sheet::LauncherPreset(result) => launcher_preset::show(ctx, result, viewer, toasts),
+            Sheet::PresetExport(export) => export.show(ctx, toasts),
             Sheet::Server(sheet) => sheet.show(ctx, viewer, toasts),
             Sheet::UploadConnection(sheet) => sheet.show(ctx, viewer, toasts),
             Sheet::PathList(list) => list.show(ctx, viewer, toasts),

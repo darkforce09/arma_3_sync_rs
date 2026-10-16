@@ -9,7 +9,8 @@ mod platform;
 mod radio;
 
 pub use self::keys::{
-    KeyCopy, KeyScan, KeysState, ModKeys, copy_keys, find_keys, keys_target, set_keys_target,
+    KeyCopy, KeyScan, KeySource, KeysState, ModKeys, copy_keys, find_keys, find_keys_in_folder,
+    keys_source_folder, keys_target, set_keys_source, set_keys_target,
 };
 pub use self::log::{
     LineKind, LogChoice, LogLine, LogState, MAX_LOG_LINES, follow_log, line_kind, rpt_files,

@@ -139,28 +139,134 @@ pub(crate) fn group_index(root: &TreeDirectory, name: &str) -> Option<usize> {
         .position(|child| !child.is_leaf() && child.name() == name)
 }
 
-/// Renames the top-level group `old` to `new` (trimmed). Refused for an empty name or one
-/// another top-level node has (ignoring case).
-pub(crate) fn rename_group(root: &mut TreeDirectory, old: &str, new: &str) -> bool {
+/// The directory holding the node at `path`, and the node's index in it.
+fn parent_mut<'t>(
+    root: &'t mut TreeDirectory,
+    path: &[usize],
+) -> Option<(&'t mut TreeDirectory, usize)> {
+    let (last, parent) = path.split_last()?;
+    if parent.is_empty() {
+        return Some((root, *last));
+    }
+    match node_mut(root, parent)? {
+        TreeNode::Directory(directory) => Some((directory, *last)),
+        TreeNode::Leaf(_) => None,
+    }
+}
+
+/// Why the group at `path` cannot be named `new` (trimmed): empty, or the name of another node
+/// beside it (ignoring case). `None` when it can.
+pub(crate) fn rename_problem(
+    root: &TreeDirectory,
+    path: &[usize],
+    new: &str,
+) -> Option<&'static str> {
     let new = new.trim();
-    if new.is_empty() || new == old {
-        return false;
+    if new.is_empty() {
+        return Some("Enter a name.");
     }
-    let clash = root
-        .children
+    let (last, parent) = path.split_last()?;
+    let siblings = if parent.is_empty() {
+        &root.children
+    } else {
+        match node(root, parent)? {
+            TreeNode::Directory(directory) => &directory.children,
+            TreeNode::Leaf(_) => return None,
+        }
+    };
+    let clash = siblings
         .iter()
-        .any(|child| child.name() != old && compare_ignore_case(child.name(), new).is_eq());
-    let Some(index) = group_index(root, old) else {
-        return false;
-    };
-    if clash {
+        .enumerate()
+        .any(|(index, child)| index != *last && compare_ignore_case(child.name(), new).is_eq());
+    clash.then_some("Another group here has this name.")
+}
+
+/// Renames the group at `path` to `new` (trimmed), unless [`rename_problem`] refuses it.
+// Mirrors groups/RenameGroupDialog.java:28-49
+pub(crate) fn rename_at(root: &mut TreeDirectory, path: &[usize], new: &str) -> bool {
+    if rename_problem(root, path, new).is_some() {
         return false;
     }
-    let Some(TreeNode::Directory(mut group)) = root.remove_child(index) else {
+    let new = new.trim();
+    let Some((parent, index)) = parent_mut(root, path) else {
         return false;
     };
-    new.clone_into(&mut group.name);
-    root.add_child(TreeNode::Directory(group));
+    match parent.children.get(index) {
+        Some(TreeNode::Directory(directory)) if directory.name != new => {}
+        _ => return false,
+    }
+    let Some(TreeNode::Directory(mut directory)) = parent.remove_child(index) else {
+        return false;
+    };
+    new.clone_into(&mut directory.name);
+    parent.add_child(TreeNode::Directory(directory));
+    true
+}
+
+/// Copies the top-level group at `index` as a user group named `<name> copy` (or a free
+/// variant), nothing enabled; returns the new name.
+// Mirrors groups/DuplicateGroupDialog.java:23-76
+pub(crate) fn duplicate_group(root: &mut TreeDirectory, index: usize) -> Option<String> {
+    let Some(TreeNode::Directory(group)) = root.children.get(index) else {
+        return None;
+    };
+    let mut copy = group.clone();
+    let name = unique_name(root, &format!("{} copy", group.name));
+    copy.name.clone_from(&name);
+    copy.modset_type = None;
+    copy.modset_repository_name = None;
+    copy.updated = false;
+    set_selected_recursive(&mut copy, false);
+    root.add_child(TreeNode::Directory(copy));
+    Some(name)
+}
+
+/// Disables every addon: the groups' and those from this computer enabled on their own.
+/// Returns whether anything changed.
+pub(crate) fn disable_all(root: &mut TreeDirectory) -> bool {
+    let before = root.clone();
+    root.children.retain(|child| !child.is_leaf());
+    for child in &mut root.children {
+        if let TreeNode::Directory(directory) = child {
+            set_selected_recursive(directory, false);
+        }
+    }
+    *root != before
+}
+
+/// Adds the addon `key` to the group at `path`, enabled, unless it is there already.
+pub(crate) fn add_to_directory(root: &mut TreeDirectory, path: &[usize], key: &str) -> bool {
+    let Some(TreeNode::Directory(directory)) = node_mut(root, path) else {
+        return false;
+    };
+    if directory
+        .leaves()
+        .any(|leaf| compare_ignore_case(&leaf.name, key).is_eq())
+    {
+        return false;
+    }
+    directory.add_child(TreeNode::Leaf(TreeLeaf {
+        selected: true,
+        ..TreeLeaf::new(key)
+    }));
+    for depth in (1..=path.len()).rev() {
+        if let Some(TreeNode::Directory(directory)) = node_mut(root, &path[..depth]) {
+            directory.selected = all_leaves_selected(directory);
+        }
+    }
+    true
+}
+
+/// Moves the item at `index` of `items` one place up (`-1`) or down (`1`); returns whether it
+/// moved.
+pub(crate) fn move_item(items: &mut [String], index: usize, by: isize) -> bool {
+    let Some(target) = index.checked_add_signed(by).filter(|t| *t < items.len()) else {
+        return false;
+    };
+    if index >= items.len() {
+        return false;
+    }
+    items.swap(index, target);
     true
 }
 

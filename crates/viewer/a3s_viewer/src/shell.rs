@@ -76,6 +76,7 @@ pub(crate) enum Action {
     OpenSettings(SettingsPane),
     CheckNow,
     CancelCheck,
+    StopAutoRestart,
     Rescan,
     FocusSearch,
     Show,
@@ -328,8 +329,20 @@ impl Shell {
                 &PlayRequest {
                     profile: snapshot.active_profile.clone(),
                     update_first: false,
+                    checked: true,
                 },
                 &mut self.toasts,
+                &mut self.sheets,
+            ),
+            Some(SheetOutcome::PlayChecked { update_first }) => launch::request(
+                &self.viewer,
+                &PlayRequest {
+                    profile: snapshot.active_profile.clone(),
+                    update_first: update_first || snapshot.profile_has_updates,
+                    checked: true,
+                },
+                &mut self.toasts,
+                &mut self.sheets,
             ),
             None => {}
         }
@@ -368,8 +381,10 @@ impl Shell {
                 &PlayRequest {
                     profile: snapshot.active_profile.clone(),
                     update_first: snapshot.profile_has_updates,
+                    checked: false,
                 },
                 &mut self.toasts,
+                &mut self.sheets,
             ),
             Action::SelectProfile(name) => {
                 let selected = self.viewer.mutate(Some(Change::Profile), |state| {
@@ -382,6 +397,20 @@ impl Shell {
             Action::Open(window) => self.windows.open(ctx, window),
             Action::OpenSettings(pane) => self.windows.open_settings(ctx, pane),
             Action::CheckNow => self.check_now(snapshot),
+            Action::StopAutoRestart => {
+                let game = self
+                    .viewer
+                    .mutate(None, |state| {
+                        Ok::<_, std::convert::Infallible>(state.launch.game.take())
+                    })
+                    .ok()
+                    .flatten();
+                if let Some(game) = game {
+                    game.stop_auto_restart();
+                    self.toasts
+                        .info("Arma 3 will not start again when it closes");
+                }
+            }
             Action::CancelCheck => {
                 let command = Command::Repositories(repositories::Command::CancelCheck);
                 if let Err(err) = self.viewer.send(command) {
