@@ -54,7 +54,9 @@ fn server_keys_of_a_folder_are_copied() {
     let server_mods = dir.path().join("server_mods");
     add_mod(&server_mods, "@ace", &["ace_3.bikey"]);
     add_mod(&server_mods, "@cba", &["cba_3.bikey"]);
-    let target = dir.path().join("server/keys");
+    // As long as the temporary folders on macOS and Windows: the path widens the window after
+    // its first frame and moves the controls.
+    let target = dir.path().join("a".repeat(80)).join("server/keys");
     fs::create_dir_all(&target).expect("target");
     let viewer = fixture.harness.state().viewer();
     viewer
@@ -70,7 +72,8 @@ fn server_keys_of_a_folder_are_copied() {
 
     let harness = &mut fixture.harness;
     open(harness, SecondaryWindow::ServerKeys);
-    harness.get_by_label("A folder").click();
+    // By widget, not by the position drawn in the window's first frame.
+    harness.get_by_label("A folder").click_accesskit();
     harness.run();
     wait_for_label(harness, "Copy 2 keys");
     harness.get_by_label("Copy 2 keys").click();
