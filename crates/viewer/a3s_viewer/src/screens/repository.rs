@@ -1,6 +1,7 @@
 //! The Repository screen: one repository's header with its Update button, its events, the
 //! changes a download makes, and the changelog of the revisions not downloaded yet.
 
+use std::collections::BTreeSet;
 use std::convert::Infallible;
 
 use a3s_foundation::error::UserFacing as _;
@@ -10,14 +11,17 @@ use a3s_ui::frames;
 use a3s_ui::icon::icons;
 use a3s_ui::theme::{self, ProgressTone};
 use a3s_ui::widgets::{button, primary_button, status_pill};
-use a3s_viewer_context::sync::{self, ChangeKind, DownloadResult, PlanState};
+use a3s_viewer_context::sync::{
+    self, AddonChange, ChangeKind, DownloadResult, PlanState, Selection, SyncPlan,
+};
 use a3s_viewer_context::{
     Change, Command, RepositoryRuntime, TaskKey, TaskKind, ViewerContext, repositories,
 };
-use egui::{Align, Label, Layout, RichText, Ui};
+use egui::{Align, Id, Label, Layout, RichText, Ui};
 
 use super::{ScreenCx, count_text, section_title, size_text};
 use crate::sheets::add_repository::protocol_input;
+use crate::sheets::download_settings::keep_folder;
 use crate::shell::{Action, Screen};
 
 /// What the screen shows, copied out of the state so no guard is held while it runs actions.
@@ -85,9 +89,62 @@ impl View {
     }
 }
 
+/// The changes the user unticked, for the comparison they were made on: a new comparison ticks
+/// everything again.
+#[derive(Clone, Default)]
+struct Unticked {
+    plan: Option<SyncPlan>,
+    names: BTreeSet<String>,
+}
+
+impl Unticked {
+    fn id(repository: &str) -> Id {
+        Id::new(("a3s_viewer::repository::unticked", repository))
+    }
+
+    /// The unticked changes of `plan`, kept in the egui memory.
+    fn load(ui: &Ui, repository: &str, plan: Option<&SyncPlan>) -> Self {
+        let stored: Self = ui
+            .data(|data| data.get_temp(Self::id(repository)))
+            .unwrap_or_default();
+        if stored.plan.as_ref() == plan {
+            stored
+        } else {
+            Self {
+                plan: plan.cloned(),
+                names: BTreeSet::new(),
+            }
+        }
+    }
+
+    fn store(self, ui: &Ui, repository: &str) {
+        ui.data_mut(|data| data.insert_temp(Self::id(repository), self));
+    }
+
+    /// What the Update button downloads.
+    fn selection(&self) -> Selection {
+        if self.names.is_empty() {
+            Selection::All
+        } else {
+            Selection::Skip(self.names.iter().cloned().collect())
+        }
+    }
+
+    fn ticked<'p>(&self, plan: &'p SyncPlan) -> impl Iterator<Item = &'p AddonChange> {
+        plan.changes
+            .iter()
+            .filter(|change| !self.names.contains(&change.name))
+    }
+}
+
 /// What the Update button does and says.
 enum Primary {
-    Update(Option<u64>),
+    /// Download the ticked changes: their size, and how many of how many changes are ticked when
+    /// some are not.
+    Update {
+        size: Option<u64>,
+        ticked: Option<(usize, usize)>,
+    },
     Resume(u64),
     Updating(Option<u8>),
     Comparing,
@@ -112,6 +169,12 @@ pub(super) fn show(ui: &mut Ui, name: &str, cx: &mut ScreenCx<'_>) {
         .is_running(&TaskKey::repository(TaskKind::Compare, name))
         .is_some();
     compare_when_stale(cx, name, &view, downloading.is_some() || comparing);
+    let current_plan = view
+        .plan
+        .as_ref()
+        .and_then(|plan| plan.result.as_ref().ok())
+        .filter(|_| !view.plan_is_stale());
+    let mut unticked = Unticked::load(ui, name, current_plan);
 
     let primary = if let Some(id) = downloading {
         let percent = cx
@@ -123,28 +186,39 @@ pub(super) fn show(ui: &mut Ui, name: &str, cx: &mut ScreenCx<'_>) {
     } else if let Some(remaining) = view.paused {
         Primary::Resume(remaining)
     } else {
-        match view.plan.as_ref().map(|plan| &plan.result) {
-            Some(Ok(plan)) if !view.plan_is_stale() => {
-                if plan.is_up_to_date() {
-                    Primary::UpToDate
-                } else {
-                    Primary::Update(Some(plan.download_size))
-                }
-            }
-            _ if comparing => Primary::Comparing,
-            _ => Primary::Update(None),
+        match current_plan {
+            Some(plan) if plan.is_up_to_date() => Primary::UpToDate,
+            Some(plan) if unticked.names.is_empty() => Primary::Update {
+                size: Some(plan.download_size),
+                ticked: None,
+            },
+            Some(plan) => Primary::Update {
+                size: Some(
+                    unticked
+                        .ticked(plan)
+                        .map(|change| change.size)
+                        .fold(0, u64::saturating_add),
+                ),
+                ticked: Some((unticked.ticked(plan).count(), plan.changes.len())),
+            },
+            None if comparing => Primary::Comparing,
+            None => Primary::Update {
+                size: None,
+                ticked: None,
+            },
         }
     };
 
     egui::ScrollArea::vertical()
         .auto_shrink(false)
         .show(ui, |ui| {
-            header(ui, &view, &primary, cx);
+            header(ui, &view, &primary, &unticked, cx);
             notices(ui, &view, cx);
             events(ui, &view, cx);
-            changes(ui, &view, comparing);
+            changes(ui, &view, comparing, &mut unticked, cx);
             changelog(ui, &view);
         });
+    unticked.store(ui, name);
 }
 
 /// Compares the repository with its folder once its metadata is known and the last comparison
@@ -159,7 +233,7 @@ fn compare_when_stale(cx: &ScreenCx<'_>, name: &str, view: &View, busy: bool) {
     }
 }
 
-fn header(ui: &mut Ui, view: &View, primary: &Primary, cx: &mut ScreenCx<'_>) {
+fn header(ui: &mut Ui, view: &View, primary: &Primary, unticked: &Unticked, cx: &mut ScreenCx<'_>) {
     let palette = theme::palette(ui.ctx());
     let name = view.repository.name.as_str();
     ui.horizontal(|ui| {
@@ -219,31 +293,53 @@ fn header(ui: &mut Ui, view: &View, primary: &Primary, cx: &mut ScreenCx<'_>) {
                     remove(cx, view);
                 }
             });
-            primary_action(ui, name, primary, cx);
+            primary_action(ui, name, primary, unticked, cx);
         });
     });
 }
 
-fn primary_action(ui: &mut Ui, name: &str, primary: &Primary, cx: &mut ScreenCx<'_>) {
-    let download = || {
-        Command::Sync(sync::Command::Download {
-            repository: name.to_owned(),
-            event: None,
-        })
-    };
+fn primary_action(
+    ui: &mut Ui,
+    name: &str,
+    primary: &Primary,
+    unticked: &Unticked,
+    cx: &mut ScreenCx<'_>,
+) {
     match primary {
-        Primary::Update(size) => {
-            let label = match size {
-                Some(size) => format!("Update {}", size_text(*size)),
-                None => "Update".to_owned(),
-            };
+        Primary::Update {
+            ticked: Some((0, _)),
+            ..
+        } => {
+            ui.add_enabled(false, egui::Button::new("Nothing selected"));
+        }
+        Primary::Update { size, ticked } => {
+            let mut label = "Update".to_owned();
+            if let Some((count, total)) = ticked {
+                label.push_str(&format!(" {count} of {total}"));
+            }
+            if let Some(size) = size {
+                let separator = if ticked.is_some() { " ·" } else { "" };
+                label.push_str(&format!("{separator} {}", size_text(*size)));
+            }
             if primary_button(ui, &label).clicked() {
-                send(cx, download());
+                send(
+                    cx,
+                    Command::Sync(sync::Command::Download {
+                        repository: name.to_owned(),
+                        event: None,
+                        selection: unticked.selection(),
+                    }),
+                );
             }
         }
         Primary::Resume(remaining) => {
             if primary_button(ui, &format!("Resume {}", size_text(*remaining))).clicked() {
-                send(cx, download());
+                send(
+                    cx,
+                    Command::Sync(sync::Command::Resume {
+                        repository: name.to_owned(),
+                    }),
+                );
             }
         }
         Primary::Updating(percent) => {
@@ -361,7 +457,23 @@ fn events(ui: &mut Ui, view: &View, cx: &mut ScreenCx<'_>) {
                     );
                 });
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if button(ui, "Use preset").clicked() {
+                    if button(ui, "Download")
+                        .on_hover_text("Download only the mods of this event")
+                        .clicked()
+                    {
+                        send(
+                            cx,
+                            Command::Sync(sync::Command::Download {
+                                repository: view.repository.name.clone(),
+                                event: Some(event.name.clone()),
+                                selection: Selection::All,
+                            }),
+                        );
+                    }
+                    if button(ui, "Use preset")
+                        .on_hover_text("Enable exactly the mods of this event")
+                        .clicked()
+                    {
                         super::mods::use_event_preset(
                             cx.viewer,
                             cx.toasts,
@@ -376,12 +488,40 @@ fn events(ui: &mut Ui, view: &View, cx: &mut ScreenCx<'_>) {
     }
 }
 
-/// "Changes since your last sync": what a download changes, by mod.
-fn changes(ui: &mut Ui, view: &View, comparing: bool) {
+/// "Changes since your last sync": what a download changes, by mod, each ticked to be part of
+/// the next Update; a removed folder can be kept for good.
+fn changes(
+    ui: &mut Ui,
+    view: &View,
+    comparing: bool,
+    unticked: &mut Unticked,
+    cx: &mut ScreenCx<'_>,
+) {
     let palette = theme::palette(ui.ctx());
-    section_title(ui, "Changes since your last sync");
+    let plan = view
+        .plan
+        .as_ref()
+        .and_then(|plan| plan.result.as_ref().ok());
+    let selectable = !view.plan_is_stale() && plan.is_some_and(|plan| !plan.is_up_to_date());
+    ui.add_space(16.0);
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("Changes since your last sync").strong());
+        if selectable {
+            ui.with_layout(Layout::right_to_left(Align::Max), |ui| {
+                if ui.small_button("Select none").clicked()
+                    && let Some(plan) = plan
+                {
+                    unticked.names = plan.changes.iter().map(|c| c.name.clone()).collect();
+                }
+                if ui.small_button("Select all").clicked() {
+                    unticked.names.clear();
+                }
+            });
+        }
+    });
+    ui.add_space(4.0);
     frames::group(ui, |ui| {
-        let Some(Ok(plan)) = view.plan.as_ref().map(|plan| &plan.result) else {
+        let Some(plan) = plan else {
             let text = if comparing {
                 "Comparing with your download folder…"
             } else {
@@ -404,7 +544,31 @@ fn changes(ui: &mut Ui, view: &View, comparing: bool) {
                     ChangeKind::Updated => ("Updated", ProgressTone::Info),
                     ChangeKind::Removed => ("Removed", ProgressTone::Warning),
                 };
-                ui.add(Label::new(&change.name).truncate());
+                let row = if selectable {
+                    let mut ticked = !unticked.names.contains(&change.name);
+                    let response = ui.checkbox(&mut ticked, &change.name);
+                    if response.changed() {
+                        if ticked {
+                            unticked.names.remove(&change.name);
+                        } else {
+                            unticked.names.insert(change.name.clone());
+                        }
+                    }
+                    response
+                } else {
+                    ui.add(Label::new(&change.name).truncate())
+                };
+                if change.kind == ChangeKind::Removed {
+                    row.on_hover_text(
+                        "No longer in the repository: Update moves it to the Trash. Untick it \
+                         to keep it this time, or right-click to keep it for good.",
+                    )
+                    .context_menu(|ui| {
+                        if ui.button("Keep this folder").clicked() {
+                            keep(cx, &view.repository.name, &change.name);
+                        }
+                    });
+                }
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     let size = match change.kind {
                         ChangeKind::Removed => "to the Trash".to_owned(),
@@ -416,6 +580,38 @@ fn changes(ui: &mut Ui, view: &View, comparing: bool) {
             });
         }
     });
+}
+
+/// Keeps the folder `folder` of `repository` when updating (its hidden folders), with Undo; the
+/// comparison runs again without it.
+// Mirrors ui/repository/DownloadPanel.java:749-765
+fn keep(cx: &mut ScreenCx<'_>, repository: &str, folder: &str) {
+    let kept = cx.viewer.mutate(Some(Change::Repository), |state| {
+        let added = keep_folder(&mut state.client, repository, folder)?;
+        sync::forget(state, repository);
+        Ok::<bool, a3s_repo_files::services::ServiceError>(added)
+    });
+    match kept {
+        Ok(_) => {
+            let (repository, folder) = (repository.to_owned(), folder.to_owned());
+            cx.toasts.undoable(
+                format!("Keeping {folder} when updating"),
+                move |viewer: &ViewerContext| {
+                    let undone = viewer.mutate(Some(Change::Repository), |state| {
+                        state.client.update_repository(&repository, |stored| {
+                            Ok(stored.hidden_folder_paths.remove(&folder))
+                        })?;
+                        sync::forget(state, &repository);
+                        Ok::<(), a3s_repo_files::services::ServiceError>(())
+                    });
+                    if let Err(err) = undone {
+                        tracing::warn!("Undo failed: {}", err.user_message());
+                    }
+                },
+            );
+        }
+        Err(err) => cx.toasts.error(err.user_message()),
+    }
 }
 
 /// The revisions newer than the local one, newest first, collapsed.

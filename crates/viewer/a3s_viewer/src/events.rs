@@ -8,7 +8,8 @@ use a3s_viewer_context::{AppEvent, CheckOutcome, TaskEvent, TaskOutcome, admin, 
 
 use crate::notify;
 use crate::screens::count_text;
-use crate::sheets::{Sheet, Sheets, UpdateIssues};
+use crate::sheets::{GameRunning, Sheet, Sheets, UpdateIssues};
+use crate::shell::{Action, Screen};
 use crate::toasts::Toaster;
 
 /// The parts of the window an event changes.
@@ -35,6 +36,13 @@ impl EventSink<'_> {
             AppEvent::Sync(sync::Event::DownloadFinished { repository, result }) => {
                 self.download_finished(repository, result);
             }
+            AppEvent::Sync(sync::Event::GameRunning {
+                repository,
+                event,
+                selection,
+            }) => self.sheets.push(Sheet::GameRunning(GameRunning::new(
+                repository, event, selection,
+            ))),
             AppEvent::Admin(event) => self.admin(event),
             AppEvent::Error { error, .. } => self.toasts.error(error.message),
             AppEvent::Task(TaskEvent::Finished { info, outcome }) => match outcome {
@@ -60,13 +68,25 @@ impl EventSink<'_> {
     /// A download ended: a toast, and the issues sheet when files failed.
     fn download_finished(&mut self, repository: String, result: sync::DownloadResult) {
         match result {
-            sync::DownloadResult::Success { trashed } => {
+            sync::DownloadResult::Success {
+                trashed,
+                userconfig,
+            } => {
                 self.toasts.success(format!("{repository} is up to date"));
                 if trashed > 0 {
                     self.toasts.info(format!(
                         "Moved {} to the Trash",
                         count_text(trashed, "mod", "mods")
                     ));
+                }
+                match userconfig {
+                    Some(Ok(())) => self
+                        .toasts
+                        .info("Copied the repository's userconfig folder into the Arma 3 folder"),
+                    Some(Err(reason)) => self
+                        .toasts
+                        .warning(format!("The userconfig folder was not copied: {reason}")),
+                    None => {}
                 }
             }
             sync::DownloadResult::Issues(errors) => {
@@ -109,8 +129,15 @@ impl EventSink<'_> {
     fn repositories(&mut self, event: repositories::Event) {
         match event {
             repositories::Event::UpdatesAvailable { repositories } => {
-                self.toasts
-                    .warning(format!("Updates available: {}", repositories.join(", ")));
+                let text = format!("Updates available: {}", repositories.join(", "));
+                match repositories.first() {
+                    Some(first) => self.toasts.action(
+                        text,
+                        "Show",
+                        Action::Navigate(Screen::Repository(first.clone())),
+                    ),
+                    None => self.toasts.warning(text),
+                }
                 if self.hidden {
                     notify::desktop(UPDATES_AVAILABLE_MESSAGE);
                 }

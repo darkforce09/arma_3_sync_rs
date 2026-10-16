@@ -6,20 +6,25 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use a3s_foundation::paths::Os;
+use a3s_launch::{EventSink, LaunchError, LaunchHandle, LaunchPlan, RunOptions};
 use a3s_platform::process::FixedProcessProbe;
 use a3s_platform::registry::MemoryRegistry;
 use a3s_repo_files::local::{LocalDirs, LocalStore};
 use a3s_repo_files::services::ClientData;
 use a3s_types::constants::{ModsetType, RepositoryStatus};
 use a3s_types::local::{
-    Configuration, Preferences, Profile, Repository, TreeDirectory, TreeLeaf, TreeNode,
+    Configuration, ExternalApplication, Preferences, Profile, Repository, TreeDirectory, TreeLeaf,
+    TreeNode,
 };
 use a3s_types::{Changelog, Changelogs, Protocol, ProtocolType};
 use a3s_viewer::{RequestSender, SecondaryWindow, Shell, ShellSetup, WelcomeSetup};
+use a3s_viewer_context::launch::{GameLauncher, LaunchEnvironment};
 use a3s_viewer_context::tools::Platform;
 use a3s_viewer_context::{AppState, ContextOptions, ViewerContext};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable as _;
+use parking_lot::Mutex;
 use tempfile::TempDir;
 
 /// The window size of every test.
@@ -95,6 +100,13 @@ pub fn fixture_with(
         },
     )
     .expect("context");
+    // No test sees the processes of the machine it runs on (a running Arma 3 changes Update).
+    viewer
+        .mutate(None, |state| {
+            state.tools.platform = offline_platform(&[]);
+            Ok::<(), Infallible>(())
+        })
+        .ok();
     set_status(&viewer, "Alpha", RepositoryStatus::Updated);
     set_status(&viewer, "Beta", RepositoryStatus::Ok);
     // The harness steps frames itself; the channel's repaint requests go to a spare context.
@@ -355,4 +367,32 @@ pub fn radio_folders(viewer: &ViewerContext, root: &Path, running: &[&str]) -> P
         })
         .expect("settings");
     ts3
+}
+
+/// Records the planned game launch instead of starting it.
+#[derive(Default)]
+pub struct RecordingLauncher {
+    pub plan: Mutex<Option<LaunchPlan>>,
+}
+
+impl GameLauncher for RecordingLauncher {
+    fn environment(&self) -> LaunchEnvironment {
+        LaunchEnvironment {
+            os: Os::Linux,
+            steam: None,
+            arma3_documents_dir: None,
+        }
+    }
+
+    fn start_companions(&self, _os: Os, _apps: &[ExternalApplication], _events: &EventSink) {}
+
+    fn start_game(
+        &self,
+        plan: LaunchPlan,
+        _options: RunOptions,
+        _events: EventSink,
+    ) -> Result<Option<LaunchHandle>, LaunchError> {
+        *self.plan.lock() = Some(plan);
+        Ok(None)
+    }
 }

@@ -10,13 +10,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use a3s_foundation::error::{ErrorKind, UserFacing as _};
 use a3s_sync::cleanup::RemovedFiles;
 use a3s_sync::pipeline::{
-    CheckError, CheckRequest, RunEnd, StoreChanges, StoreError, SyncStore, UserconfigAction,
-    copy_userconfig,
+    CheckError, CheckRequest, RunEnd, RunReport, StoreChanges, StoreError, SyncStore,
+    UserconfigAction, UserconfigOutcome, copy_userconfig,
 };
 use a3s_sync::{EventError, EventSender, Outcome, Phase, SyncEvent, SyncSession};
 use a3s_types::constants::RepositoryStatus;
@@ -31,6 +31,12 @@ use crate::tasks::{Cx, TaskCtx, TaskError, TaskId, TaskKey, TaskKind};
 /// How many finished downloads [`Downloads::recent`] keeps.
 pub const RECENT_LIMIT: usize = 20;
 
+/// How long a download waits after a lost connection before it goes on.
+pub const RECONNECT_DELAY: Duration = Duration::from_secs(5);
+
+/// How many times in a row a download goes on after a lost connection.
+pub const RECONNECT_ATTEMPTS: u32 = 3;
+
 /// What the viewer knows about the user's synchronizations, for this session only.
 #[derive(Default)]
 pub struct Downloads {
@@ -42,6 +48,9 @@ pub struct Downloads {
 
     /// Files being transferred, by repository.
     pub active_files: BTreeMap<String, Vec<String>>,
+
+    /// Downloads waiting to go on after a lost connection: the attempt that comes next.
+    pub reconnecting: BTreeMap<String, u32>,
 
     /// Checked sessions kept for the next download of their repository.
     sessions: BTreeMap<String, KeptSession>,
@@ -144,6 +153,21 @@ pub enum ChangeKind {
     Removed,
 }
 
+/// Which part of a repository a download takes.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum Selection {
+    /// Everything that changed; a paused download goes on with the part it had.
+    #[default]
+    All,
+
+    /// Everything but these top-level folders or files (the names of [`AddonChange`]s): they
+    /// are neither downloaded nor removed.
+    Skip(Vec<String>),
+
+    /// Only these paths below the repository root, folders with everything they hold.
+    Only(Vec<String>),
+}
+
 /// A finished download.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DownloadRecord {
@@ -158,6 +182,9 @@ pub struct DownloadRecord {
 
     /// How it ended.
     pub result: DownloadResult,
+
+    /// The download report (what was downloaded, saved and failed), when the download ran.
+    pub report: Option<String>,
 }
 
 /// How a download ended.
@@ -167,6 +194,10 @@ pub enum DownloadResult {
     Success {
         /// Top-level folders and files moved to the Trash.
         trashed: usize,
+
+        /// The repository's `userconfig` folder was copied into the Arma 3 folder (`Ok`), or
+        /// why that failed; `None` when it was not needed.
+        userconfig: Option<Result<(), String>>,
     },
 
     /// Finished, but these files failed (each error names its file); a retry downloads them
@@ -243,7 +274,32 @@ pub fn compare(cx: &Cx, repository: &str) -> Result<Option<TaskId>, ContextError
 /// Starts the download of `repository` (limited to the addons of `event`): resumes its paused
 /// download or uses its last comparison when they are still current, checks it otherwise.
 pub fn download(cx: &Cx, repository: &str, event: Option<String>) -> Result<TaskId, ContextError> {
-    start(cx, repository, event, None)
+    start(cx, repository, event, Selection::All)
+}
+
+/// Starts the download of the `selection` of `repository` (limited to the addons of `event`), as
+/// [`download`] does.
+pub fn download_selection(
+    cx: &Cx,
+    repository: &str,
+    event: Option<String>,
+    selection: Selection,
+) -> Result<TaskId, ContextError> {
+    start(cx, repository, event, selection)
+}
+
+/// Resumes the paused download of `repository` with its event and the part it had; downloads
+/// everything when none is paused.
+pub fn resume(cx: &Cx, repository: &str) -> Result<TaskId, ContextError> {
+    let event = cx
+        .state()
+        .read()
+        .sync
+        .downloads
+        .sessions
+        .get(repository)
+        .and_then(|kept| kept.session.request().event_name.clone());
+    start(cx, repository, event, Selection::All)
 }
 
 /// Downloads again the failed `files` of the last download of `repository`; every file still
@@ -256,8 +312,12 @@ pub fn retry(cx: &Cx, repository: &str, files: Vec<String>) -> Result<TaskId, Co
         .downloads
         .last_result(repository)
         .and_then(|record| record.event.clone());
-    let only = (!files.is_empty()).then_some(files);
-    start(cx, repository, event, only)
+    let selection = if files.is_empty() {
+        Selection::All
+    } else {
+        Selection::Only(files)
+    };
+    start(cx, repository, event, selection)
 }
 
 /// Pauses the download of `repository`: it stops and the next download resumes it.
@@ -295,7 +355,7 @@ fn start(
     cx: &Cx,
     repository: &str,
     event: Option<String>,
-    only: Option<Vec<String>>,
+    selection: Selection,
 ) -> Result<TaskId, ContextError> {
     let auto = TaskKey::repository(TaskKind::AutoUpdate, repository);
     if let Some(id) = cx.is_running(&auto) {
@@ -314,7 +374,7 @@ fn start(
     cx.spawn_task(
         TaskKey::repository(TaskKind::Download, repository),
         true,
-        move |task| run_download(task, name, event, only),
+        move |task| run_download(task, name, event, selection),
     )
 }
 
@@ -355,28 +415,33 @@ async fn run_download(
     task: TaskCtx,
     name: String,
     event: Option<String>,
-    only: Option<Vec<String>>,
+    selection: Selection,
 ) -> Result<(), TaskError> {
     let cx = task.cx.clone();
     let store = state_store(&cx);
     let events = track_files(&cx, &name, task.sync_events());
 
     let kept = take_session(&cx, &name, event.as_deref());
+    let paused = kept
+        .as_ref()
+        .is_some_and(|kept| kept.reason == KeptReason::Paused);
     let mut session = match kept {
-        Some(session) => session,
+        Some(kept) => kept.session,
         None => match check(&cx, &task, &name, event.clone(), &store, &events).await {
             Ok(session) => session,
             Err(CheckError::Cancelled) => return Err(TaskError::Cancelled),
             Err(err) => {
                 let error = EventError::new(err.kind(), err.user_message());
-                finish(&cx, &name, event, DownloadResult::Failed(error));
+                finish(&cx, &name, event, DownloadResult::Failed(error), None);
                 return Ok(());
             }
         },
     };
-    match &only {
-        Some(files) => select_only(&mut session, files),
-        None => session.select_all(),
+    match &selection {
+        Selection::All if paused => {}
+        Selection::All => session.select_all(),
+        Selection::Skip(names) => skip(&mut session, names),
+        Selection::Only(paths) => select_only(&mut session, paths),
     }
     let removed_addons = session
         .summary()
@@ -385,15 +450,28 @@ async fn run_download(
         .filter(|task| !task.relative_path.contains('/'))
         .count();
 
-    let run = session.download(&task.cancel, &events).await;
+    let run = download_reconnecting(&task, &name, &mut session, &events).await;
+    let report = run.report_text.clone();
+    if report.is_some() {
+        let mut state = cx.state().write();
+        if state.client.repository(&name).is_ok() {
+            state
+                .repositories
+                .runtime_mut(&name)
+                .download_report
+                .clone_from(&report);
+        }
+    }
     cx.state().write().sync.downloads.active_files.remove(&name);
 
     let outcome = match run.end {
+        // Paused or stopped while waiting to reconnect.
+        RunEnd::ConnectionLost if task.cancel.is_cancelled() => Outcome::Cancelled,
         RunEnd::ConnectionLost => {
             let error = EventError::new(ErrorKind::ConnectionFailed, "The connection was lost.");
             keep(&cx, &name, session, KeptReason::Paused);
             mark_failed(&cx, &store, &name).await;
-            finish(&cx, &name, event, DownloadResult::Failed(error));
+            finish(&cx, &name, event, DownloadResult::Failed(error), report);
             return Ok(());
         }
         RunEnd::Finished(outcome) => outcome,
@@ -417,7 +495,7 @@ async fn run_download(
         Outcome::CompletedWithErrors { errors } | Outcome::TooManyErrors { errors, .. } => {
             keep(&cx, &name, session, KeptReason::Issues);
             mark_failed(&cx, &store, &name).await;
-            finish(&cx, &name, event, DownloadResult::Issues(errors));
+            finish(&cx, &name, event, DownloadResult::Issues(errors), report);
             return Ok(());
         }
         other => {
@@ -429,12 +507,12 @@ async fn run_download(
                 ),
             };
             mark_failed(&cx, &store, &name).await;
-            finish(&cx, &name, event, DownloadResult::Failed(error));
+            finish(&cx, &name, event, DownloadResult::Failed(error), report);
             return Ok(());
         }
     }
 
-    copy_userconfig_folder(&cx, &session, &events).await;
+    let userconfig = copy_userconfig_folder(&cx, &session, &events).await;
     let trashed = removed_addons.min(run.cleanup.deleted);
     match check(
         &cx,
@@ -485,12 +563,65 @@ async fn run_download(
     }
     tracing::info!("Synchronization with repository: {name} finished.");
     cx.emit(AppEvent::Changed(Change::AddonFiles));
-    finish(&cx, &name, event, DownloadResult::Success { trashed });
+    finish(
+        &cx,
+        &name,
+        event,
+        DownloadResult::Success {
+            trashed,
+            userconfig,
+        },
+        report,
+    );
     Ok(())
 }
 
 fn state_store(cx: &Cx) -> Arc<dyn SyncStore> {
     Arc::new(StateStore::new(Arc::clone(cx.state())))
+}
+
+/// Downloads the session's selection; after a lost connection it waits
+/// [`RECONNECT_DELAY`] and goes on where it stopped, at most [`RECONNECT_ATTEMPTS`] times in a
+/// row. While it waits, [`Downloads::reconnecting`] holds the attempt.
+// Mirrors ui/repository/dialogs/ConnectionLostDialog.java:30-90
+async fn download_reconnecting(
+    task: &TaskCtx,
+    name: &str,
+    session: &mut SyncSession,
+    events: &EventSender,
+) -> RunReport {
+    let cx = &task.cx;
+    let mut attempt = 0;
+    loop {
+        let run = session.download(&task.cancel, events).await;
+        if run.end != RunEnd::ConnectionLost || attempt == RECONNECT_ATTEMPTS {
+            return run;
+        }
+        attempt += 1;
+        tracing::info!("Lost the connection to {name}; reconnecting (attempt {attempt}).");
+        set_reconnecting(cx, name, Some(attempt));
+        let deadline = cx.clock().now() + RECONNECT_DELAY;
+        let waited = tokio::select! {
+            () = cx.clock().sleep_until(deadline) => true,
+            () = task.cancel.cancelled() => false,
+        };
+        set_reconnecting(cx, name, None);
+        if !waited {
+            return run;
+        }
+    }
+}
+
+fn set_reconnecting(cx: &Cx, name: &str, attempt: Option<u32>) {
+    {
+        let mut state = cx.state().write();
+        let reconnecting = &mut state.sync.downloads.reconnecting;
+        match attempt {
+            Some(attempt) => reconnecting.insert(name.to_owned(), attempt),
+            None => reconnecting.remove(name),
+        };
+    }
+    cx.emit(AppEvent::Changed(Change::Repository));
 }
 
 /// Checks `name` with its stored protocol; extra local files go to the Trash.
@@ -521,15 +652,14 @@ async fn check(
 }
 
 /// The kept session of `name` for `event`, unless the server has a newer revision since.
-fn take_session(cx: &Cx, name: &str, event: Option<&str>) -> Option<SyncSession> {
+fn take_session(cx: &Cx, name: &str, event: Option<&str>) -> Option<KeptSession> {
     let mut state = cx.state().write();
     let current = state.repositories.runtime(name).metadata.server_revision();
     let kept = state.sync.downloads.sessions.remove(name)?;
-    let session = kept.session;
-    let same_event = session.request().event_name.as_deref() == event;
-    let checked = session.metadata().server_revision();
+    let same_event = kept.session.request().event_name.as_deref() == event;
+    let checked = kept.session.metadata().server_revision();
     let fresh = current.is_none() || checked == current;
-    (same_event && fresh).then_some(session)
+    (same_event && fresh).then_some(kept)
 }
 
 fn keep(cx: &Cx, name: &str, session: SyncSession, reason: KeptReason) {
@@ -543,17 +673,23 @@ fn keep(cx: &Cx, name: &str, session: SyncSession, reason: KeptReason) {
     }
 }
 
-/// Selects only `files` and the folders leading to them.
-fn select_only(session: &mut SyncSession, files: &[String]) {
+/// Selects only `paths`, what they hold and the folders leading to them.
+fn select_only(session: &mut SyncSession, paths: &[String]) {
     session.tree_mut().walk_mut(&mut |path, node| {
-        let wanted = files.iter().any(|file| {
-            file == path
-                || file
-                    .strip_prefix(path)
-                    .is_some_and(|rest| rest.starts_with('/'))
-        });
+        let wanted = paths
+            .iter()
+            .any(|wanted| is_below(wanted, path) || is_below(path, wanted));
         node.set_selected(wanted);
     });
+    session.refresh_summary();
+}
+
+/// Selects everything but the top-level nodes `names`.
+fn skip(session: &mut SyncSession, names: &[String]) {
+    session.select_all();
+    for name in names {
+        session.tree_mut().set_selected_recursive(name, false);
+    }
     session.refresh_summary();
 }
 
@@ -635,9 +771,14 @@ fn is_below(path: &str, top: &str) -> bool {
             .is_some_and(|rest| rest.starts_with('/'))
 }
 
-/// Copies the downloaded `userconfig` folder into the Arma 3 folder, without asking.
+/// Copies the downloaded `userconfig` folder into the Arma 3 folder, without asking; returns
+/// whether it did, `None` when nothing was to copy.
 // Mirrors ui/repository/DownloadPanel.java:1031-1048
-async fn copy_userconfig_folder(cx: &Cx, session: &SyncSession, events: &EventSender) {
+async fn copy_userconfig_folder(
+    cx: &Cx,
+    session: &SyncSession,
+    events: &EventSender,
+) -> Option<Result<(), String>> {
     let arma3_exe = cx
         .state()
         .read()
@@ -646,11 +787,17 @@ async fn copy_userconfig_folder(cx: &Cx, session: &SyncSession, events: &EventSe
         .and_then(|options| options.arma3_exe_path.as_deref())
         .map(PathBuf::from);
     let UserconfigAction::Copy(copy) = session.plan_userconfig_copy(arma3_exe.as_deref()) else {
-        return;
+        return None;
     };
     events.emit(SyncEvent::Phase(Phase::UpdatingUserconfig));
-    if let Some(outcome) = blocking(move || copy_userconfig(&copy)).await {
-        tracing::info!("Userconfig: {outcome:?}");
+    let outcome = blocking(move || copy_userconfig(&copy)).await?;
+    tracing::info!("Userconfig: {outcome:?}");
+    match outcome {
+        UserconfigOutcome::Copied(_) => Some(Ok(())),
+        UserconfigOutcome::SourceMissing(_) | UserconfigOutcome::Declined => None,
+        UserconfigOutcome::CreateFailed(reason) | UserconfigOutcome::CopyFailed(reason) => {
+            Some(Err(reason))
+        }
     }
 }
 
@@ -688,7 +835,13 @@ fn set_status(cx: &Cx, name: &str, status: RepositoryStatus) {
 }
 
 /// Records a finished download and announces it.
-fn finish(cx: &Cx, name: &str, event: Option<String>, result: DownloadResult) {
+fn finish(
+    cx: &Cx,
+    name: &str,
+    event: Option<String>,
+    result: DownloadResult,
+    report: Option<String>,
+) {
     match &result {
         DownloadResult::Success { .. } => {}
         DownloadResult::Issues(errors) => tracing::warn!(
@@ -710,6 +863,7 @@ fn finish(cx: &Cx, name: &str, event: Option<String>, result: DownloadResult) {
                 event,
                 finished: cx.clock().now(),
                 result: result.clone(),
+                report,
             },
         );
         recent.truncate(RECENT_LIMIT);
@@ -769,9 +923,28 @@ pub(super) fn handle(cx: &Cx, command: super::Command) {
     let started = match command {
         super::Command::AutoUpdate { .. } => return,
         super::Command::Compare { repository } => compare(cx, &repository).map(drop),
-        super::Command::Download { repository, event } => {
-            download(cx, &repository, event).map(drop)
+        super::Command::Download {
+            repository,
+            event,
+            selection,
+        } => {
+            // Mirrors ui/repository/DownloadPanel.java:1005-1014
+            if cx.state().read().tools.platform.is_arma3_running() {
+                cx.emit(AppEvent::Sync(Event::GameRunning {
+                    repository,
+                    event,
+                    selection,
+                }));
+                return;
+            }
+            download_selection(cx, &repository, event, selection).map(drop)
         }
+        super::Command::DownloadAnyway {
+            repository,
+            event,
+            selection,
+        } => download_selection(cx, &repository, event, selection).map(drop),
+        super::Command::Resume { repository } => resume(cx, &repository).map(drop),
         super::Command::Retry { repository, files } => retry(cx, &repository, files).map(drop),
         super::Command::Pause { repository } => {
             pause(cx, &repository);

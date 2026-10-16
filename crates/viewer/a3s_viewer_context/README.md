@@ -19,13 +19,19 @@ user stays, calls `start_background` again), then `shutdown`.
 
 The user's downloads are `sync` commands: `Compare` checks a repository against its download
 folder and publishes the changes (`sync::Downloads::plans`), keeping the checked session so
-`Download` starts at once; `Pause` cancels and keeps the session for the next `Download` to
-resume, `Stop` discards it, `Retry` downloads failed files again. Extra local files go to the
-Trash. Each finished download is recorded in `sync::Downloads::recent` and announced with
-`sync::Event::DownloadFinished`. `profiles::use_event_preset` and `use_group_preset` make an
-event's mods or one addon group the selection of the active profile; after each successful
-check and download the groups made from a repository and its events follow its new content in
-every profile, keeping their enabled mods; `repositories::test_connection` and
+`Download` starts at once; a `sync::Selection` limits it to some of the changes (every change
+but some top-level folders, or only some paths). While Arma 3 runs, `Download` does not start
+and emits `sync::Event::GameRunning` instead; `DownloadAnyway` starts it (automatic updates
+wait for the next check). `Pause` cancels and keeps the session for `Resume` (with its event
+and selection), `Stop` discards it, `Retry` downloads failed files again. A lost connection is
+resumed by itself after `RECONNECT_DELAY`, at most `RECONNECT_ATTEMPTS` times in a row
+(`sync::Downloads::reconnecting` while it waits). Extra local files go to the Trash, except in
+the repository's kept folders. Each finished download is recorded with its report in
+`sync::Downloads::recent` and announced with `sync::Event::DownloadFinished`.
+`profiles::use_event_preset` and `use_group_preset` make an event's mods or one addon group
+the selection of the active profile; after each successful check and download the groups made
+from a repository and its events follow its new content in every profile, keeping their
+enabled mods; `repositories::test_connection` and
 `fetch_autoconfig` serve the repository sheet.
 
 The active profile's addons are scanned by an `AddonScan` task (`profiles::Command::ScanAddons`;
@@ -34,8 +40,8 @@ folders or its Arma 3 executable changed, and after every download; `profiles::r
 for one at once) into `profiles::State::scan`: the addon registry, the available-addons tree
 and each addon's size; the launch priority list is brought in line with it.
 `launch::Command::Play` runs a `Launch` task: it enables the preset group of the server it
-joins, then optionally the user's downloads of the enabled addon groups' repositories that have
-updates (`sync::download`, so failed files reach
+joins, then optionally the user's downloads of the enabled mods of the enabled addon
+groups' repositories that have updates (`sync::download_selection`, so failed files reach
 `sync::Downloads::recent` and `sync::Event::DownloadFinished` like any download), then the
 launch plan of the active profile (`a3s_launch::plan_launch`), the companion apps and the game
 through the `launch::GameLauncher` in `launch::State` (tests put a recording launcher there).

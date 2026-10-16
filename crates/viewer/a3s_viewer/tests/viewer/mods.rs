@@ -4,23 +4,20 @@ use std::convert::Infallible;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use a3s_foundation::paths::Os;
-use a3s_launch::{EventSink, LaunchError, LaunchHandle, LaunchPlan, RunOptions};
 use a3s_repo_files::services::ClientData;
 use a3s_types::constants::RepositoryStatus;
-use a3s_types::local::{ExternalApplication, Profile, TreeNode};
+use a3s_types::local::{Profile, TreeNode};
 use a3s_ui::icon::icons;
 use a3s_viewer::{SettingsPane, SheetKind, Shell};
-use a3s_viewer_context::launch::{GameLauncher, LaunchEnvironment};
 use egui::accesskit::Role;
 use egui::{Key, Modifiers};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable as _;
-use parking_lot::Mutex;
 use tempfile::TempDir;
 
 use crate::support::{
-    Fixture, Start, fixture, mods_folder, mods_profile, set_status, step_until, wait_for_scan,
+    Fixture, RecordingLauncher, Start, fixture, mods_folder, mods_profile, set_status, step_until,
+    wait_for_scan,
 };
 
 /// The Mods screen over the `Mods` profile, scanned.
@@ -149,34 +146,6 @@ fn dragging_in_the_load_order_reorders_and_saves() {
         order(reloaded.profile("Mods").expect("saved profile")),
         expected
     );
-}
-
-/// Records the planned game launch instead of starting it.
-#[derive(Default)]
-struct RecordingLauncher {
-    plan: Mutex<Option<LaunchPlan>>,
-}
-
-impl GameLauncher for RecordingLauncher {
-    fn environment(&self) -> LaunchEnvironment {
-        LaunchEnvironment {
-            os: Os::Linux,
-            steam: None,
-            arma3_documents_dir: None,
-        }
-    }
-
-    fn start_companions(&self, _os: Os, _apps: &[ExternalApplication], _events: &EventSink) {}
-
-    fn start_game(
-        &self,
-        plan: LaunchPlan,
-        _options: RunOptions,
-        _events: EventSink,
-    ) -> Result<Option<LaunchHandle>, LaunchError> {
-        *self.plan.lock() = Some(plan);
-        Ok(None)
-    }
 }
 
 #[test]

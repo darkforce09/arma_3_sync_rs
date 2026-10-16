@@ -18,6 +18,9 @@ pub(crate) struct SidebarView<'a> {
     /// Running tasks the Activity screen lists.
     pub(crate) running_tasks: usize,
     pub(crate) last_check: Option<SystemTime>,
+
+    /// A check asked for by the user runs; it can be stopped.
+    pub(crate) user_check: bool,
 }
 
 /// Shows the sidebar rows; returns the action of a clicked row.
@@ -29,15 +32,20 @@ pub(crate) fn show(ui: &mut Ui, view: &SidebarView<'_>) -> Option<Action> {
             // "Checked N min ago" moves on by itself.
             ui.ctx().request_repaint_after(Duration::from_secs(30));
         }
-        ui.label(
-            RichText::new(check_status(
-                view.snapshot.checking,
-                view.last_check,
-                SystemTime::now(),
-            ))
-            .small()
-            .color(palette.text_secondary),
-        );
+        ui.horizontal(|ui| {
+            ui.label(
+                RichText::new(check_status(
+                    view.snapshot.checking,
+                    view.last_check,
+                    SystemTime::now(),
+                ))
+                .small()
+                .color(palette.text_secondary),
+            );
+            if view.user_check && ui.small_button("Stop").clicked() {
+                action = Some(Action::CancelCheck);
+            }
+        });
         ui.with_layout(Layout::top_down(Align::Min), |ui| {
             egui::ScrollArea::vertical()
                 .auto_shrink(false)

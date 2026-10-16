@@ -3,9 +3,11 @@
 pub(crate) mod add_repository;
 pub(crate) mod download_settings;
 mod exit;
+mod game_running;
 mod launcher_preset;
 mod load_warnings;
 mod path_list;
+mod report;
 pub(crate) mod server;
 mod update_issues;
 mod upload_connection;
@@ -19,8 +21,10 @@ use a3s_viewer_context::ViewerContext;
 use self::add_repository::{Mode, RepositoryForm};
 use self::download_settings::DownloadSettings;
 pub(crate) use self::exit::ExitPrompt;
+pub(crate) use self::game_running::GameRunning;
 use self::path_list::PathList;
 pub use self::path_list::PathListKind;
+use self::report::ReportSheet;
 use self::server::ServerSheet;
 pub(crate) use self::update_issues::UpdateIssues;
 use self::upload_connection::UploadConnection;
@@ -56,6 +60,12 @@ pub enum SheetKind {
     /// Files that failed in the last download of a repository.
     UpdateIssues,
 
+    /// The report of a finished download.
+    DownloadReport,
+
+    /// An update asks first because Arma 3 is running.
+    GameRunning,
+
     /// Comparing an Arma 3 Launcher preset with the mods on this computer.
     LauncherPreset,
 
@@ -80,6 +90,8 @@ pub(crate) enum Sheet {
     Repository(Box<RepositoryForm>),
     DownloadSettings(DownloadSettings),
     UpdateIssues(UpdateIssues),
+    Report(ReportSheet),
+    GameRunning(GameRunning),
     LauncherPreset(Box<ImportResult>),
     Server(Box<ServerSheet>),
     UploadConnection(Box<UploadConnection>),
@@ -103,6 +115,11 @@ impl Sheet {
     /// The Upload connection sheet of `repository`.
     pub(crate) fn upload_connection(viewer: &ViewerContext, repository: &str) -> Self {
         Self::UploadConnection(Box::new(UploadConnection::new(viewer, repository)))
+    }
+
+    /// The report of a finished download of `repository`.
+    pub(crate) fn report(repository: &str, text: &str) -> Self {
+        Self::Report(ReportSheet::new(repository, text))
     }
 
     /// The Download settings sheet of `repository`.
@@ -141,6 +158,8 @@ impl Sheet {
             },
             Self::DownloadSettings(_) => SheetKind::DownloadSettings,
             Self::UpdateIssues(_) => SheetKind::UpdateIssues,
+            Self::Report(_) => SheetKind::DownloadReport,
+            Self::GameRunning(_) => SheetKind::GameRunning,
             Self::LauncherPreset(_) => SheetKind::LauncherPreset,
             Self::Server(sheet) if sheet.adds() => SheetKind::AddServer,
             Self::Server(_) => SheetKind::EditServer,
@@ -216,6 +235,8 @@ impl Sheets {
             Sheet::Repository(form) => form.show(ctx, viewer, toasts),
             Sheet::DownloadSettings(sheet) => sheet.show(ctx, viewer, toasts),
             Sheet::UpdateIssues(issues) => issues.show(ctx, viewer, toasts),
+            Sheet::Report(report) => report.show(ctx, toasts),
+            Sheet::GameRunning(sheet) => sheet.show(ctx, viewer, toasts),
             Sheet::LauncherPreset(result) => launcher_preset::show(ctx, result, viewer, toasts),
             Sheet::Server(sheet) => sheet.show(ctx, viewer, toasts),
             Sheet::UploadConnection(sheet) => sheet.show(ctx, viewer, toasts),

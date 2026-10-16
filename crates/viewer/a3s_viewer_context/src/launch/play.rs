@@ -1,5 +1,6 @@
 //! The Play task: optional updates, then the companion apps and the game.
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use a3s_addons::check_missing_selected_addons;
@@ -9,6 +10,7 @@ use a3s_launch::{
     SteamWatch, plan_launch,
 };
 use a3s_sync::EventError;
+use a3s_types::SyncTreeDirectory;
 use a3s_types::constants::RepositoryStatus;
 use a3s_types::local::{Profile, TreeDirectory, TreeNode};
 use futures::future::join_all;
@@ -200,15 +202,27 @@ fn report_missing(cx: &Cx, profile: &Profile, scan: &AddonScan) {
     }
 }
 
-/// Downloads the repositories of the enabled addon groups that have updates and waits for them.
-/// Each is the user's [`TaskKind::Download`] ([`crate::sync::download`]): its result lands in
+/// Downloads the enabled mods of the repositories of the enabled addon groups that have updates,
+/// and waits for them. Each is the user's [`TaskKind::Download`]
+/// ([`crate::sync::download_selection`]): its result lands in
 /// [`crate::sync::Downloads::recent`] and [`crate::sync::Event::DownloadFinished`], where the UI
 /// shows failed files. A download already running is waited for.
 async fn update(task: &TaskCtx) {
     let cx = &task.cx;
-    let repositories = outdated_repositories(&cx.state().read());
-    let downloads = repositories.into_iter().map(|name| async move {
-        match crate::sync::download(cx, &name, None) {
+    let wanted: Vec<(String, Vec<String>)> = {
+        let state = cx.state().read();
+        outdated_repositories(&state)
+            .into_iter()
+            .map(|name| {
+                let paths = enabled_addon_paths(&state, &name);
+                (name, paths)
+            })
+            .filter(|(_, paths)| !paths.is_empty())
+            .collect()
+    };
+    let downloads = wanted.into_iter().map(|(name, paths)| async move {
+        let selection = crate::sync::Selection::Only(paths);
+        match crate::sync::download_selection(cx, &name, None, selection) {
             Ok(id) | Err(ContextError::TaskBusy { id, .. }) => cx.wait_task(id).await,
             Err(err) => {
                 tracing::warn!("Cannot update {name} before playing: {err}");
@@ -220,6 +234,62 @@ async fn update(task: &TaskCtx) {
         }
     });
     join_all(downloads).await;
+}
+
+/// Where the addons enabled in the groups made from `repository` are in its content: the
+/// paths below its root of the addon folders with their names (any case).
+fn enabled_addon_paths(state: &AppState, repository: &str) -> Vec<String> {
+    let Some(profile) = state.client.active_profile() else {
+        return Vec::new();
+    };
+    let mut names = BTreeSet::new();
+    for group in profile
+        .tree
+        .directories()
+        .filter(|group| group.modset_repository_name.as_deref() == Some(repository))
+    {
+        selected_leaf_names(group, &mut names);
+    }
+    let Some(sync) = state.repositories.runtime(repository).metadata.sync else {
+        return Vec::new();
+    };
+    let mut paths = Vec::new();
+    addon_paths(&sync, "", &names, &mut paths);
+    paths
+}
+
+fn selected_leaf_names(directory: &TreeDirectory, names: &mut BTreeSet<String>) {
+    for child in &directory.children {
+        match child {
+            TreeNode::Leaf(leaf) if leaf.selected => {
+                names.insert(leaf.name.to_lowercase());
+            }
+            TreeNode::Leaf(_) => {}
+            TreeNode::Directory(child) => selected_leaf_names(child, names),
+        }
+    }
+}
+
+fn addon_paths(
+    directory: &SyncTreeDirectory,
+    prefix: &str,
+    names: &BTreeSet<String>,
+    paths: &mut Vec<String>,
+) {
+    for child in directory.directories() {
+        let path = if prefix.is_empty() {
+            child.name.clone()
+        } else {
+            format!("{prefix}/{}", child.name)
+        };
+        if child.mark_as_addon {
+            if names.contains(&child.name.to_lowercase()) {
+                paths.push(path);
+            }
+        } else {
+            addon_paths(child, &path, names, paths);
+        }
+    }
 }
 
 /// The repositories of the enabled addon groups whose last check found updates.

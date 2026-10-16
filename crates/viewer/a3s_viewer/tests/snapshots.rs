@@ -184,7 +184,14 @@ fn show_activity(fixture: &mut Fixture) {
     let now = SystemTime::now();
     mutate(viewer, |state| {
         state.sync.downloads.recent = vec![
-            record("Beta", now, DownloadResult::Success { trashed: 1 }),
+            record(
+                "Beta",
+                now,
+                DownloadResult::Success {
+                    trashed: 1,
+                    userconfig: None,
+                },
+            ),
             record(
                 "Alpha",
                 now,
@@ -220,6 +227,7 @@ fn record(repository: &str, finished: SystemTime, result: DownloadResult) -> Dow
         event: None,
         finished,
         result,
+        report: None,
     }
 }
 

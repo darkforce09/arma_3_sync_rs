@@ -18,7 +18,8 @@ use crate::tasks::Cx;
 
 pub use self::download::{
     AddonChange, ChangeKind, DownloadRecord, DownloadResult, Downloads, PlanState, RECENT_LIMIT,
-    SyncPlan, compare, download, forget, pause, retry, stop,
+    RECONNECT_ATTEMPTS, RECONNECT_DELAY, Selection, SyncPlan, compare, download,
+    download_selection, forget, pause, resume, retry, stop,
 };
 
 /// Synchronization commands.
@@ -37,12 +38,31 @@ pub enum Command {
         repository: String,
     },
 
-    /// Downloads a repository, limited to the addons of `event` when set ([`download`]).
+    /// Downloads a repository, limited to the addons of `event` when set
+    /// ([`download_selection`]).
     Download {
         /// The repository.
         repository: String,
         /// The event.
         event: Option<String>,
+        /// Which part of it.
+        selection: Selection,
+    },
+
+    /// Downloads like [`Command::Download`] even though Arma 3 is running.
+    DownloadAnyway {
+        /// The repository.
+        repository: String,
+        /// The event.
+        event: Option<String>,
+        /// Which part of it.
+        selection: Selection,
+    },
+
+    /// Resumes a paused download with its event ([`resume`]).
+    Resume {
+        /// The repository.
+        repository: String,
     },
 
     /// Downloads failed files again; every file still to download when `files` is empty
@@ -76,6 +96,17 @@ pub enum Event {
     AutoUpdateRequested {
         /// The repositories, in name order.
         repositories: Vec<String>,
+    },
+
+    /// A [`Command::Download`] did not start because Arma 3 is running: files the game has open
+    /// may fail to update. [`Command::DownloadAnyway`] starts it.
+    GameRunning {
+        /// The repository.
+        repository: String,
+        /// The event.
+        event: Option<String>,
+        /// Which part of it.
+        selection: Selection,
     },
 
     /// A download started by the user ended (it was not paused or stopped); the result is also
@@ -153,6 +184,11 @@ pub fn auto_update_due(cx: &Cx, repositories: &[String]) {
     let Some(synchronizer) = &cx.shared.synchronizer else {
         return;
     };
+    // Mirrors ui/repository/DownloadPanel.java:1165-1173
+    if cx.state().read().tools.platform.is_arma3_running() {
+        tracing::info!("Arma 3 is running; the automatic updates wait for the next check.");
+        return;
+    }
     for name in repositories {
         if let Err(err) = auto_update::start(cx, name, Arc::clone(synchronizer)) {
             tracing::info!("Auto update of repository {name} not started: {err}");

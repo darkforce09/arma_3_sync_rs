@@ -75,6 +75,7 @@ pub(crate) enum Action {
     Open(SecondaryWindow),
     OpenSettings(SettingsPane),
     CheckNow,
+    CancelCheck,
     Rescan,
     FocusSearch,
     Show,
@@ -286,6 +287,10 @@ impl Shell {
                             .filter(|task| screens::activity::listed(task.key.kind))
                             .count(),
                         last_check: self.last_check,
+                        user_check: self
+                            .viewer
+                            .is_running(&TaskKey::new(TaskKind::CheckRepositories))
+                            .is_some(),
                     },
                 )
             });
@@ -377,6 +382,12 @@ impl Shell {
             Action::Open(window) => self.windows.open(ctx, window),
             Action::OpenSettings(pane) => self.windows.open_settings(ctx, pane),
             Action::CheckNow => self.check_now(snapshot),
+            Action::CancelCheck => {
+                let command = Command::Repositories(repositories::Command::CancelCheck);
+                if let Err(err) = self.viewer.send(command) {
+                    self.toasts.error(err.user_message());
+                }
+            }
             Action::Rescan => {
                 if let Err(err) = profiles::rescan(&self.viewer) {
                     self.toasts.error(err.user_message());

@@ -7,12 +7,15 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant, SystemTime};
 
+use a3s_platform::process::FixedProcessProbe;
+use a3s_platform::registry::MemoryRegistry;
 use a3s_repo_files::local::{LocalDirs, LocalStore};
 use a3s_repo_files::services::ClientData;
 use a3s_sync::{Phase, RemoteError, RemoteMetadata, SyncEvent};
 use a3s_types::constants::CheckRepositoriesFrequency;
 use a3s_types::local::{Configuration, Preferences, Repository};
 use a3s_types::{Protocol, ProtocolType};
+use a3s_viewer_context::tools::Platform;
 use a3s_viewer_context::{
     AppEvent, ContextOptions, ManualClock, RemoteCheck, RemoteChecker, TaskEvent, TaskKind,
     TaskOutcome, ViewerContext,
@@ -241,6 +244,17 @@ impl Fixture {
             },
         )
         .expect("context");
+        // No test sees the processes of the machine it runs on (a running Arma 3 holds back the
+        // automatic updates).
+        ctx.mutate(None, |state| {
+            state.tools.platform = Platform {
+                env: None,
+                registry: Arc::new(MemoryRegistry::default()),
+                processes: Arc::new(FixedProcessProbe(Some(Vec::new()))),
+            };
+            Ok::<(), std::convert::Infallible>(())
+        })
+        .ok();
         Self {
             dir,
             checker,

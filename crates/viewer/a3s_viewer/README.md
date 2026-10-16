@@ -12,15 +12,18 @@ lock), after checking `display_available()`.
 The window (`Shell`):
 
 - Unified toolbar: screen title, search field (⌘/Ctrl+F), the menu (Check now, Rescan mods
-  folders, Settings, Tools, Quit), the profile pop-up and the Play button ("Update and play" while a repository of the
-  active profile's addon groups has updates). Play starts the context's Launch task (after the
-  updates of the enabled addon groups for "Update and play"); without a usable Arma 3 executable
+  folders, Settings, Tools, Quit), the profile pop-up and the Play button ("Update and play"
+  while a repository with an enabled mod of the active profile has updates). Play starts the
+  context's Launch task (after downloading the enabled mods of those repositories for "Update
+  and play"); without a usable Arma 3 executable
   a toast offers "Choose folder…" (Settings > Game). Once the game started, the "game launch"
   preference hides the window to the tray, minimizes it, quits or does nothing.
 - Source-list sidebar: Library (Mods, Servers, Activity), Repositories with badges from the
   runtime state (changed-addon count when updated, "…" while checking, "!" after a failed
   check, with its reason as tooltip) and Add repository, Publishing (repositories with a local
-  source folder, and "Publish a folder", which creates one), and the last check time. Each row routes to a screen under `screens/`.
+  source folder, and "Publish a folder", which creates one), and the last check time (with
+  Stop while a check asked for by the user runs). Each row routes to a screen under
+  `screens/`.
 - Mods screen: All / Enabled / Load order. The tree shows the active profile's addon groups
   (from repositories, events and the user) with a status pill per mod (Ready, Update with its
   download size when the repository's comparison is current, Not installed with its size,
@@ -35,28 +38,35 @@ The window (`Shell`):
   it with the local mods, whose "Enable matched" adds a group with the matched mods.
 - Repository screen: header with the URL, revision, mod count and download folder, the "…"
   menu (Edit connection, Download settings, Publish from this computer, Check now, Remove
-  repository with an Undo toast), a notice with the reason of a failed check, one primary button ("Update
-  <size>", "Resume <size>", "Up to date"), event cards with "Use preset", the changes a download
-  makes (new, updated, removed to the Trash, with sizes) and the collapsed changelog of the
-  revisions not downloaded yet. Opening it compares the repository with its download folder
-  when the last comparison is older than the server revision.
+  repository with an Undo toast), a notice with the reason of a failed check, one primary
+  button ("Update <size>", "Update N of M · <size>" when some changes are unticked, "Resume
+  <size>", "Up to date"), event cards with "Download" (only the event's mods) and "Use preset",
+  the changes a download makes (new, updated, removed to the Trash, with sizes), each ticked to
+  be part of the next Update (Select all, Select none; an unticked removed folder stays, and
+  "Keep this folder" in its context menu keeps it for good), and the collapsed changelog of
+  the revisions not downloaded yet. While Arma 3 runs, Update asks first. Opening it compares
+  the repository with its download folder when the last comparison is older than the server
+  revision.
 - Event presets, from the Mods screen or an event card, go through the context's
   `profiles::use_event_preset` (the event's required mods enabled, every other mod disabled)
   with an Undo toast.
 - Activity screen: running downloads (progress, bytes, speed, time left, current files, Pause
-  and Stop), paused downloads (Resume, Stop) and the recent results ("Show issues").
+  and Stop; "Waiting for the server" after 15 s without data; the automatic retries after a
+  lost connection; Details: connections, disk writes, files, the current file), paused
+  downloads (Resume, Stop) and the recent results ("Report", "Show issues").
 - Publishing screen (a repository with a source folder on this computer; without one it asks
   for the folder), with a Publish / Events / Settings segment and one primary button
   ("Publish revision N", "Build revision N" without an upload connection, "Upload events" when
   only the events changed, "Published"). Without an upload connection the server is expected
-  to serve the source folder: the build counts as published when Verify finds every file. Publish: tiles for the published revision, the local changes and the
-  repository size; the step list (Scan source folder, Build, Verify, Upload) with live details
-  and Retry or Resume under a failed or stopped step; the mods players get. Events: the event
-  list (Add, Duplicate, Remove with Undo) and the selected event (name, description, each mod
-  required or optional), saved to the source folder as you type. Settings: source folder,
-  upload connection, the auto-config link with Copy, the build and upload switches, which of the
-  favourite servers the auto-config carries (stored at once, published by the next publish), and
-  the excluded files and hidden folders.
+  to serve the source folder: the build counts as published when Verify finds every file.
+  Publish: tiles for the published revision, the local changes and the repository size; the
+  step list (Scan source folder, Build, Verify, Upload) with live details and Retry or Resume
+  under a failed or stopped step; the mods players get. Events: the event list (Add, Duplicate,
+  Remove with Undo) and the selected event (name, description, each mod required or optional),
+  saved to the source folder as you type. Settings: source folder (and Stop publishing from
+  this computer, with Undo), upload connection, the auto-config link with Copy, the build and
+  upload switches, which of the favourite servers the auto-config carries (stored at once,
+  published by the next publish), and the excluded files and hidden folders.
 - Sheets (`egui::Modal`, one at a time): Welcome on the first start or while Java data waits for
   import (Arma 3 and mods folders through the system folder dialog, the legacy importer),
   load warnings, quit confirmation (running tasks, failed save), Add repository and Edit
@@ -71,10 +81,11 @@ The window (`Shell`):
   Copy report, Play anyway; during "Update and play" the game starts anyway and the sheet
   offers no Play), the Arma 3 Launcher preset comparison, Add server and Edit server, Upload
   connection (protocol, host, port, path, login) and the path lists of a published repository
-  (add through the system dialog, remove with Undo).
+  (add through the system dialog, remove with Undo), a download report (Copy), and the question
+  before an update while Arma 3 runs.
 - Toasts (egui-toast) for the context's events, including an Undo kind that runs a callback and
   an action kind whose button asks the window for an action (e.g. "Choose folder…" opens
-  Settings at the Game pane).
+  Settings at the Game pane, and "Show" on "Updates available" opens the repository).
 - Servers screen: the favourite servers with address, preset and a saved-password mark; Join
   stores the server (and its preset) in the configuration's `server_name`/`default_modset` and
   enables exactly the preset group's mods (with Undo); Play enables them again before
@@ -85,7 +96,8 @@ The window (`Shell`):
   - General: appearance (stored in the preferences' look-and-feel field: the Java "Noire" look
     is Dark, its other named looks Light, the default look Auto), the window when the game
     starts, open at login (`a3s_platform::autostart`, entry with `-run`), keep running in the
-    tray, the check frequency (rescheduled at once), and the version with an update check (`a3s_updater`, no download).
+    tray, the check frequency (rescheduled at once), and the version with an update check
+    (`a3s_updater`, no download).
   - Game, per profile: Arma 3 folder, start through Steam or the executable (Linux; the
     profile's `game_start`, which Play uses), BattlEye, in-game name (the Arma 3 profiles next
     to the Arma 3 user folder), common flags, "Customize…" sheets for performance and developer

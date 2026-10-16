@@ -24,6 +24,9 @@ struct Running {
     repository: String,
     snapshot: TaskSnapshot,
     files: Vec<String>,
+
+    /// Waiting to go on after a lost connection: the attempt that comes next.
+    reconnecting: Option<u32>,
 }
 
 /// Whether the screen lists running tasks of `kind`; the sidebar badge counts those.
@@ -55,11 +58,13 @@ pub(super) fn show(ui: &mut Ui, cx: &mut ScreenCx<'_>) {
                     .get(&repository)
                     .cloned()
                     .unwrap_or_default();
+                let reconnecting = state.sync.downloads.reconnecting.get(&repository).copied();
                 Some(Running {
                     task,
                     repository,
                     snapshot,
                     files,
+                    reconnecting,
                 })
             })
             .collect()
@@ -213,7 +218,91 @@ fn running_card(ui: &mut Ui, transfer: &Running, cx: &mut ScreenCx<'_>) {
                     .color(palette.text_secondary),
             );
         }
+        if let Some(attempt) = transfer.reconnecting {
+            ui.label(
+                RichText::new(format!(
+                    "{} Connection lost; trying again in a few seconds (attempt {attempt} of {})",
+                    icons::WARNING,
+                    sync::RECONNECT_ATTEMPTS
+                ))
+                .small()
+                .color(palette.status_warning),
+            );
+        }
+        // Mirrors ui/repository/workers/AddonsDownloader.java:373-387
+        if let Some(seconds) = snapshot
+            .waiting_seconds
+            .filter(|s| *s >= WAITING_SHOWN_AFTER)
+        {
+            ui.label(
+                RichText::new(format!(
+                    "{} Waiting for the server ({seconds} s)",
+                    icons::HOURGLASS
+                ))
+                .small()
+                .color(palette.status_warning),
+            );
+        }
+        details(ui, transfer);
     });
+}
+
+/// Seconds without throughput before the card says it waits for the server.
+const WAITING_SHOWN_AFTER: u32 = 15;
+
+/// The transfer's figures behind a disclosure: connections, disk writes, files, current file.
+fn details(ui: &mut Ui, transfer: &Running) {
+    let snapshot = &transfer.snapshot;
+    let rows: Vec<(&str, String)> = [
+        (
+            "Connections",
+            snapshot.active_connections.map(|n| n.to_string()),
+        ),
+        (
+            "Writing to disk",
+            snapshot.disk_usage.map(|bytes| {
+                a3s_foundation::format::speed(i64::try_from(bytes).unwrap_or(i64::MAX))
+            }),
+        ),
+        (
+            "Files",
+            snapshot.total.map(|(_, files)| {
+                count_text(
+                    usize::try_from(files).unwrap_or(usize::MAX),
+                    "file",
+                    "files",
+                )
+            }),
+        ),
+        (
+            "Current file",
+            snapshot
+                .transfer
+                .as_ref()
+                .filter(|transfer| transfer.current_file.is_some())
+                .map(|transfer| format!("{}%", transfer.current_file_percent)),
+        ),
+    ]
+    .into_iter()
+    .filter_map(|(label, value)| value.map(|value| (label, value)))
+    .collect();
+    if rows.is_empty() {
+        return;
+    }
+    let palette = theme::palette(ui.ctx());
+    egui::CollapsingHeader::new(RichText::new("Details").small())
+        .id_salt(("a3s_viewer::activity::details", &transfer.repository))
+        .default_open(false)
+        .show(ui, |ui| {
+            for (label, value) in rows {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(label).small().color(palette.text_secondary));
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        ui.label(RichText::new(value).small());
+                    });
+                });
+            }
+        });
 }
 
 fn paused_row(ui: &mut Ui, repository: &str, remaining: u64, cx: &mut ScreenCx<'_>) {
@@ -236,9 +325,8 @@ fn paused_row(ui: &mut Ui, repository: &str, remaining: u64, cx: &mut ScreenCx<'
             if button(ui, "Resume").clicked() {
                 send(
                     cx,
-                    sync::Command::Download {
+                    sync::Command::Resume {
                         repository: repository.to_owned(),
-                        event: None,
                     },
                 );
             }
@@ -285,6 +373,12 @@ fn recent_row(ui: &mut Ui, record: &DownloadRecord, now: SystemTime, cx: &mut Sc
                     .small()
                     .color(palette.text_secondary),
             );
+            if let Some(report) = &record.report
+                && button(ui, "Report").clicked()
+            {
+                cx.sheets
+                    .push(crate::sheets::Sheet::report(&record.repository, report));
+            }
             if matches!(record.result, DownloadResult::Issues(_))
                 && button(ui, "Show issues").clicked()
             {

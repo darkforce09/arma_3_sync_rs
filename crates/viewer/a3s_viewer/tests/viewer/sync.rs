@@ -1,22 +1,27 @@
-//! The player sync loop: adding a repository from its auto-config, Update, the Activity view
-//! and the Update issues sheet.
+//! The player sync loop: adding a repository from its auto-config, Update (of every or of the
+//! ticked mods, and before playing), the Activity view, the report and Update issues sheets, and
+//! the question while Arma 3 runs.
 
 use std::convert::Infallible;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
 use a3s_foundation::error::ErrorKind;
 use a3s_sync::{EventError, SyncEvent, TransferProgress};
 use a3s_test_servers::Fixture as Server;
 use a3s_types::AutoConfig;
-use a3s_types::local::{Profile, Repository};
+use a3s_types::constants::RepositoryStatus;
+use a3s_types::local::{Profile, Repository, TreeLeaf, TreeNode};
 use a3s_viewer::{Screen, SheetKind, Shell};
 use a3s_viewer_context::sync::{DownloadRecord, DownloadResult};
-use a3s_viewer_context::{TaskError, TaskKey, TaskKind};
+use a3s_viewer_context::{Command, TaskError, TaskKey, TaskKind, repositories};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable as _;
 
-use crate::support::{Start, fixture};
+use crate::support::{
+    RecordingLauncher, Start, fixture, offline_platform, profile_with_group, set_status,
+};
 
 /// How long a test waits for background work.
 const TIMEOUT: Duration = Duration::from_secs(60);
@@ -25,11 +30,24 @@ const TIMEOUT: Duration = Duration::from_secs(60);
 fn wait_until(harness: &mut Harness<'static, Shell>, what: &str, done: impl Fn(&Shell) -> bool) {
     let start = Instant::now();
     while !done(harness.state()) {
-        assert!(start.elapsed() < TIMEOUT, "timed out waiting for {what}");
+        assert!(
+            start.elapsed() < TIMEOUT,
+            "timed out waiting for {what}; sheet {:?}, tasks {:?}",
+            harness.state().sheet(),
+            harness.state().viewer().running_tasks()
+        );
         harness.step();
         std::thread::sleep(Duration::from_millis(20));
     }
     harness.step();
+}
+
+/// Checks `name`, as "Check now" does; the Repository screen then compares it with its folder.
+fn check(harness: &Harness<'static, Shell>, name: &str) {
+    let command = Command::Repositories(repositories::Command::Check {
+        names: vec![name.to_owned()],
+    });
+    harness.state().viewer().send(command).expect("check");
 }
 
 /// A runtime for the test servers, kept alive for the whole test.
@@ -144,7 +162,13 @@ fn update_downloads_the_repository() {
     let result = harness.state().viewer().read().sync.downloads.recent[0]
         .result
         .clone();
-    assert_eq!(result, DownloadResult::Success { trashed: 0 });
+    assert_eq!(
+        result,
+        DownloadResult::Success {
+            trashed: 0,
+            userconfig: None
+        }
+    );
     assert!(destination.path().join("@Mod_A/mod.cpp").is_file());
     assert!(
         destination
@@ -241,6 +265,7 @@ fn issues_sheet_lists_the_failed_files_and_retry_downloads_again() {
                     EventError::new(ErrorKind::ReadTimeout, "Read timed out")
                         .with_path("@cba/addons/cba_main.pbo"),
                 ]),
+                report: Some("--- Download report ---".to_owned()),
             });
             Ok::<(), Infallible>(())
         })
@@ -271,4 +296,198 @@ fn issues_sheet_lists_the_failed_files_and_retry_downloads_again() {
     let latest = &state.sync.downloads.recent[0];
     assert_eq!(latest.repository, "Alpha");
     assert!(matches!(latest.result, DownloadResult::Failed(_)));
+}
+
+#[test]
+fn unticked_mods_are_neither_downloaded_nor_removed() {
+    let runtime = server_runtime();
+    let server = ftp_repository(&runtime);
+    let destination = tempfile::tempdir().expect("destination");
+    let old = destination.path().join("@old/addons/old.pbo");
+    std::fs::create_dir_all(old.parent().expect("parent")).expect("mkdir");
+    std::fs::write(&old, b"old").expect("old mod");
+    let mut repository = Repository::new("Local", server.protocol.clone());
+    repository.default_download_location = Some(destination.path().display().to_string());
+    repository.exact_match = true;
+
+    let mut fixture = fixture(Start {
+        repositories: vec![repository],
+        ..Start::default()
+    });
+    let harness = &mut fixture.harness;
+    check(harness, "Local");
+    harness.get_by_label("Local").click();
+    harness.run_ok();
+    let start = Instant::now();
+    while harness.query_by_label("@old").is_none() {
+        assert!(start.elapsed() < TIMEOUT, "the comparison did not finish");
+        harness.step();
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    harness.get_by_label("@Mod_A").click();
+    harness.run();
+    harness.get_by_label("@old").click();
+    harness.run();
+    harness.get_by_label_contains(" of ").click();
+    harness.step();
+
+    wait_until(harness, "the download", |shell| {
+        !shell.viewer().read().sync.downloads.recent.is_empty()
+    });
+    let result = harness.state().viewer().read().sync.downloads.recent[0]
+        .result
+        .clone();
+    assert!(
+        matches!(result, DownloadResult::Success { .. }),
+        "{result:?}"
+    );
+    assert!(destination.path().join("@mod_b").is_dir());
+    assert!(
+        !destination.path().join("@Mod_A").exists(),
+        "an unticked mod is not downloaded"
+    );
+    assert!(old.is_file(), "an unticked removed mod stays");
+}
+
+#[test]
+fn update_and_play_downloads_only_the_enabled_mods() {
+    let runtime = server_runtime();
+    let server = ftp_repository(&runtime);
+    let destination = tempfile::tempdir().expect("destination");
+    let game = tempfile::tempdir().expect("game folder");
+    let exe = game.path().join("arma3_x64");
+    std::fs::write(&exe, b"").expect("executable");
+    let mut repository = Repository::new("Local", server.protocol.clone());
+    repository.default_download_location = Some(destination.path().display().to_string());
+    let mut profile = profile_with_group("Default", "Local");
+    profile.launcher_options.arma3_exe_path = Some(exe.display().to_string());
+    profile.addon_search_directories = vec![destination.path().display().to_string()];
+    if let Some(TreeNode::Directory(group)) = profile.tree.children.first_mut() {
+        group.add_child(TreeNode::Leaf(TreeLeaf {
+            selected: true,
+            ..TreeLeaf::new("@mod_b")
+        }));
+        group.add_child(TreeNode::Leaf(TreeLeaf::new("@Mod_A")));
+    }
+
+    let mut fixture = fixture(Start {
+        repositories: vec![repository],
+        profiles: Some(vec![profile]),
+        ..Start::default()
+    });
+    let harness = &mut fixture.harness;
+    let launcher = Arc::new(RecordingLauncher::default());
+    harness
+        .state()
+        .viewer()
+        .mutate(None, |state| {
+            state.launch.launcher = launcher.clone();
+            Ok::<(), Infallible>(())
+        })
+        .ok();
+    harness
+        .get_all_by_label("Local")
+        .next()
+        .expect("sidebar row")
+        .click();
+    harness.run_ok();
+    // The check loads the repository's content.
+    check(harness, "Local");
+    wait_until(harness, "the comparison", |shell| {
+        shell
+            .viewer()
+            .read()
+            .repositories
+            .runtime("Local")
+            .metadata
+            .sync
+            .is_some()
+    });
+    set_status(harness.state().viewer(), "Local", RepositoryStatus::Updated);
+    harness.run();
+    harness.get_by_label_contains("Update and play").click();
+    harness.step();
+
+    wait_until(harness, "the download", |shell| {
+        !shell.viewer().read().sync.downloads.recent.is_empty()
+    });
+    assert!(destination.path().join("@mod_b").is_dir());
+    assert!(
+        !destination.path().join("@Mod_A").exists(),
+        "a mod the profile does not enable is not downloaded"
+    );
+    // The game starts with the mod it just got: the mods folder was scanned again.
+    wait_until(harness, "the launch", |_| launcher.plan.lock().is_some());
+    let plan = launcher.plan.lock().clone().expect("plan");
+    assert!(
+        plan.command
+            .args
+            .iter()
+            .any(|arg| arg.to_string_lossy().contains("@mod_b")),
+        "{:?}",
+        plan.command.args
+    );
+}
+
+#[test]
+fn an_update_asks_first_while_arma_3_runs() {
+    let mut fixture = fixture(Start::default());
+    let harness = &mut fixture.harness;
+    harness
+        .state()
+        .viewer()
+        .mutate(None, |state| {
+            state.tools.platform = offline_platform(&["arma3_x64.exe"]);
+            Ok::<(), Infallible>(())
+        })
+        .ok();
+    harness
+        .get_all_by_label("Alpha")
+        .next()
+        .expect("sidebar row")
+        .click();
+    harness.run();
+    harness.get_by_label("Update").click();
+    wait_until(harness, "the question", |shell| {
+        shell.sheet() == Some(SheetKind::GameRunning)
+    });
+    harness.get_by_label("Cancel").click();
+    harness.run();
+    assert_eq!(harness.state().sheet(), None);
+    assert!(
+        harness
+            .state()
+            .viewer()
+            .is_running(&TaskKey::repository(TaskKind::Download, "Alpha"))
+            .is_none()
+    );
+}
+
+#[test]
+fn a_finished_download_shows_its_report() {
+    let mut fixture = fixture(Start::default());
+    let harness = &mut fixture.harness;
+    harness
+        .state()
+        .viewer()
+        .mutate(None, |state| {
+            state.sync.downloads.recent.push(DownloadRecord {
+                repository: "Beta".to_owned(),
+                event: None,
+                finished: SystemTime::now(),
+                result: DownloadResult::Success {
+                    trashed: 0,
+                    userconfig: None,
+                },
+                report: Some("--- Download report ---".to_owned()),
+            });
+            Ok::<(), Infallible>(())
+        })
+        .ok();
+    harness.get_by_label("Activity").click();
+    harness.run();
+    harness.get_by_label("Report").click();
+    harness.run();
+    assert_eq!(harness.state().sheet(), Some(SheetKind::DownloadReport));
+    harness.get_by_label_contains("--- Download report ---");
 }

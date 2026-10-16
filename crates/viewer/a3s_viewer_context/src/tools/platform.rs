@@ -43,6 +43,12 @@ impl Platform {
         detect::rpt_dir(self.env.as_ref()?, &*self.registry)
     }
 
+    /// Whether Arma 3 or its dedicated server runs.
+    pub fn is_arma3_running(&self) -> bool {
+        process::is_arma3_running(&*self.processes)
+            || process::is_arma3_server_running(&*self.processes)
+    }
+
     /// Whether a `TeamSpeak` 3 client runs.
     pub fn is_ts3_running(&self) -> bool {
         process::is_ts3_running(&*self.processes)
