@@ -266,6 +266,7 @@ impl GamePane {
         let battleye = labelled_row(ui, "BattlEye", |ui| {
             ui.add_enabled_ui(exe.is_some(), |ui| toggle(ui, &mut on))
                 .inner
+                .on_disabled_hover_text("Choose the Arma 3 folder first.")
         });
         if battleye.changed()
             && let Some(exe) = &exe

@@ -10,8 +10,9 @@ use a3s_types::constants::{
 use a3s_types::local::Preferences;
 use a3s_ui::frames;
 use a3s_ui::widgets::{button, form_row, popup_button, segmented};
+use a3s_updater::apply::relaunch::RelaunchPlan;
 use a3s_updater::apply::{CheckOutcome, source_for_preference, text};
-use a3s_updater::{DiagnosticLog, UpdateContext, UpdateSession};
+use a3s_updater::{DiagnosticLog, Release, UpdateContext, UpdateEvent, UpdateSession};
 use a3s_viewer_context::{TaskKey, TaskKind, ViewerContext};
 use egui::Ui;
 
@@ -87,13 +88,24 @@ const FREQUENCIES: [(CheckRepositoriesFrequency, &str); 4] = [
     (CheckRepositoriesFrequency::Disabled, "Only at start-up"),
 ];
 
-/// Where the application update check stands.
+/// Where the application update check and its installation stand.
 #[derive(Default)]
 enum UpdateCheck {
     #[default]
     NotChecked,
-    Running(mpsc::Receiver<String>),
-    Done(String),
+    Running(mpsc::Receiver<(String, Option<Box<Release>>)>),
+
+    /// The check's line, and the newer release it found.
+    Done(String, Option<Box<Release>>),
+
+    /// The update downloads and installs; its progress line.
+    Installing(mpsc::Receiver<InstallMessage>, String),
+}
+
+/// What the installation reports.
+enum InstallMessage {
+    Progress(String),
+    Done(Result<RelaunchPlan, String>),
 }
 
 #[derive(Default)]
@@ -101,6 +113,9 @@ pub(super) struct GeneralPane {
     /// Whether an autostart entry exists; read once when the pane is first shown.
     autostart: Option<bool>,
     update: UpdateCheck,
+
+    /// How to start the installed update; the window quits and starts it.
+    pub(super) relaunch: Option<RelaunchPlan>,
 }
 
 impl GeneralPane {
@@ -168,7 +183,10 @@ impl GeneralPane {
 
         frames::group(ui, |ui| {
             form_row(ui, &format!("Arma3Sync {VERSION}"), |ui| {
-                let running = matches!(self.update, UpdateCheck::Running(_));
+                let running = matches!(
+                    self.update,
+                    UpdateCheck::Running(_) | UpdateCheck::Installing(..)
+                );
                 if ui
                     .add_enabled_ui(!running, |ui| button(ui, "Check now"))
                     .inner
@@ -180,8 +198,17 @@ impl GeneralPane {
                     ui.spinner();
                 }
             });
-            if let UpdateCheck::Done(line) = &self.update {
-                note(ui, line.clone());
+            match &self.update {
+                UpdateCheck::Done(line, release) => {
+                    note(ui, line.clone());
+                    if let Some(release) = release.clone()
+                        && a3s_ui::widgets::primary_button(ui, "Install and restart").clicked()
+                    {
+                        self.install(ui.ctx(), cx.viewer, *release);
+                    }
+                }
+                UpdateCheck::Installing(_, line) => note(ui, line.clone()),
+                UpdateCheck::NotChecked | UpdateCheck::Running(_) => {}
             }
         });
 
@@ -218,24 +245,10 @@ impl GeneralPane {
 
     /// Looks for a newer release on the background runtime; no download.
     fn check_update(&mut self, ctx: &egui::Context, viewer: &ViewerContext) {
-        let (dev, prefer_github, config_dir) = {
-            let state = viewer.read();
-            (
-                state.flags.dev_mode,
-                state.client.preferences().prefer_github_updates,
-                state.client.store().dirs().config.clone(),
-            )
-        };
-        let context = match UpdateContext::for_current_process(
-            VERSION,
-            dev,
-            source_for_preference(prefer_github),
-            Some(config_dir),
-            DiagnosticLog::from_env(),
-        ) {
+        let context = match update_context(viewer) {
             Ok(context) => context,
             Err(err) => {
-                self.update = UpdateCheck::Done(text::check_failed(&err));
+                self.update = UpdateCheck::Done(text::check_failed(&err), None);
                 return;
             }
         };
@@ -246,36 +259,132 @@ impl GeneralPane {
             true,
             move |task| async move {
                 let session = UpdateSession::new(context);
-                let line = match session.check(&task.cancel).await {
-                    Ok(CheckOutcome::Available { release, .. }) => {
-                        format!("Version {} is available.", release.version)
+                let found = match session.check(&task.cancel).await {
+                    Ok(CheckOutcome::Available { release, .. }) => (
+                        format!("Version {} is available.", release.version),
+                        Some(Box::new(release)),
+                    ),
+                    Ok(CheckOutcome::UpToDate { .. }) => {
+                        ("Arma3Sync is up to date.".to_owned(), None)
                     }
-                    Ok(CheckOutcome::UpToDate { .. }) => "Arma3Sync is up to date.".to_owned(),
-                    Err(err) => text::check_failed(&err),
+                    Err(err) => (text::check_failed(&err), None),
                 };
-                sender.send(line).ok();
+                sender.send(found).ok();
                 ctx.request_repaint();
                 Ok(())
             },
         );
         self.update = match spawned {
             Ok(_) => UpdateCheck::Running(receiver),
-            Err(err) => UpdateCheck::Done(text::check_failed(&err)),
+            Err(err) => UpdateCheck::Done(text::check_failed(&err), None),
         };
     }
 
     fn poll_update(&mut self) {
-        let UpdateCheck::Running(receiver) = &self.update else {
-            return;
-        };
-        match receiver.try_recv() {
-            Ok(line) => self.update = UpdateCheck::Done(line),
-            Err(mpsc::TryRecvError::Empty) => {}
-            Err(mpsc::TryRecvError::Disconnected) => {
-                self.update = UpdateCheck::Done("The check stopped unexpectedly.".to_owned());
-            }
+        match &mut self.update {
+            UpdateCheck::Running(receiver) => match receiver.try_recv() {
+                Ok((line, release)) => self.update = UpdateCheck::Done(line, release),
+                Err(mpsc::TryRecvError::Empty) => {}
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    self.update =
+                        UpdateCheck::Done("The check stopped unexpectedly.".to_owned(), None);
+                }
+            },
+            UpdateCheck::Installing(receiver, line) => loop {
+                match receiver.try_recv() {
+                    Ok(InstallMessage::Progress(progress)) => *line = progress,
+                    Ok(InstallMessage::Done(Ok(plan))) => {
+                        self.relaunch = Some(plan);
+                        self.update = UpdateCheck::NotChecked;
+                        break;
+                    }
+                    Ok(InstallMessage::Done(Err(error))) => {
+                        self.update = UpdateCheck::Done(error, None);
+                        break;
+                    }
+                    Err(mpsc::TryRecvError::Empty) => break,
+                    Err(mpsc::TryRecvError::Disconnected) => {
+                        self.update =
+                            UpdateCheck::Done("The update stopped unexpectedly.".to_owned(), None);
+                        break;
+                    }
+                }
+            },
+            UpdateCheck::NotChecked | UpdateCheck::Done(..) => {}
         }
     }
+
+    /// Downloads and installs `release` on the background runtime; once installed, the window
+    /// quits and starts the new version.
+    // Mirrors a3sUpdater/ui/Updater.java:60-140
+    fn install(&mut self, ctx: &egui::Context, viewer: &ViewerContext, release: Release) {
+        let context = match update_context(viewer) {
+            Ok(context) => context,
+            Err(err) => {
+                self.update = UpdateCheck::Done(text::error_occurred(&err), None);
+                return;
+            }
+        };
+        let (sender, receiver) = mpsc::channel();
+        let ctx = ctx.clone();
+        let first = text::updating(&release.version);
+        let spawned = viewer.cx().spawn_task(
+            TaskKey::new(TaskKind::SelfUpdate),
+            true,
+            move |task| async move {
+                let session = UpdateSession::new(context);
+                let progress = sender.clone();
+                let repaint = ctx.clone();
+                let on_event = move |event: UpdateEvent| {
+                    let line = match event {
+                        UpdateEvent::Downloading { bytes, total } => {
+                            text::progress_percent(bytes, total)
+                                .map_or_else(|| "Downloading…".to_owned(), text::downloading)
+                        }
+                        UpdateEvent::WaitingForElevation => {
+                            "Waiting for administrator rights…".to_owned()
+                        }
+                        UpdateEvent::ElevatedInstallStarted => text::ELEVATED_CONTINUING.to_owned(),
+                        UpdateEvent::Installing => "Installing…".to_owned(),
+                        _ => return,
+                    };
+                    progress.send(InstallMessage::Progress(line)).ok();
+                    repaint.request_repaint();
+                };
+                let result = session
+                    .apply(&release, &on_event, &task.cancel)
+                    .await
+                    .map(|outcome| outcome.relaunch)
+                    .map_err(|err| text::error_occurred(&err));
+                sender.send(InstallMessage::Done(result)).ok();
+                ctx.request_repaint();
+                Ok(())
+            },
+        );
+        self.update = match spawned {
+            Ok(_) => UpdateCheck::Installing(receiver, first),
+            Err(err) => UpdateCheck::Done(text::error_occurred(&err), None),
+        };
+    }
+}
+
+/// What the updater needs to know about this application.
+fn update_context(viewer: &ViewerContext) -> std::io::Result<UpdateContext> {
+    let (dev, prefer_github, config_dir) = {
+        let state = viewer.read();
+        (
+            state.flags.dev_mode,
+            state.client.preferences().prefer_github_updates,
+            state.client.store().dirs().config.clone(),
+        )
+    };
+    UpdateContext::for_current_process(
+        VERSION,
+        dev,
+        source_for_preference(prefer_github),
+        Some(config_dir),
+        DiagnosticLog::from_env(),
+    )
 }
 
 fn autostart_enabled(desktop: &Desktop) -> bool {

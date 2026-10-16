@@ -17,6 +17,7 @@ use a3s_ui::frames;
 use a3s_ui::icon::icons;
 use a3s_ui::theme;
 use a3s_ui::widgets::SidebarItem;
+use a3s_updater::apply::relaunch::RelaunchPlan;
 use a3s_viewer_context::{Change, ViewerContext};
 use egui::{Id, Label, RichText, Ui};
 
@@ -122,6 +123,11 @@ impl SettingsWindow {
     }
 
     /// Shows the pane list, the selected pane and the window's toasts.
+    /// How to start the update installed from the General pane, once; the window then quits.
+    pub(crate) fn take_relaunch(&mut self) -> Option<RelaunchPlan> {
+        self.general.relaunch.take()
+    }
+
     pub fn show(&mut self, ui: &mut Ui, viewer: &ViewerContext) {
         let def = theme::current(ui.ctx());
         egui::Panel::left("a3s_viewer::settings::panes")

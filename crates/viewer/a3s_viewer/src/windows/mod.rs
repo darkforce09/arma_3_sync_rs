@@ -6,6 +6,7 @@ mod tools;
 
 use std::collections::BTreeSet;
 
+use a3s_updater::apply::relaunch::RelaunchPlan;
 use a3s_viewer_context::ViewerContext;
 use egui::{ViewportBuilder, ViewportClass, ViewportId};
 
@@ -123,6 +124,11 @@ impl SecondaryWindows {
     /// The pane the Settings window shows, when it is open.
     pub(crate) fn settings_pane(&self) -> Option<SettingsPane> {
         self.settings.as_ref().map(SettingsWindow::pane)
+    }
+
+    /// How to start an update installed from Settings, once.
+    pub(crate) fn take_relaunch(&mut self) -> Option<RelaunchPlan> {
+        self.settings.as_mut()?.take_relaunch()
     }
 
     /// Shows every open window.

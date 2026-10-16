@@ -103,7 +103,10 @@ fn list(
         if events.is_empty() {
             ui.label(RichText::new("No events yet.").color(palette.text_secondary));
         }
-        for event in events {
+        for event in events
+            .iter()
+            .filter(|event| crate::screens::matches_search(cx.search, &event.name))
+        {
             let selected = state.selected.as_ref() == Some(&event.name);
             if ui
                 .add_sized(

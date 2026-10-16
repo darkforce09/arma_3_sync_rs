@@ -318,7 +318,8 @@ impl ModsScreen {
                     selected.is_some(),
                     egui::Button::new(RichText::new(icons::MINUS).size(15.0)),
                 )
-                .on_hover_text("Remove the selected group or folder");
+                .on_hover_text("Remove the selected group or folder")
+                .on_disabled_hover_text("Select a group or a mods folder to remove it");
             if remove.clicked()
                 && let Some(node) = selected
             {

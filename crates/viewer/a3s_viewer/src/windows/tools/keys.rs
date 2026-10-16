@@ -138,9 +138,17 @@ impl KeysWindow {
         ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
             let enabled = keys > 0 && target.is_some() && !busy;
             let label = format!("Copy {}", count_text(keys, "key", "keys"));
+            let reason = if busy {
+                "The keys are being looked for or copied."
+            } else if target.is_none() {
+                "Choose where to copy the keys (To)."
+            } else {
+                "No keys were found."
+            };
             if ui
                 .add_enabled_ui(enabled, |ui| primary_button(ui, &label))
                 .inner
+                .on_disabled_hover_text(reason)
                 .clicked()
                 && let Some(target) = target
             {

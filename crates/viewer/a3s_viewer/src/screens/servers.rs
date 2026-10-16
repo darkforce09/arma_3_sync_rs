@@ -71,10 +71,20 @@ impl ServersScreen {
             );
         } else {
             frames::group(ui, |ui| {
+                let mut shown = 0;
                 for (index, server) in view.servers.iter().enumerate() {
-                    if index > 0 {
+                    let text = format!(
+                        "{} {}",
+                        server.name.as_deref().unwrap_or_default(),
+                        server.ip_address.as_deref().unwrap_or_default()
+                    );
+                    if !super::matches_search(cx.search, &text) {
+                        continue;
+                    }
+                    if shown > 0 {
                         frames::group_separator(ui);
                     }
+                    shown += 1;
                     let joined = is_joined(server, view.joined.as_deref());
                     match self.row(ui, index, server, joined) {
                         RowAction::None => {}

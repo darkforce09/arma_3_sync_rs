@@ -4,8 +4,10 @@ use a3s_foundation::paths::legacy::{LegacyJavaData, discover_legacy_java};
 use a3s_platform::detect::java_install_dirs;
 use a3s_platform::reveal::show_in_folder;
 use a3s_repo_files::services::AutoConfigImportSummary;
+use a3s_types::constants::DEFAULT_PROFILE_NAME;
+use a3s_ui::dialog::{Dialog, DialogAction, DialogButton};
 use a3s_ui::frames;
-use a3s_ui::widgets::{button, form_row};
+use a3s_ui::widgets::{CheckItem, CheckList, button, checked_indexes, checked_labels, form_row};
 use a3s_viewer_context::{Change, Command, repositories};
 use egui::{Label, Ui};
 
@@ -22,6 +24,12 @@ pub(super) struct DataPane {
     import_picker: FilePicker,
     export_picker: FolderPicker,
 
+    /// What the export takes: chosen in its sheet, kept until the folder is chosen.
+    export: Option<ExportChoice>,
+
+    /// The export sheet is open.
+    choosing: bool,
+
     /// What the last auto-config import did.
     import_summary: Vec<String>,
 }
@@ -32,8 +40,13 @@ impl DataPane {
         if let Some(file) = self.import_picker.poll() {
             self.import_autoconfig(cx, &file);
         }
-        if let Some(folder) = self.export_picker.poll() {
-            export_autoconfig(cx, &folder);
+        if let Some(folder) = self.export_picker.poll()
+            && let Some(choice) = self.export.take()
+        {
+            export_autoconfig(cx, &folder, &choice);
+        }
+        if self.choosing {
+            self.export_sheet(ui.ctx());
         }
         let sources = self
             .legacy_sources
@@ -73,7 +86,8 @@ impl DataPane {
         frames::group(ui, |ui| {
             form_row(ui, "Profiles, servers and repositories", |ui| {
                 if button(ui, "Export…").clicked() {
-                    self.export_picker.open(ui.ctx(), "Export to folder", None);
+                    self.export = Some(ExportChoice::of(cx));
+                    self.choosing = true;
                 }
                 if button(ui, "Import…").clicked() {
                     self.import_picker
@@ -130,20 +144,117 @@ impl DataPane {
     }
 }
 
-fn export_autoconfig(cx: &mut PaneCx<'_>, folder: &std::path::Path) {
-    let exported = {
-        let state = cx.viewer.read();
-        let client = &state.client;
-        let servers: Vec<usize> = (0..client.favorite_servers().len()).collect();
-        client.export_autoconfig(
-            &client.profile_names(),
-            &servers,
-            &client.repository_names(),
-            folder,
-        )
-    };
+fn export_autoconfig(cx: &mut PaneCx<'_>, folder: &std::path::Path, choice: &ExportChoice) {
+    let exported = cx.viewer.read().client.export_autoconfig(
+        &checked_labels(&choice.profiles),
+        &checked_indexes(&choice.servers),
+        &checked_labels(&choice.repositories),
+        folder,
+    );
     if let Some(path) = cx.report(exported) {
         cx.toasts.success(format!("Exported to {}", path.display()));
+    }
+}
+
+/// The profiles, favourite servers and repositories an auto-config export takes, each
+/// checked to be part of it.
+// Mirrors ui/help/AutoConfigExportDialog.java:140-263
+struct ExportChoice {
+    profiles: Vec<CheckItem>,
+    servers: Vec<CheckItem>,
+    repositories: Vec<CheckItem>,
+    lists: [CheckList; 3],
+}
+
+impl ExportChoice {
+    /// Everything checked; the Default profile is not offered, as in Java.
+    fn of(cx: &PaneCx<'_>) -> Self {
+        let state = cx.viewer.read();
+        let client = &state.client;
+        Self {
+            profiles: client
+                .profile_names()
+                .into_iter()
+                .filter(|name| name != DEFAULT_PROFILE_NAME)
+                .map(|name| CheckItem::new(name, true))
+                .collect(),
+            servers: client
+                .favorite_servers()
+                .iter()
+                .map(|server| {
+                    CheckItem::new(
+                        server
+                            .name
+                            .clone()
+                            .unwrap_or_else(|| "Unnamed server".to_owned()),
+                        true,
+                    )
+                })
+                .collect(),
+            repositories: client
+                .repository_names()
+                .into_iter()
+                .map(|name| CheckItem::new(name, true))
+                .collect(),
+            lists: [
+                CheckList::new("a3s_viewer::export::profiles"),
+                CheckList::new("a3s_viewer::export::servers"),
+                CheckList::new("a3s_viewer::export::repositories"),
+            ],
+        }
+    }
+}
+
+impl DataPane {
+    /// The sheet choosing what the export takes; its OK opens the folder dialog.
+    fn export_sheet(&mut self, ctx: &egui::Context) {
+        let Some(choice) = &mut self.export else {
+            self.choosing = false;
+            return;
+        };
+        let any = [&choice.profiles, &choice.servers, &choice.repositories]
+            .iter()
+            .any(|items| items.iter().any(|item| item.checked));
+        let action = Dialog::new("a3s_viewer::settings::export", "Export auto-config")
+            .ok_label("Choose folder…")
+            .ok_enabled(any)
+            .default_button(Some(DialogButton::Ok))
+            .show(ctx, |ui| {
+                ui.set_width(360.0);
+                let ExportChoice {
+                    profiles,
+                    servers,
+                    repositories,
+                    lists,
+                } = choice;
+                let [profile_list, server_list, repository_list] = lists;
+                for (title, list, items) in [
+                    ("Profiles", profile_list, profiles),
+                    ("Favourite servers", server_list, servers),
+                    ("Repositories", repository_list, repositories),
+                ] {
+                    group_heading(ui, title);
+                    if items.is_empty() {
+                        note(ui, "None");
+                    } else {
+                        list.show(ui, items);
+                    }
+                }
+                if !any {
+                    note(ui, "Check something to export.");
+                }
+            });
+        match action {
+            DialogAction::None => {}
+            DialogAction::Ok => {
+                self.choosing = false;
+                self.export_picker.open(ctx, "Export to folder", None);
+            }
+            DialogAction::Cancel | DialogAction::Close => {
+                self.choosing = false;
+                self.export = None;
+            }
+        }
     }
 }
 

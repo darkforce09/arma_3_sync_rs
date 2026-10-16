@@ -67,6 +67,8 @@ pub enum TaskKind {
     InstallRadioPlugin,
     /// A check for a new version of the application.
     SelfUpdateCheck,
+    /// The download and installation of a new version of the application.
+    SelfUpdate,
 }
 
 impl TaskKind {
@@ -91,6 +93,7 @@ impl TaskKind {
             Self::RptTail => "Following the RPT log",
             Self::InstallRadioPlugin => "Installing the radio plugin",
             Self::SelfUpdateCheck => "Checking for application updates",
+            Self::SelfUpdate => "Installing the application update",
         }
     }
 }

@@ -98,6 +98,9 @@ fn menu(ui: &mut Ui, actions: &mut Vec<Action>) {
                 }
             }
         });
+        if ui.button("About Arma3Sync").clicked() {
+            actions.push(Action::About);
+        }
         ui.separator();
         if ui.button("Quit").clicked() {
             actions.push(Action::Quit);

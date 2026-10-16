@@ -22,7 +22,7 @@ pub(super) fn show(ui: &mut Ui, view: &View, cx: &mut ScreenCx<'_>) {
     tiles(ui, view);
     server_check(ui, view);
     steps(ui, view, cx);
-    players(ui, view);
+    players(ui, view, cx.search);
     history(ui, view, cx);
 }
 
@@ -401,7 +401,7 @@ fn detail_text(
 }
 
 /// The mods players get: from the build of this run, or else from the source folder.
-fn players(ui: &mut Ui, view: &View) {
+fn players(ui: &mut Ui, view: &View, search: &str) {
     let palette = theme::palette(ui.ctx());
     section_title(ui, "What players will get");
     let built = view
@@ -427,11 +427,11 @@ fn players(ui: &mut Ui, view: &View) {
             ui.label(RichText::new("No mod changes.").color(palette.text_secondary));
             return;
         }
-        change_rows(ui, &changes);
+        change_rows(ui, &changes, search);
     });
 }
 
-fn change_rows(ui: &mut Ui, changes: &ModChanges) {
+fn change_rows(ui: &mut Ui, changes: &ModChanges, search: &str) {
     let rows = changes
         .added
         .iter()
@@ -448,7 +448,10 @@ fn change_rows(ui: &mut Ui, changes: &ModChanges) {
                 .iter()
                 .map(|name| (name, "Removed", ProgressTone::Warning)),
         );
-    for (index, (name, text, tone)) in rows.enumerate() {
+    for (index, (name, text, tone)) in rows
+        .filter(|(name, ..)| crate::screens::matches_search(search, name))
+        .enumerate()
+    {
         if index > 0 {
             frames::group_separator(ui);
         }

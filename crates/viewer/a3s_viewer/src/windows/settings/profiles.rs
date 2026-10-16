@@ -68,6 +68,7 @@ impl ProfilesPane {
             if ui
                 .add_enabled_ui(removable, |ui| icon_text_button(ui, icons::MINUS, "Remove"))
                 .inner
+                .on_disabled_hover_text("The Default profile cannot be removed.")
                 .clicked()
             {
                 remove(cx, &selected, selected == active);

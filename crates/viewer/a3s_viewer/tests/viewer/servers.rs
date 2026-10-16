@@ -103,3 +103,17 @@ fn a_removed_server_comes_back_with_undo() {
         Some("Practice")
     );
 }
+
+#[test]
+fn the_search_narrows_the_servers() {
+    let mut fixture = servers_screen();
+    add_server(&mut fixture, "Main", "10.0.0.1");
+    add_server(&mut fixture, "Training", "10.0.0.2");
+    let harness = &mut fixture.harness;
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::F);
+    harness.run();
+    harness.event(egui::Event::Text("train".to_owned()));
+    harness.run();
+    assert!(harness.query_by_label("Main").is_none());
+    harness.get_by_label("Training");
+}

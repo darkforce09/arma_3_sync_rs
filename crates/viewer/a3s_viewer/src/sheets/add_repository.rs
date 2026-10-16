@@ -405,6 +405,21 @@ impl RepositoryForm {
                 ui.add(Label::new(RichText::new(text).color(color)).wrap());
             }
         });
+        let missing: Vec<&str> = [
+            (self.name.trim().is_empty(), "a name"),
+            (self.address.trim().is_empty(), "an address"),
+            (publishing && self.folder.is_none(), "the source folder"),
+        ]
+        .into_iter()
+        .filter_map(|(missing, what)| missing.then_some(what))
+        .collect();
+        if !missing.is_empty() {
+            ui.label(
+                RichText::new(format!("Still needed: {}.", missing.join(", ")))
+                    .small()
+                    .color(palette.text_secondary),
+            );
+        }
         if let Some(error) = &self.error {
             ui.label(RichText::new(error).color(palette.status_danger));
         }

@@ -1,5 +1,6 @@
 //! Sheets: short modal tasks over the dimmed main window, shown one at a time in queue order.
 
+mod about;
 pub(crate) mod add_repository;
 pub(crate) mod download_settings;
 mod exit;
@@ -36,6 +37,7 @@ use self::welcome::Welcome;
 pub use self::welcome::WelcomeSetup;
 use crate::shell::Screen;
 use crate::toasts::Toaster;
+use crate::windows::SettingsPane;
 
 /// The kind of a sheet, as tests and callers see it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -45,6 +47,9 @@ pub enum SheetKind {
 
     /// Problems found while loading the client data.
     LoadWarnings,
+
+    /// The version, the licence and the credits.
+    About,
 
     /// Quitting while tasks run, or after the settings could not be saved.
     ExitConfirmation,
@@ -96,6 +101,7 @@ pub enum SheetKind {
 pub(crate) enum Sheet {
     Welcome(Box<Welcome>),
     LoadWarnings(Vec<String>),
+    About,
     Exit(ExitPrompt),
     Repository(Box<RepositoryForm>),
     DownloadSettings(DownloadSettings),
@@ -162,6 +168,7 @@ impl Sheet {
         match self {
             Self::Welcome(_) => SheetKind::Welcome,
             Self::LoadWarnings(_) => SheetKind::LoadWarnings,
+            Self::About => SheetKind::About,
             Self::Exit(_) => SheetKind::ExitConfirmation,
             Self::Repository(form) => match form.mode() {
                 Mode::Add => SheetKind::AddRepository,
@@ -200,6 +207,9 @@ pub(crate) enum SheetOutcome {
 
     /// Start the game without waiting for the failed files.
     Play,
+
+    /// Open the Settings window at this pane.
+    OpenSettings(SettingsPane),
 
     /// Start the game after its check was answered; `update_first` downloads the missing mods.
     PlayChecked { update_first: bool },
@@ -248,6 +258,7 @@ impl Sheets {
         let shown = match sheet {
             Sheet::Welcome(welcome) => welcome.show(ctx, viewer, toasts),
             Sheet::LoadWarnings(warnings) => load_warnings::show(ctx, warnings),
+            Sheet::About => about::show(ctx),
             Sheet::Exit(prompt) => exit::show(ctx, prompt),
             Sheet::Repository(form) => form.show(ctx, viewer, toasts),
             Sheet::DownloadSettings(sheet) => sheet.show(ctx, viewer, toasts),

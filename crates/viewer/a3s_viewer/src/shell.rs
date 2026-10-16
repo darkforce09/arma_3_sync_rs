@@ -1,17 +1,19 @@
 //! The main window: its state, the per-frame flow, and the window behaviour (hide to the tray,
 //! quit).
 
-use std::sync::mpsc;
+use std::sync::{Arc, mpsc};
 use std::time::SystemTime;
 
 use a3s_foundation::error::UserFacing as _;
 use a3s_types::constants::MinimizationType;
 use a3s_ui::frames;
 use a3s_ui::theme;
+use a3s_updater::apply::relaunch::RelaunchPlan;
 use a3s_viewer_context::{
     AppEvent, Change, Command, TaskKey, TaskKind, ViewerContext, profiles, repositories,
 };
 use egui::{Frame, Ui, ViewportCommand};
+use parking_lot::Mutex;
 
 use crate::desktop::Desktop;
 use crate::events::EventSink;
@@ -75,6 +77,7 @@ pub(crate) enum Action {
     Open(SecondaryWindow),
     OpenSettings(SettingsPane),
     CheckNow,
+    About,
     CancelCheck,
     StopAutoRestart,
     Rescan,
@@ -130,6 +133,9 @@ pub struct Shell {
 
     /// The exit was decided: the next close request closes the window.
     closing: bool,
+
+    /// An installed update to start once the window closed (read by [`crate::run`]).
+    relaunch: Arc<Mutex<Option<RelaunchPlan>>>,
 }
 
 impl Shell {
@@ -155,6 +161,7 @@ impl Shell {
             hidden: setup.hidden,
             last_check: None,
             closing: false,
+            relaunch: Arc::default(),
         }
     }
 
@@ -171,6 +178,11 @@ impl Shell {
     /// folder, the logs); the real one by default.
     pub fn set_desktop(&mut self, desktop: Desktop) {
         self.windows.set_desktop(desktop);
+    }
+
+    /// Where the window leaves an installed update to start once it closed.
+    pub(crate) fn set_relaunch_slot(&mut self, slot: Arc<Mutex<Option<RelaunchPlan>>>) {
+        self.relaunch = slot;
     }
 
     /// The context the window shows.
@@ -324,6 +336,7 @@ impl Shell {
             Some(SheetOutcome::QuitWithoutSaving) => self.close(&ctx),
             Some(SheetOutcome::Stay) => self.viewer.start_background(),
             Some(SheetOutcome::Navigate(screen)) => self.screen = screen,
+            Some(SheetOutcome::OpenSettings(pane)) => self.windows.open_settings(&ctx, pane),
             Some(SheetOutcome::Play) => launch::request(
                 &self.viewer,
                 &PlayRequest {
@@ -347,6 +360,11 @@ impl Shell {
             None => {}
         }
         self.windows.show(&ctx, &self.viewer);
+        if let Some(plan) = self.windows.take_relaunch() {
+            // The update is installed: save, quit, and the new version starts.
+            *self.relaunch.lock() = Some(plan);
+            self.apply(&ctx, Action::Quit);
+        }
         self.toasts.show(ui, &self.viewer);
         for action in self.toasts.take_actions() {
             self.apply(&ctx, action);
@@ -397,6 +415,7 @@ impl Shell {
             Action::Open(window) => self.windows.open(ctx, window),
             Action::OpenSettings(pane) => self.windows.open_settings(ctx, pane),
             Action::CheckNow => self.check_now(snapshot),
+            Action::About => self.sheets.push(Sheet::About),
             Action::StopAutoRestart => {
                 let game = self
                     .viewer

@@ -10,7 +10,9 @@ use a3s_platform::single_instance::{self, Acquire, AcquireOptions, InstanceId, I
 use a3s_repo_files::legacy::should_offer_import;
 use a3s_repo_files::local::LocalStore;
 use a3s_repo_files::services::{ClientData, LoadOutcome};
+use a3s_updater::apply::relaunch::RelaunchPlan;
 use a3s_viewer_context::{ContextError, ContextOptions, RepaintHook, ViewerContext};
+use parking_lot::Mutex;
 
 use crate::desktop::Desktop;
 use crate::requests::{self, RequestSender, WindowRequest};
@@ -137,6 +139,8 @@ pub fn run(options: &RunOptions) -> Result<Exit, ViewerError> {
         viewport,
         ..eframe::NativeOptions::default()
     };
+    let relaunch: Arc<Mutex<Option<RelaunchPlan>>> = Arc::default();
+    let slot = Arc::clone(&relaunch);
     let setup = ShellSetup {
         load_warnings: warnings,
         welcome,
@@ -154,11 +158,18 @@ pub fn run(options: &RunOptions) -> Result<Exit, ViewerError> {
             let tray = Tray::spawn(&requests);
             let mut shell = Shell::new(viewer, setup);
             shell.set_desktop(Desktop::system(Some(log_dir)));
+            shell.set_relaunch_slot(slot);
             shell.set_tray_available(ctx, tray.is_some());
             Ok(Box::new(ViewerApp { shell, _tray: tray }))
         }),
     )?;
+    // The new version takes the single-instance lock, so it is released first.
     drop(instance);
+    if let Some(plan) = relaunch.lock().take()
+        && let Err(err) = a3s_updater::apply::relaunch::relaunch(&plan, || {})
+    {
+        tracing::error!("Cannot start the updated Arma3Sync: {err}");
+    }
     Ok(Exit::Closed)
 }
 

@@ -534,7 +534,11 @@ fn changes(
             ui.label(RichText::new("Everything is up to date.").color(palette.text_secondary));
             return;
         }
-        for (index, change) in plan.changes.iter().enumerate() {
+        let visible = plan
+            .changes
+            .iter()
+            .filter(|change| super::matches_search(cx.search, &change.name));
+        for (index, change) in visible.enumerate() {
             if index > 0 {
                 frames::group_separator(ui);
             }

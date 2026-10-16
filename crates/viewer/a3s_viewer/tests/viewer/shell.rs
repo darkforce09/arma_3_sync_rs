@@ -139,3 +139,25 @@ fn quit_from_the_tray_saves_the_settings() {
     assert!(fixture.store.configuration_path().exists());
     assert_eq!(fixture.harness.state().sheet(), None);
 }
+
+#[test]
+fn about_opens_from_the_menu_and_leads_to_the_logs() {
+    let mut fixture = fixture(Start::default());
+    let harness = &mut fixture.harness;
+    harness
+        .get_all_by_label(a3s_ui::icon::icons::DOTS_THREE_CIRCLE)
+        .next()
+        .expect("toolbar menu")
+        .click();
+    harness.run();
+    harness.get_by_label("About Arma3Sync").click();
+    harness.run();
+    assert_eq!(harness.state().sheet(), Some(SheetKind::About));
+    harness.get_by_label("Log files…").click();
+    harness.run();
+    assert_eq!(harness.state().sheet(), None);
+    assert_eq!(
+        harness.state().settings_pane(),
+        Some(a3s_viewer::SettingsPane::Data)
+    );
+}

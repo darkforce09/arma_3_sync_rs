@@ -76,6 +76,20 @@ pub(super) fn show(ui: &mut Ui, cx: &mut ScreenCx<'_>) {
             state.sync.downloads.recent.clone(),
         )
     };
+    // The toolbar search narrows every list to its repositories.
+    let search = cx.search;
+    let running: Vec<Running> = running
+        .into_iter()
+        .filter(|transfer| super::matches_search(search, &transfer.repository))
+        .collect();
+    let paused: Vec<(String, u64)> = paused
+        .into_iter()
+        .filter(|(repository, _)| super::matches_search(search, repository))
+        .collect();
+    let recent: Vec<DownloadRecord> = recent
+        .into_iter()
+        .filter(|record| super::matches_search(search, &record.repository))
+        .collect();
     if running.is_empty() && paused.is_empty() && recent.is_empty() {
         super::empty_state(
             ui,

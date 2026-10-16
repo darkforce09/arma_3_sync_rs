@@ -106,3 +106,10 @@ pub(crate) fn count_text(count: usize, singular: &str, plural: &str) -> String {
         format!("{count} {plural}")
     }
 }
+
+/// Whether `text` matches the toolbar search: it contains it, ignoring case. An empty search
+/// matches everything.
+pub(crate) fn matches_search(search: &str, text: &str) -> bool {
+    let search = search.trim();
+    search.is_empty() || text.to_lowercase().contains(&search.to_lowercase())
+}
