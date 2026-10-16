@@ -636,7 +636,7 @@ pub(crate) fn text_row(
 }
 
 /// Runs `work` on the context's runtime; the receiver gets its result and the window repaints.
-fn spawn<T: Send + 'static>(
+pub(super) fn spawn<T: Send + 'static>(
     viewer: &ViewerContext,
     ctx: &egui::Context,
     work: impl Future<Output = T> + Send + 'static,
@@ -651,7 +651,7 @@ fn spawn<T: Send + 'static>(
 }
 
 /// The value `receiver` delivered, once; a closed channel ends the wait.
-fn take<T>(receiver: &mut Option<mpsc::Receiver<T>>) -> Option<T> {
+pub(super) fn take<T>(receiver: &mut Option<mpsc::Receiver<T>>) -> Option<T> {
     let result = match receiver.as_ref()?.try_recv() {
         Ok(value) => Some(value),
         Err(mpsc::TryRecvError::Empty) => return None,

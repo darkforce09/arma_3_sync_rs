@@ -11,7 +11,7 @@ use a3s_types::local::Repository;
 use a3s_ui::frames;
 use a3s_ui::theme;
 use a3s_ui::widgets::{ROW_HEIGHT, button, form_row, toggle};
-use a3s_viewer_context::admin;
+use a3s_viewer_context::admin::{self, RangeTest};
 use a3s_viewer_context::{Change, Command, ViewerContext};
 use egui::{Align, Label, Layout, RichText, Ui, WidgetInfo, WidgetType, vec2};
 
@@ -101,6 +101,20 @@ pub(super) fn show(ui: &mut Ui, view: &View, state: &mut SettingsState, cx: &mut
         if toggle_row(ui, "Delta updates", &mut delta) {
             store(cx, |data| data.set_use_partial_file_transfer(name, delta));
         }
+        if repository.protocol.protocol_type.is_http() {
+            frames::group_separator(ui);
+            range_test_row(ui, view, cx);
+        }
+        frames::group_separator(ui);
+        let mut connections = repository.number_of_connections.clamp(1, MAX_CONNECTIONS);
+        if number_row(
+            ui,
+            "Connections per player",
+            "The most connections a player's download opens to the server.",
+            &mut connections,
+        ) {
+            store(cx, |data| data.set_number_of_connections(name, connections));
+        }
         frames::group_separator(ui);
         let mut compressed_only = repository.upload_compressed_pbo_files_only;
         if toggle_row(ui, "Upload only compressed files", &mut compressed_only) {
@@ -109,15 +123,17 @@ pub(super) fn show(ui: &mut Ui, view: &View, state: &mut SettingsState, cx: &mut
             });
         }
         frames::group_separator(ui);
-        let mut parallel = repository.parallel_upload_connections() > 1;
-        if toggle_row(ui, "Parallel uploads", &mut parallel) {
-            let connections = if parallel {
-                Repository::DEFAULT_PARALLEL_UPLOAD_CONNECTIONS
-            } else {
-                1
-            };
+        let mut parallel = repository
+            .parallel_upload_connections()
+            .clamp(1, MAX_CONNECTIONS);
+        if number_row(
+            ui,
+            "Parallel uploads",
+            "Files uploaded at once over FTP or SFTP.",
+            &mut parallel,
+        ) {
             store(cx, |data| {
-                data.set_parallel_upload_connections(name, connections)
+                data.set_parallel_upload_connections(name, parallel)
             });
         }
     });
@@ -184,6 +200,63 @@ fn servers(ui: &mut Ui, name: &str, cx: &mut ScreenCx<'_>) {
         RichText::new("Players get the chosen servers with the auto-config of the next publish.")
             .color(palette.text_secondary),
     );
+}
+
+/// The most connections a player or an upload uses.
+const MAX_CONNECTIONS: i32 = 10;
+
+/// A form row with a pop-up of 1 to [`MAX_CONNECTIONS`]; returns whether the value changed.
+fn number_row(ui: &mut Ui, label: &str, help: &str, value: &mut i32) -> bool {
+    let labels: Vec<String> = (1..=MAX_CONNECTIONS).map(|n| n.to_string()).collect();
+    let choices: Vec<(i32, &str)> = (1..=MAX_CONNECTIONS)
+        .zip(labels.iter().map(String::as_str))
+        .collect();
+    crate::fields::labelled_row(ui, label, |ui| {
+        a3s_ui::widgets::popup_button(ui, ("a3s_viewer::publishing", label), value, &choices)
+    })
+    .on_hover_text(help)
+    .changed()
+}
+
+/// "Test the server": whether the web server answers the partial requests delta updates need.
+// Mirrors ui/repository/dialogs/BuildRepositoryOptionsDialog.java:386-408
+fn range_test_row(ui: &mut Ui, view: &View, cx: &mut ScreenCx<'_>) {
+    let palette = theme::palette(ui.ctx());
+    form_row(ui, "Partial downloads", |ui| {
+        let running = matches!(view.publishing.range_test, Some(RangeTest::Running));
+        if ui
+            .add_enabled(!running, egui::Button::new("Test the server"))
+            .clicked()
+        {
+            let command = Command::Admin(admin::Command::TestPartialTransfer {
+                repository: view.name().to_owned(),
+            });
+            if let Err(err) = cx.viewer.send(command) {
+                cx.toasts.error(err.user_message());
+            }
+        }
+        let (text, color) = match &view.publishing.range_test {
+            None => return,
+            Some(RangeTest::Running) => {
+                ui.spinner();
+                return;
+            }
+            Some(RangeTest::Supported) => (
+                "The server supports them".to_owned(),
+                palette.status_success,
+            ),
+            Some(RangeTest::Unsupported) => (
+                "The server ignores them: players download whole files".to_owned(),
+                palette.status_warning,
+            ),
+            Some(RangeTest::NotApplicable) => (
+                "Only HTTP servers are asked".to_owned(),
+                palette.text_secondary,
+            ),
+            Some(RangeTest::Failed(error)) => (error.message.clone(), palette.status_danger),
+        };
+        ui.add(Label::new(RichText::new(text).color(color)).truncate());
+    });
 }
 
 /// A form row with a switch named by its label; returns whether it was flipped.

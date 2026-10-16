@@ -13,6 +13,7 @@ use a3s_admin::EventSelection;
 use a3s_admin::events::{EventNameError, validate_event_name};
 use a3s_foundation::error::UserFacing as _;
 use a3s_types::Event;
+use a3s_types::constants::GameDlc;
 use a3s_ui::frames;
 use a3s_ui::theme;
 use a3s_ui::widgets::{button, segmented};
@@ -208,10 +209,29 @@ fn detail(ui: &mut Ui, view: &View, event: &Event, state: &mut EventsState, cx: 
         ui.label(RichText::new(text).color(palette.status_danger));
     }
 
-    section_title(ui, "Mods");
     let mods = mod_names(view, event);
     let mut addons = event.addon_names.clone();
+    let mut dlcs = event.dlc_names.clone();
     let mut changed = false;
+    ui.add_space(16.0);
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("Mods").strong());
+        if !mods.is_empty() {
+            ui.with_layout(Layout::right_to_left(Align::Max), |ui| {
+                if ui.small_button("Select none").clicked() {
+                    addons.clear();
+                    changed = true;
+                }
+                if ui.small_button("Select all").clicked() {
+                    for name in &mods {
+                        addons.entry(name.clone()).or_insert(false);
+                    }
+                    changed = true;
+                }
+            });
+        }
+    });
+    ui.add_space(4.0);
     frames::group(ui, |ui| {
         if mods.is_empty() {
             ui.label(
@@ -244,8 +264,26 @@ fn detail(ui: &mut Ui, view: &View, event: &Event, state: &mut EventsState, cx: 
             });
         }
     });
+    // Mirrors ui/repository/EventsPanel.java:725-747
+    section_title(ui, "DLC");
+    frames::group(ui, |ui| {
+        for (index, dlc) in GameDlc::ALL.into_iter().enumerate() {
+            if index > 0 {
+                frames::group_separator(ui);
+            }
+            let mut required = dlcs.contains_key(dlc.java_name());
+            if ui.checkbox(&mut required, dlc.display_name()).changed() {
+                changed = true;
+                if required {
+                    dlcs.insert(dlc.java_name().to_owned(), false);
+                } else {
+                    dlcs.remove(dlc.java_name());
+                }
+            }
+        }
+    });
     if changed {
-        let selection = selection(&mods, &addons, event);
+        let selection = selection(&mods, &addons, &dlcs, event);
         edit(cx, view.name(), |doc| {
             doc.save_event(&event.name, &selection)
         });
@@ -296,14 +334,18 @@ fn mod_names(view: &View, event: &Event) -> Vec<String> {
 
 /// The selection saved into the event: the checked mods in list order; DLCs and userconfig
 /// folders unchanged.
-fn selection(mods: &[String], addons: &BTreeMap<String, bool>, event: &Event) -> EventSelection {
+fn selection(
+    mods: &[String],
+    addons: &BTreeMap<String, bool>,
+    dlcs: &BTreeMap<String, bool>,
+    event: &Event,
+) -> EventSelection {
     EventSelection {
         addon_names: mods
             .iter()
             .filter_map(|name| addons.get(name).map(|optional| (name.clone(), *optional)))
             .collect(),
-        dlc_names: event
-            .dlc_names
+        dlc_names: dlcs
             .iter()
             .map(|(name, optional)| (name.clone(), *optional))
             .collect(),

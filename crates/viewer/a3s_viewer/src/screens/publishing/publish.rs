@@ -9,7 +9,8 @@ use a3s_ui::theme::{self, ProgressTone};
 use a3s_ui::widgets::{StepState, button, status_pill, step_row};
 use a3s_viewer_context::TaskSnapshot;
 use a3s_viewer_context::admin::{
-    self, BuildStage, ModChanges, PublishStep, Remote, StepDetail, StepStatus, UploadStage,
+    self, BuildStage, ModChanges, PublishStep, Remote, ServerCheck, StepDetail, StepStatus,
+    UploadStage,
 };
 use egui::{Align, Label, Layout, RichText, Ui};
 
@@ -19,8 +20,130 @@ use crate::screens::{ScreenCx, ago_text, count_text, section_title, size_text};
 pub(super) fn show(ui: &mut Ui, view: &View, cx: &mut ScreenCx<'_>) {
     notices(ui, view);
     tiles(ui, view);
+    server_check(ui, view);
     steps(ui, view, cx);
     players(ui, view);
+    history(ui, view, cx);
+}
+
+/// The result of "Check the server files".
+// Mirrors ui/repository/dialogs/error/ErrorsListDialog.java:17-109
+fn server_check(ui: &mut Ui, view: &View) {
+    let Some(check) = &view.publishing.server_check else {
+        return;
+    };
+    let palette = theme::palette(ui.ctx());
+    section_title(ui, "Server files");
+    frames::group(ui, |ui| match check {
+        ServerCheck::Running(percent) => {
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label(match percent {
+                    Some(percent) => format!("Checking the server's files… {percent}%"),
+                    None => "Checking the server's files…".to_owned(),
+                });
+            });
+        }
+        ServerCheck::Done { checked, missing } if missing.is_empty() => {
+            ui.label(
+                RichText::new(format!(
+                    "{} All {} are on the server.",
+                    icons::CHECK_CIRCLE,
+                    count_text(*checked, "file", "files")
+                ))
+                .color(palette.status_success),
+            );
+        }
+        ServerCheck::Done { missing, .. } => {
+            ui.label(
+                RichText::new(format!(
+                    "{} {} missing on the server; the next publish uploads them.",
+                    icons::WARNING,
+                    count_text(missing.len(), "file is", "files are")
+                ))
+                .color(palette.status_warning),
+            );
+            egui::ScrollArea::vertical()
+                .max_height(160.0)
+                .id_salt("a3s_viewer::publishing::missing")
+                .show(ui, |ui| {
+                    for message in missing {
+                        ui.add(Label::new(RichText::new(message).small()).wrap());
+                    }
+                });
+        }
+        ServerCheck::NothingPublished => {
+            ui.label("Nothing is published on the server yet.");
+        }
+        ServerCheck::Failed(error) => {
+            ui.label(RichText::new(&error.message).color(palette.status_danger));
+        }
+    });
+}
+
+/// The last builds of the source folder, newest first, collapsed, with Copy.
+// Mirrors ui/repository/dialogs/ChangelogPanel.java:225-264
+fn history(ui: &mut Ui, view: &View, cx: &mut ScreenCx<'_>) {
+    let Some(Ok(local)) = &view.publishing.local else {
+        return;
+    };
+    if local.history.is_empty() {
+        return;
+    }
+    let palette = theme::palette(ui.ctx());
+    let lines: Vec<(String, Vec<String>)> = local
+        .history
+        .iter()
+        .map(|changelog| {
+            let mut title = format!("Revision {}", changelog.revision);
+            if let Some(date) = changelog
+                .build_date
+                .and_then(chrono::DateTime::from_timestamp_millis)
+            {
+                title.push_str(&format!(" · {}", date.format("%b %-d, %Y %H:%M UTC")));
+            }
+            let details = [
+                ("New", &changelog.new_addons),
+                ("Updated", &changelog.updated_addons),
+                ("Removed", &changelog.deleted_addons),
+            ]
+            .into_iter()
+            .filter(|(_, addons)| !addons.is_empty())
+            .map(|(label, addons)| format!("{label}: {}", addons.join(", ")))
+            .collect();
+            (title, details)
+        })
+        .collect();
+    ui.add_space(16.0);
+    egui::CollapsingHeader::new(RichText::new("History").strong())
+        .id_salt(("a3s_viewer::publishing::history", view.name()))
+        .default_open(false)
+        .show(ui, |ui| {
+            for (title, details) in &lines {
+                ui.label(RichText::new(title).strong());
+                if details.is_empty() {
+                    ui.label(RichText::new("No mod changed.").color(palette.text_secondary));
+                }
+                for detail in details {
+                    ui.add(Label::new(RichText::new(detail).color(palette.text_secondary)).wrap());
+                }
+                ui.add_space(6.0);
+            }
+            if button(ui, "Copy").clicked() {
+                let text = lines
+                    .iter()
+                    .map(|(title, details)| {
+                        std::iter::once(title.clone())
+                            .chain(details.iter().cloned())
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n\n");
+                ui.ctx().copy_text(text);
+                cx.toasts.info("Copied the history");
+            }
+        });
 }
 
 /// The server or the source folder could not be read.

@@ -5,6 +5,7 @@
 mod autoconfig;
 mod events;
 mod publish;
+mod server;
 mod status;
 
 use std::collections::BTreeMap;
@@ -17,6 +18,9 @@ pub use self::events::{edit_events, restore_events, upload_events};
 pub use self::publish::{
     BuildStage, PublishRun, PublishStep, StepDetail, StepState, StepStatus, UploadStage, cancel,
     publish,
+};
+pub use self::server::{
+    RangeTest, ServerCheck, check_server, test_partial_transfer, test_upload_connection,
 };
 pub use self::status::{
     LocalScan, ModChanges, Publishing, Remote, RemoteRepository, forget, refresh,
@@ -53,6 +57,18 @@ pub enum Command {
 
     /// Uploads the events file alone ([`upload_events`]).
     UploadEvents {
+        /// The repository.
+        repository: String,
+    },
+
+    /// Asks the server whether it answers partial transfers ([`test_partial_transfer`]).
+    TestPartialTransfer {
+        /// The repository.
+        repository: String,
+    },
+
+    /// Checks that the server holds every published file ([`check_server`]).
+    CheckServer {
         /// The repository.
         repository: String,
     },
@@ -118,5 +134,9 @@ pub(crate) fn handle(cx: &Cx, command: Command) -> Result<(), ContextError> {
             Ok(())
         }
         Command::UploadEvents { repository } => upload_events(cx, &repository).map(drop),
+        Command::TestPartialTransfer { repository } => {
+            test_partial_transfer(cx, &repository).map(drop)
+        }
+        Command::CheckServer { repository } => check_server(cx, &repository).map(drop),
     }
 }

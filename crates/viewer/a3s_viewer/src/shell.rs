@@ -550,6 +550,7 @@ fn stops_silently(kind: TaskKind) -> bool {
             | TaskKind::PublishingStatus
             | TaskKind::SelfUpdateCheck
             | TaskKind::PartialTransferTest
+            | TaskKind::AdminCheck
             | TaskKind::AddonScan
             | TaskKind::Launch
             | TaskKind::RptTail

@@ -71,12 +71,15 @@ The window (`Shell`):
   to serve the source folder: the build counts as published when Verify finds every file.
   Publish: tiles for the published revision, the local changes and the repository size; the
   step list (Scan source folder, Build, Verify, Upload) with live details and Retry or Resume
-  under a failed or stopped step; the mods players get. Events: the event list (Add, Duplicate,
-  Remove with Undo) and the selected event (name, description, each mod required or optional),
-  saved to the source folder as you type. Settings: source folder (and Stop publishing from
-  this computer, with Undo), upload connection, the auto-config link with Copy, the build and
-  upload switches, which of the favourite servers the auto-config carries (stored at once,
-  published by the next publish), and the excluded files and hidden folders.
+  under a failed or stopped step; the mods players get; the History of the last builds (Copy);
+  the result of "Check the server files" from the "⋯" menu (every missing file listed). Events:
+  the event list (Add, Duplicate, Remove with Undo) and the selected event (name, description,
+  each mod required or optional, Select all and Select none, the required DLC), saved to the
+  source folder as you type. Settings: source folder (and Stop publishing from this computer,
+  with Undo), upload connection, the auto-config link with Copy, the build and upload switches,
+  "Test the server" for partial downloads (HTTP), connections per player and parallel uploads
+  (1 to 10), which of the favourite servers the auto-config carries (stored at once, published
+  by the next publish), and the excluded files and hidden folders.
 - Sheets (`egui::Modal`, one at a time): Welcome on the first start or while Java data waits for
   import (Arma 3 and mods folders through the system folder dialog, the legacy importer),
   load warnings, quit confirmation (running tasks, failed save), Add repository and Edit
@@ -90,9 +93,10 @@ The window (`Shell`):
   Update issues (one sheet per repository; one plain line per failed file, Retry, Retry all,
   Copy report, Play anyway; during "Update and play" the game starts anyway and the sheet
   offers no Play), the Arma 3 Launcher preset comparison, Add server and Edit server, Upload
-  connection (protocol, host, port, path, login) and the path lists of a published repository
-  (add through the system dialog, remove with Undo), a download report (Copy), and the question
-  before an update while Arma 3 runs.
+  connection (protocol, host, port, path, login; Test connection) and the path lists of a
+  published repository (add through the system dialog, remove with Undo), a download report
+  (Copy), the question before an update while Arma 3 runs, the Play check, and the export of a
+  launcher preset.
 - Toasts (egui-toast) for the context's events, including an Undo kind that runs a callback and
   an action kind whose button asks the window for an action (e.g. "Choose folder…" opens
   Settings at the Game pane, and "Show" on "Updates available" opens the repository).

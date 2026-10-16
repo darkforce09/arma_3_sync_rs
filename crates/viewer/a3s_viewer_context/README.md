@@ -57,7 +57,10 @@ is expected to serve the source folder, and the run ends after Verify finds ever
 `edit_events` changes the events and writes the source folder's `.a3s/events` at once, which
 the next build carries and the upload publishes, and `upload_events` uploads them alone.
 `autoconfig_servers` and `set_autoconfig_server` choose which of the client's favourite servers
-the next build writes to the repository's `.a3s/autoconfig`.
+the next build writes to the repository's `.a3s/autoconfig`. `test_partial_transfer` asks the
+server whether it answers range requests and `check_server` whether it holds every published
+file (into `admin::Publishing`); `test_upload_connection` tries an upload connection. The local
+scan carries the last builds' changelogs (`LocalScan::history`).
 
 The tool windows call `tools` functions with the context's `Cx` and read `tools::State`:
 `find_keys`, `find_keys_in_folder` and `copy_keys` (the `.bikey` files of the active profile's

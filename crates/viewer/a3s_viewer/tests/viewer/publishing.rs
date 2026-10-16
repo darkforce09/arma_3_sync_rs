@@ -10,7 +10,9 @@ use a3s_test_servers::Fixture as Server;
 use a3s_types::local::Repository;
 use a3s_types::{FavoriteServer, ProtocolType};
 use a3s_viewer::{SheetKind, Shell};
-use a3s_viewer_context::admin::{PublishStep, Publishing, Remote, StepStatus};
+use a3s_viewer_context::admin::{
+    PublishStep, Publishing, Remote, ServerCheck, StepDetail, StepStatus,
+};
 use a3s_viewer_context::{TaskKey, TaskKind};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable as _;
@@ -255,10 +257,19 @@ fn settings_persist_at_once() {
         "Compress files",
         "Delta updates",
         "Upload only compressed files",
-        "Parallel uploads",
     ] {
         harness
             .get_by_role_and_label(egui::accesskit::Role::CheckBox, label)
+            .click();
+        harness.run();
+    }
+    for (label, value) in [("Parallel uploads", "2"), ("Connections per player", "3")] {
+        harness.get_by_label(label).click();
+        harness.run();
+        harness
+            .get_all_by_label(value)
+            .last()
+            .expect("pop-up entry")
             .click();
         harness.run();
     }
@@ -279,10 +290,8 @@ fn settings_persist_at_once() {
         stored.upload_compressed_pbo_files_only,
         !defaults.upload_compressed_pbo_files_only
     );
-    assert_eq!(
-        stored.parallel_upload_connections() > 1,
-        defaults.parallel_upload_connections() <= 1
-    );
+    assert_eq!(stored.parallel_upload_connections(), 2);
+    assert_eq!(stored.number_of_connections, 3);
 }
 
 #[test]
@@ -389,4 +398,57 @@ fn the_upload_connection_sheet_stores_the_connection() {
     assert_eq!(upload.protocol_type, ProtocolType::Sftp);
     assert_eq!(upload.url, "127.0.0.1/repo/upload");
     assert_eq!(upload.port, ProtocolType::Sftp.default_port());
+}
+
+#[test]
+fn without_an_upload_connection_a_served_folder_is_built_in_place() {
+    let runtime = server_runtime();
+    let server = runtime.block_on(a3s_test_servers::ftp::fixture(false));
+    write(&server.base, "@Mod_A/addons/a.pbo", 3000, 1);
+    write(&server.base, "@Mod_B/addons/b.pbo", 2000, 3);
+    // The server serves the source folder itself: no upload connection.
+    let mut repository = Repository::new(NAME, server.protocol.clone());
+    repository.path = Some(server.base.display().to_string());
+    let mut fixture = fixture(Start {
+        repositories: vec![repository],
+        ..Start::default()
+    });
+    let harness = &mut fixture.harness;
+    open(harness, NAME);
+
+    click_and_wait_for_publish(harness, "Build revision 1");
+    assert_eq!(statuses(harness.state()), vec![StepStatus::Done; 4]);
+    let state = publishing(harness.state(), NAME);
+    let run = state.run.as_ref().expect("a run");
+    assert!(run.published);
+    assert_eq!(
+        run.step(PublishStep::Upload).detail,
+        StepDetail::ServedDirectly
+    );
+    assert!(
+        !state
+            .local
+            .expect("scanned")
+            .expect("readable")
+            .history
+            .is_empty(),
+        "the build's changelog is the history"
+    );
+    harness.get_by_label("History");
+
+    // "Check the server files" finds every file of the build.
+    harness
+        .get_all_by_label(a3s_ui::icon::icons::DOTS_THREE_CIRCLE)
+        .last()
+        .expect("Publishing menu")
+        .click();
+    harness.run();
+    harness.get_by_label("Check the server files").click();
+    wait_until(harness, "the server check", |shell| {
+        matches!(
+            publishing(shell, NAME).server_check,
+            Some(ServerCheck::Done { .. })
+        )
+    });
+    harness.get_by_label_contains("are on the server");
 }

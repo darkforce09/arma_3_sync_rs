@@ -17,9 +17,10 @@ use a3s_repo_files::local::CacheKind;
 use a3s_sync::{EventError, RemoteConnection, RemoteError};
 use a3s_transport::proxy::transport_options;
 use a3s_types::local::Repository;
-use a3s_types::{ServerInfo, SyncTreeDirectory, SyncTreeNode};
+use a3s_types::{Changelog, Changelogs, ServerInfo, SyncTreeDirectory, SyncTreeNode};
 
 use super::PublishRun;
+use super::server::{RangeTest, ServerCheck};
 use crate::error::ContextError;
 use crate::event::{AppEvent, Change};
 use crate::state::AppState;
@@ -107,6 +108,9 @@ pub struct LocalScan {
 
     /// The revision of the last local build (`.a3s/serverinfo` in the source folder).
     pub built_revision: Option<i32>,
+
+    /// The last builds, newest first (`.a3s/changelogs` in the source folder, which keeps ten).
+    pub history: Vec<Changelog>,
 }
 
 /// What the Publishing screen knows about one repository built on this computer, for this
@@ -127,6 +131,12 @@ pub struct Publishing {
 
     /// The running or last publish.
     pub run: Option<PublishRun>,
+
+    /// The running or last partial transfer test of the server.
+    pub range_test: Option<RangeTest>,
+
+    /// The running or last check of the server's files.
+    pub server_check: Option<ServerCheck>,
 }
 
 impl Publishing {
@@ -482,11 +492,16 @@ pub(super) fn scan_source(
     let mut mods: Vec<String> = current.mods.iter().map(|path| folder_name(path)).collect();
     mods.sort_by_key(|name| name.to_lowercase());
     mods.dedup();
-    let built_revision = a3s_repo_files::read_a3s::<ServerInfo>(
-        &root.join(A3S_FOLDER).join(A3sFile::ServerInfo.file_name()),
-    )
-    .ok()
-    .map(|info| info.revision);
+    let a3s = root.join(A3S_FOLDER);
+    let built_revision =
+        a3s_repo_files::read_a3s::<ServerInfo>(&a3s.join(A3sFile::ServerInfo.file_name()))
+            .ok()
+            .map(|info| info.revision);
+    let mut history =
+        a3s_repo_files::read_a3s::<Changelogs>(&a3s.join(A3sFile::Changelogs.file_name()))
+            .map(|changelogs| changelogs.list)
+            .unwrap_or_default();
+    history.sort_by_key(|changelog| std::cmp::Reverse(changelog.revision));
     Ok(LocalScan {
         files: current.files.len(),
         bytes: current
@@ -499,6 +514,7 @@ pub(super) fn scan_source(
         changed_bytes,
         changes,
         built_revision,
+        history,
     })
 }
 

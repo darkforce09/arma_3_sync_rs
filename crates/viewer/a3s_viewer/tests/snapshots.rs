@@ -477,6 +477,7 @@ fn show_publishing(fixture: &mut Fixture, tab: &str) {
             changed_bytes: 84_000_000,
             changes,
             built_revision: Some(12),
+            history: Vec::new(),
         }));
         publishing.events = Some(events);
         publishing.run = Some(run);

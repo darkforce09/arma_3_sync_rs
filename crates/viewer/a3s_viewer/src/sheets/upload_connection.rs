@@ -8,11 +8,16 @@ use a3s_ui::dialog::{Dialog, DialogAction, DialogButton};
 use a3s_ui::frames;
 use a3s_ui::theme;
 use a3s_ui::widgets::{form_row, segmented};
-use a3s_viewer_context::{Change, ViewerContext};
-use egui::RichText;
+use std::sync::mpsc;
+
+use a3s_sync::EventError;
+use a3s_transport::{CancellationToken, TransferCtx};
+use a3s_types::local::protocol::{check_protocol, new_protocol};
+use a3s_viewer_context::{Change, ViewerContext, admin};
+use egui::{Label, RichText};
 
 use super::Shown;
-use super::add_repository::{strip_scheme, text_row};
+use super::add_repository::{spawn, strip_scheme, take, text_row};
 use crate::toasts::Toaster;
 
 /// The protocols a repository can be uploaded with, in the order of the segmented control.
@@ -38,6 +43,17 @@ pub(crate) struct UploadConnection {
     password: String,
     timeouts: (Option<String>, Option<String>),
     error: Option<String>,
+    test: Option<mpsc::Receiver<Result<bool, EventError>>>,
+    test_result: Option<Result<bool, String>>,
+
+    /// Cancels the test when the sheet closes.
+    cancel: CancellationToken,
+}
+
+impl Drop for UploadConnection {
+    fn drop(&mut self) {
+        self.cancel.cancel();
+    }
 }
 
 impl UploadConnection {
@@ -57,6 +73,9 @@ impl UploadConnection {
             password: String::new(),
             timeouts: (None, None),
             error: None,
+            test: None,
+            test_result: None,
+            cancel: CancellationToken::new(),
         };
         match (upload, stored) {
             (Some(protocol), _) => sheet.fill(&protocol),
@@ -121,11 +140,14 @@ impl UploadConnection {
         viewer: &ViewerContext,
         toasts: &mut Toaster,
     ) -> Shown {
+        if let Some(result) = take(&mut self.test) {
+            self.test_result = Some(result.map_err(|err| err.message));
+        }
         let action = Dialog::new("a3s_viewer::sheet::upload_connection", "Upload connection")
             .ok_label("Save")
             .ok_enabled(!self.host.trim().is_empty())
             .default_button(Some(DialogButton::Ok))
-            .show(ctx, |ui| self.body(ui));
+            .show(ctx, |ui| self.body(ui, viewer));
         match action {
             DialogAction::None => Shown::Open,
             DialogAction::Ok => {
@@ -154,7 +176,8 @@ impl UploadConnection {
         }
     }
 
-    fn body(&mut self, ui: &mut egui::Ui) {
+    fn body(&mut self, ui: &mut egui::Ui, viewer: &ViewerContext) {
+        let palette = theme::palette(ui.ctx());
         ui.set_width(440.0);
         ui.label("Where Publish uploads the repository.");
         ui.add_space(6.0);
@@ -182,10 +205,80 @@ impl UploadConnection {
             frames::group_separator(ui);
             text_row(ui, "Password", &mut self.password, "", true);
         });
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            let testing = self.test.is_some();
+            if ui
+                .add_enabled(
+                    !testing && !self.host.trim().is_empty(),
+                    egui::Button::new("Test connection"),
+                )
+                .clicked()
+            {
+                self.start_test(viewer, ui.ctx());
+            }
+            if testing {
+                ui.spinner();
+            } else if let Some(result) = &self.test_result {
+                let (text, color) = match result {
+                    Ok(true) => (
+                        "Connected; a repository is published there.".to_owned(),
+                        palette.status_success,
+                    ),
+                    Ok(false) => (
+                        "Connected; nothing is published there yet.".to_owned(),
+                        palette.status_success,
+                    ),
+                    Err(error) => (error.clone(), palette.status_danger),
+                };
+                ui.add(Label::new(RichText::new(text).color(color)).wrap());
+            }
+        });
+        if self.host.trim().is_empty() {
+            ui.label(
+                RichText::new("Enter the host to save the connection.")
+                    .small()
+                    .color(palette.text_secondary),
+            );
+        }
         if let Some(error) = &self.error {
             ui.add_space(6.0);
-            ui.label(RichText::new(error).color(theme::palette(ui.ctx()).status_danger));
+            ui.label(RichText::new(error).color(palette.status_danger));
         }
+    }
+
+    fn start_test(&mut self, viewer: &ViewerContext, ctx: &egui::Context) {
+        let input = self.input();
+        let protocol = new_protocol(
+            input.protocol_type,
+            &input.url,
+            &input.port,
+            &input.login,
+            &input.password,
+            input.validate_ssl_certificate,
+        )
+        .ok_or_else(|| "This protocol is not supported.".to_owned())
+        .and_then(|protocol| {
+            check_protocol(&protocol)
+                .map(|()| protocol)
+                .map_err(|err| err.to_string())
+        });
+        let protocol = match protocol {
+            Ok(protocol) => protocol,
+            Err(err) => {
+                self.test_result = Some(Err(err));
+                return;
+            }
+        };
+        let cx = viewer.cx().clone();
+        let transfer = TransferCtx {
+            cancel: self.cancel.child_token(),
+            ..TransferCtx::default()
+        };
+        self.test_result = None;
+        self.test = Some(spawn(viewer, ctx, async move {
+            admin::test_upload_connection(&cx, &protocol, &transfer).await
+        }));
     }
 }
 

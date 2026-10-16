@@ -98,6 +98,7 @@ pub(super) fn show(ui: &mut Ui, name: &str, cx: &mut ScreenCx<'_>) {
     ui.horizontal(|ui| {
         segmented(ui, &mut state.tab, &TABS);
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            menu(ui, &view, cx);
             primary_action(ui, &view, cx);
         });
     });
@@ -135,6 +136,33 @@ fn refresh_when_needed(ui: &Ui, view: &View, state: &mut ScreenState, cx: &mut S
             },
         );
     }
+}
+
+/// The screen's "⋯" menu: check that the server holds every published file.
+fn menu(ui: &mut Ui, view: &View, cx: &mut ScreenCx<'_>) {
+    ui.menu_button(
+        egui::RichText::new(icons::DOTS_THREE_CIRCLE).size(16.0),
+        |ui| {
+            let checking = cx
+                .viewer
+                .is_running(&TaskKey::repository(TaskKind::AdminCheck, view.name()))
+                .is_some();
+            if ui
+                .add_enabled(!checking, egui::Button::new("Check the server files"))
+                .on_hover_text("Whether the server holds every file of the published repository")
+                .clicked()
+            {
+                send(
+                    cx,
+                    admin::Command::CheckServer {
+                        repository: view.name().to_owned(),
+                    },
+                );
+            }
+        },
+    )
+    .response
+    .on_hover_text("More");
 }
 
 /// The one primary button: publish, upload the events alone, or nothing to do.
