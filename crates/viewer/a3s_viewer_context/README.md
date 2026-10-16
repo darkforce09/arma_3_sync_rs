@@ -22,16 +22,20 @@ folder and publishes the changes (`sync::Downloads::plans`), keeping the checked
 `Download` starts at once; `Pause` cancels and keeps the session for the next `Download` to
 resume, `Stop` discards it, `Retry` downloads failed files again. Extra local files go to the
 Trash. Each finished download is recorded in `sync::Downloads::recent` and announced with
-`sync::Event::DownloadFinished`. `profiles::use_event_preset` makes an event's mods the
-selection of the active profile; `repositories::test_connection` and `fetch_autoconfig` serve
-the repository sheet.
+`sync::Event::DownloadFinished`. `profiles::use_event_preset` and `use_group_preset` make an
+event's mods or one addon group the selection of the active profile; after each successful
+check and download the groups made from a repository and its events follow its new content in
+every profile, keeping their enabled mods; `repositories::test_connection` and
+`fetch_autoconfig` serve the repository sheet.
 
 The active profile's addons are scanned by an `AddonScan` task (`profiles::Command::ScanAddons`;
 the UI calls `profiles::ensure_scan` every frame, which asks again whenever the profile, its
-folders or its Arma 3 executable changed) into `profiles::State::scan`: the addon registry, the
-available-addons tree and each addon's size; the launch priority list is brought in line with it.
-`launch::Command::Play` runs a `Launch` task: optionally the user's downloads of the enabled
-addon groups' repositories that have updates (`sync::download`, so failed files reach
+folders or its Arma 3 executable changed, and after every download; `profiles::rescan` asks
+for one at once) into `profiles::State::scan`: the addon registry, the available-addons tree
+and each addon's size; the launch priority list is brought in line with it.
+`launch::Command::Play` runs a `Launch` task: it enables the preset group of the server it
+joins, then optionally the user's downloads of the enabled addon groups' repositories that have
+updates (`sync::download`, so failed files reach
 `sync::Downloads::recent` and `sync::Event::DownloadFinished` like any download), then the
 launch plan of the active profile (`a3s_launch::plan_launch`), the companion apps and the game
 through the `launch::GameLauncher` in `launch::State` (tests put a recording launcher there).
@@ -41,11 +45,12 @@ Repository administration is `admin`: `refresh` reads the published repository (
 protocol) and compares the source folder with it without hashing (the build's SHA-1 cache tells
 which files still match) into `admin::Publishing`; `publish` runs scan, build, verify and upload
 as one cancellable `Publish` task whose steps report their state and detail, and retries from a
-failed or stopped step (an interrupted upload resumes); `edit_events` changes the events and
-writes the source folder's `.a3s/events` at once, which the next build carries and the upload
-publishes, and `upload_events` uploads them alone. `autoconfig_servers` and
-`set_autoconfig_server` choose which of the client's favourite servers the next build writes to
-the repository's `.a3s/autoconfig`.
+failed or stopped step (an interrupted upload resumes); without an upload connection the server
+is expected to serve the source folder, and the run ends after Verify finds every file there;
+`edit_events` changes the events and writes the source folder's `.a3s/events` at once, which
+the next build carries and the upload publishes, and `upload_events` uploads them alone.
+`autoconfig_servers` and `set_autoconfig_server` choose which of the client's favourite servers
+the next build writes to the repository's `.a3s/autoconfig`.
 
 The tool windows call `tools` functions with the context's `Cx` and read `tools::State`:
 `find_keys` and `copy_keys` (the `.bikey` files of the active profile's enabled mods, into the

@@ -423,3 +423,70 @@ fn an_invalid_proxy_fails_the_check_without_connecting() {
             .is_none()
     );
 }
+
+#[test]
+fn a_check_refreshes_the_groups_made_from_the_repository() {
+    use a3s_types::constants::ModsetType;
+    use a3s_types::local::{TreeDirectory, TreeLeaf, TreeNode};
+    use a3s_types::{SyncTreeDirectory, SyncTreeNode};
+
+    let fixture = Fixture::new(vec![http_repository("Alpha")]);
+    fixture
+        .ctx
+        .mutate(None, |state| {
+            state.client.create_profile("P")?;
+            state.client.set_active_profile("P")?;
+            state.client.update_active_profile(|profile| {
+                let mut group = TreeDirectory::new("Alpha");
+                group.modset_type = Some(ModsetType::Repository);
+                group.modset_repository_name = Some("Alpha".to_owned());
+                group.add_child(TreeNode::Leaf(TreeLeaf {
+                    selected: true,
+                    ..TreeLeaf::new("@ace")
+                }));
+                group.add_child(TreeNode::Leaf(TreeLeaf::new("@gone")));
+                profile.tree.add_child(TreeNode::Directory(group));
+                true
+            })
+        })
+        .expect("profile");
+    let addon = |name: &str| {
+        SyncTreeNode::Directory(SyncTreeDirectory {
+            name: name.to_owned(),
+            mark_as_addon: true,
+            ..SyncTreeDirectory::default()
+        })
+    };
+    let mut metadata = updated_server_info(2);
+    metadata.sync = Some(Arc::new(SyncTreeDirectory {
+        name: "racine".to_owned(),
+        children: vec![addon("@ace"), addon("@new")],
+        ..SyncTreeDirectory::default()
+    }));
+    fixture.checker.set(
+        "Alpha",
+        Script {
+            install: Some(metadata),
+            ..Script::default()
+        },
+    );
+
+    fixture.ctx.send(check(&["Alpha"])).expect("send");
+    fixture.until_finished(TaskKind::CheckRepositories);
+
+    let state = fixture.ctx.read();
+    let tree = &state.client.active_profile().expect("profile").tree;
+    let group = tree
+        .directories()
+        .find(|group| group.name == "Alpha")
+        .expect("group");
+    let leaves: Vec<(&str, bool)> = group
+        .children
+        .iter()
+        .filter_map(|node| match node {
+            TreeNode::Leaf(leaf) => Some((leaf.name.as_str(), leaf.selected)),
+            TreeNode::Directory(_) => None,
+        })
+        .collect();
+    assert_eq!(leaves, [("@ace", true), ("@new", false)]);
+}

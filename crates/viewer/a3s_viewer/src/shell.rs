@@ -64,7 +64,9 @@ impl Screen {
 pub(crate) enum Action {
     Navigate(Screen),
     AddRepository,
+    PublishFolder,
     EditRepository(String),
+    DownloadSettings(String),
     EditUploadConnection(String),
     EditPathList(String, PathListKind),
     ShowIssues(String),
@@ -73,6 +75,7 @@ pub(crate) enum Action {
     Open(SecondaryWindow),
     OpenSettings(SettingsPane),
     CheckNow,
+    Rescan,
     FocusSearch,
     Show,
     Hide,
@@ -276,7 +279,12 @@ impl Shell {
                     &SidebarView {
                         snapshot: &snapshot,
                         screen: &self.screen,
-                        running_tasks: self.viewer.running_tasks().len(),
+                        running_tasks: self
+                            .viewer
+                            .running_tasks()
+                            .iter()
+                            .filter(|task| screens::activity::listed(task.key.kind))
+                            .count(),
                         last_check: self.last_check,
                     },
                 )
@@ -336,11 +344,13 @@ impl Shell {
         match action {
             Action::Navigate(screen) => self.screen = screen,
             Action::AddRepository => self.sheets.push(Sheet::add_repository(&self.viewer)),
+            Action::PublishFolder => self.sheets.push(Sheet::publish_folder(&self.viewer)),
             Action::EditRepository(name) => {
                 if let Some(sheet) = Sheet::edit_repository(&self.viewer, &name) {
                     self.sheets.push(sheet);
                 }
             }
+            Action::DownloadSettings(name) => self.sheets.push(Sheet::download_settings(&name)),
             Action::EditUploadConnection(name) => self
                 .sheets
                 .push(Sheet::upload_connection(&self.viewer, &name)),
@@ -367,6 +377,11 @@ impl Shell {
             Action::Open(window) => self.windows.open(ctx, window),
             Action::OpenSettings(pane) => self.windows.open_settings(ctx, pane),
             Action::CheckNow => self.check_now(snapshot),
+            Action::Rescan => {
+                if let Err(err) = profiles::rescan(&self.viewer) {
+                    self.toasts.error(err.user_message());
+                }
+            }
             Action::FocusSearch => {
                 ctx.memory_mut(|memory| memory.request_focus(toolbar::search_id()));
             }

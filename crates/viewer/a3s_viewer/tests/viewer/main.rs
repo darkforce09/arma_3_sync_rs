@@ -4,6 +4,7 @@
 
 mod mods;
 mod publishing;
+mod repository;
 mod servers;
 mod settings;
 mod settings_support;

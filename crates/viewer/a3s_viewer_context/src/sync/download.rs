@@ -468,7 +468,14 @@ async fn run_download(
                 Some(Err(err)) => tracing::warn!("Failed to save repository {name}: {err}"),
                 None => {}
             }
-            cx.state().write().repositories.runtime_mut(&name).metadata = metadata;
+            let mut state = cx.state().write();
+            state.repositories.runtime_mut(&name).metadata = metadata;
+            if let Err(err) = crate::profiles::refresh_modset_groups(&mut state, &name) {
+                tracing::warn!(
+                    "Cannot update the groups of repository {name}: {}",
+                    err.user_message()
+                );
+            }
         }
         Err(CheckError::Cancelled) => {}
         Err(err) => tracing::warn!(
@@ -707,6 +714,8 @@ fn finish(cx: &Cx, name: &str, event: Option<String>, result: DownloadResult) {
         );
         recent.truncate(RECENT_LIMIT);
     }
+    // Even a failed download may have written or trashed mods.
+    crate::profiles::files_changed(cx);
     cx.emit(AppEvent::Changed(Change::Repository));
     cx.emit(AppEvent::Sync(Event::DownloadFinished {
         repository: name.to_owned(),

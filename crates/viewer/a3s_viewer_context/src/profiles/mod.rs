@@ -5,9 +5,10 @@ mod scan;
 
 use std::sync::Arc;
 
-pub use self::preset::use_event_preset;
-pub(crate) use self::scan::reuse_or_scan;
-pub use self::scan::{AddonScan, ScanKey, ensure_scan};
+pub(crate) use self::preset::refresh_modset_groups;
+pub use self::preset::{use_event_preset, use_group_preset};
+pub use self::scan::{AddonScan, ScanKey, ensure_scan, rescan};
+pub(crate) use self::scan::{files_changed, reuse_or_scan};
 use crate::error::ContextError;
 use crate::tasks::Cx;
 
@@ -34,6 +35,10 @@ pub struct State {
 
     /// What the last requested scan was for; cleared when a scan ends.
     pub scan_requested: Option<ScanKey>,
+
+    /// Counts the changes to the files of the addon folders (a finished download); a scan
+    /// that started before the last change is not kept.
+    pub files_generation: u64,
 }
 
 pub(crate) fn handle(cx: &Cx, command: Command) -> Result<(), ContextError> {

@@ -1,6 +1,6 @@
 //! The Servers screen: favourite servers. "Join" picks the server the next launch connects to
-//! (the configuration's server name, with its preset as the default addon group); add with +,
-//! edit with a double-click, remove with Undo.
+//! and enables exactly the mods of its preset (the launch enables them again); add with +, edit
+//! with a double-click, remove with Undo.
 
 use a3s_foundation::error::UserFacing as _;
 use a3s_repo_files::services::ServiceError;
@@ -9,10 +9,11 @@ use a3s_ui::frames;
 use a3s_ui::icon::icons;
 use a3s_ui::theme::{self, ProgressTone};
 use a3s_ui::widgets::{button, icon_text_button, status_pill};
-use a3s_viewer_context::{Change, ViewerContext};
+use a3s_viewer_context::{Change, ViewerContext, profiles};
 use egui::{Align, Layout, RichText, Ui};
 
 use super::ScreenCx;
+use super::mods::undo_profile;
 use crate::sheets::Sheet;
 use crate::sheets::server::{ServerSheet, set_join};
 use crate::toasts::Toaster;
@@ -158,15 +159,36 @@ fn is_joined(server: &FavoriteServer, joined: Option<&str>) -> bool {
     joined.is_some() && server.name.as_deref() == joined
 }
 
-/// Makes `server` the one the next launch joins (with its preset), or none.
+/// Makes `server` the one the next launch joins, or none. A server with a preset enables
+/// exactly that group's mods, with Undo.
 fn join(viewer: &ViewerContext, toasts: &mut Toaster, server: Option<&FavoriteServer>) {
     let name = server.and_then(|s| s.name.clone());
     let modset = server.and_then(|s| s.modset_name.clone());
+    let before = viewer.read().client.active_profile().cloned();
     let joined = viewer.mutate(Some(Change::Online), |state| {
-        set_join(&mut state.client, name, modset)
+        set_join(&mut state.client, name, modset.clone())
     });
     if let Err(err) = joined {
         toasts.error(err.user_message());
+        return;
+    }
+    let Some(group) = modset else {
+        return;
+    };
+    let applied = viewer.mutate(Some(Change::AddonSelection), |state| {
+        profiles::use_group_preset(state, &group)
+    });
+    match applied {
+        Ok(true) => {
+            if let Some(before) = before {
+                toasts.undoable(
+                    format!("Using the mods of {group}"),
+                    undo_profile(before, Change::AddonSelection),
+                );
+            }
+        }
+        Ok(false) => {}
+        Err(err) => toasts.error(err.user_message()),
     }
 }
 

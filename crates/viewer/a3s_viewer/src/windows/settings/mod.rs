@@ -4,7 +4,6 @@
 
 mod companion_apps;
 mod data;
-mod downloads;
 mod game;
 mod general;
 mod network;
@@ -19,7 +18,7 @@ use a3s_ui::icon::icons;
 use a3s_ui::theme;
 use a3s_ui::widgets::SidebarItem;
 use a3s_viewer_context::{Change, ViewerContext};
-use egui::{Id, Label, Response, RichText, Ui};
+use egui::{Id, Label, RichText, Ui};
 
 use crate::desktop::Desktop;
 use crate::toasts::Toaster;
@@ -37,9 +36,6 @@ pub enum SettingsPane {
     /// Profiles: create, duplicate, rename, remove, desktop shortcut.
     Profiles,
 
-    /// Mods folder, connections, speed limit and timeouts of every repository.
-    Downloads,
-
     /// The proxy.
     Network,
 
@@ -52,11 +48,10 @@ pub enum SettingsPane {
 
 impl SettingsPane {
     /// Every pane, in list order.
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 6] = [
         Self::General,
         Self::Game,
         Self::Profiles,
-        Self::Downloads,
         Self::Network,
         Self::CompanionApps,
         Self::Data,
@@ -68,7 +63,6 @@ impl SettingsPane {
             Self::General => "General",
             Self::Game => "Game",
             Self::Profiles => "Profiles",
-            Self::Downloads => "Downloads",
             Self::Network => "Network",
             Self::CompanionApps => "Companion apps",
             Self::Data => "Data",
@@ -80,7 +74,6 @@ impl SettingsPane {
             Self::General => icons::GEAR_SIX,
             Self::Game => icons::GAME_CONTROLLER,
             Self::Profiles => icons::USER_CIRCLE,
-            Self::Downloads => icons::DOWNLOAD_SIMPLE,
             Self::Network => icons::GLOBE,
             Self::CompanionApps => icons::HEADSET,
             Self::Data => icons::HARD_DRIVES,
@@ -97,7 +90,6 @@ pub struct SettingsWindow {
     general: general::GeneralPane,
     game: game::GamePane,
     profiles: profiles::ProfilesPane,
-    downloads: downloads::DownloadsPane,
     network: network::NetworkPane,
     companion_apps: companion_apps::CompanionAppsPane,
     data: data::DataPane,
@@ -113,7 +105,6 @@ impl SettingsWindow {
             general: general::GeneralPane::default(),
             game: game::GamePane::default(),
             profiles: profiles::ProfilesPane::default(),
-            downloads: downloads::DownloadsPane::default(),
             network: network::NetworkPane::default(),
             companion_apps: companion_apps::CompanionAppsPane::default(),
             data: data::DataPane::default(),
@@ -170,7 +161,6 @@ impl SettingsWindow {
             SettingsPane::General => self.general.show(ui, &mut cx),
             SettingsPane::Game => self.game.show(ui, &mut cx),
             SettingsPane::Profiles => self.profiles.show(ui, &mut cx),
-            SettingsPane::Downloads => self.downloads.show(ui, &mut cx),
             SettingsPane::Network => self.network.show(ui, &cx),
             SettingsPane::CompanionApps => self.companion_apps.show(ui, &mut cx),
             SettingsPane::Data => self.data.show(ui, &mut cx),
@@ -215,10 +205,4 @@ fn group_heading(ui: &mut Ui, text: &str) {
     ui.add_space(8.0);
     ui.label(RichText::new(text).strong());
     ui.add_space(2.0);
-}
-
-/// Whether an edited number should be written: a click or typed value, or the end of a drag
-/// (not every step of it).
-fn number_committed(response: &Response) -> bool {
-    (response.changed() && !response.dragged()) || response.drag_stopped()
 }

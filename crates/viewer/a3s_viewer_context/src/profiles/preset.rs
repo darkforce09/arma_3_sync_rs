@@ -1,6 +1,7 @@
-//! Event presets: a repository event's mods as the selection of the active profile.
+//! Presets and modset groups: a repository event's or an addon group's mods as the selection
+//! of the active profile, and the groups made from a repository kept up to date.
 
-use a3s_addons::{add_groups_from_events, set_selected_recursive};
+use a3s_addons::{add_groups_from_events, set_selected_recursive, update_group_modsets};
 use a3s_repo_files::services::ServiceError;
 use a3s_types::Event;
 use a3s_types::constants::ModsetType;
@@ -37,6 +38,61 @@ pub fn use_event_preset(
         }
         profile.tree != before
     })
+}
+
+/// Makes the top-level addon group `group` the selection of the active profile.
+///
+/// All its addons are enabled and every other addon disabled. Returns whether the profile
+/// changed; `false` also when the profile has no such group.
+// Mirrors ui/main/AddonsPanel.java:1787-1799
+pub fn use_group_preset(state: &mut AppState, group: &str) -> Result<bool, ServiceError> {
+    state.client.update_active_profile(|profile| {
+        let exists = profile
+            .tree
+            .directories()
+            .any(|directory| directory.name == group);
+        if !exists {
+            return false;
+        }
+        let before = profile.tree.clone();
+        for child in &mut profile.tree.children {
+            match child {
+                TreeNode::Directory(directory) => {
+                    set_selected_recursive(directory, directory.name == group);
+                }
+                TreeNode::Leaf(leaf) => leaf.selected = false,
+            }
+        }
+        profile.tree != before
+    })
+}
+
+/// Refreshes the repository and event groups made from `repository` in every profile from its
+/// last fetched metadata: new mods appear, removed ones go, enabled mods stay enabled.
+// Mirrors ui/main/AddonsPanel.java:1885-1936
+pub(crate) fn refresh_modset_groups(
+    state: &mut AppState,
+    repository: &str,
+) -> Result<(), ServiceError> {
+    let metadata = state.repositories.runtime(repository).metadata;
+    let events: Vec<Event> = metadata
+        .events
+        .as_ref()
+        .map(|events| events.list.clone())
+        .unwrap_or_default();
+    for name in state.client.profile_names() {
+        state.client.update_profile(&name, |profile| {
+            let before = profile.tree.clone();
+            update_group_modsets(
+                &mut profile.tree,
+                repository,
+                metadata.sync.as_deref(),
+                &events,
+            );
+            profile.tree != before
+        })?;
+    }
+    Ok(())
 }
 
 fn is_event_group(group: &TreeDirectory, repository: &str, event: &Event) -> bool {

@@ -117,14 +117,18 @@ impl EventSink<'_> {
             }
             repositories::Event::CheckCompleted { trigger, results } => {
                 *self.last_check = Some(SystemTime::now());
-                let failed: Vec<&str> = results
+                let failed: Vec<String> = results
                     .iter()
-                    .filter(|result| matches!(result.outcome, CheckOutcome::Failed(_)))
-                    .map(|result| result.name.as_str())
+                    .filter_map(|result| match &result.outcome {
+                        CheckOutcome::Failed(error) => {
+                            Some(format!("{}: {}", result.name, error.message))
+                        }
+                        _ => None,
+                    })
                     .collect();
                 if trigger == a3s_viewer_context::CheckTrigger::Manual && !failed.is_empty() {
                     self.toasts
-                        .error(format!("Could not check {}", failed.join(", ")));
+                        .error(format!("Could not check {}", failed.join("; ")));
                 }
             }
             _ => {}

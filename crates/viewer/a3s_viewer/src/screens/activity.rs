@@ -26,18 +26,21 @@ struct Running {
     files: Vec<String>,
 }
 
+/// Whether the screen lists running tasks of `kind`; the sidebar badge counts those.
+pub(crate) fn listed(kind: TaskKind) -> bool {
+    matches!(
+        kind,
+        TaskKind::Download | TaskKind::AutoUpdate | TaskKind::Compare
+    )
+}
+
 pub(super) fn show(ui: &mut Ui, cx: &mut ScreenCx<'_>) {
     let running: Vec<Running> = {
         let tasks: Vec<TaskInfo> = cx
             .viewer
             .running_tasks()
             .into_iter()
-            .filter(|task| {
-                matches!(
-                    task.key.kind,
-                    TaskKind::Download | TaskKind::AutoUpdate | TaskKind::Compare
-                )
-            })
+            .filter(|task| listed(task.key.kind))
             .collect();
         let state = cx.viewer.read();
         tasks
@@ -245,6 +248,9 @@ fn paused_row(ui: &mut Ui, repository: &str, remaining: u64, cx: &mut ScreenCx<'
 
 fn recent_row(ui: &mut Ui, record: &DownloadRecord, now: SystemTime, cx: &mut ScreenCx<'_>) {
     let palette = theme::palette(ui.ctx());
+    // "N min ago" moves on by itself.
+    ui.ctx()
+        .request_repaint_after(std::time::Duration::from_secs(30));
     ui.horizontal(|ui| {
         let (icon, tone, text) = match &record.result {
             DownloadResult::Success { .. } => (

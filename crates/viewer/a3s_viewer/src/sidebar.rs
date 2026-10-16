@@ -15,6 +15,7 @@ use crate::snapshot::{Badge, Snapshot};
 pub(crate) struct SidebarView<'a> {
     pub(crate) snapshot: &'a Snapshot,
     pub(crate) screen: &'a Screen,
+    /// Running tasks the Activity screen lists.
     pub(crate) running_tasks: usize,
     pub(crate) last_check: Option<SystemTime>,
 }
@@ -24,6 +25,10 @@ pub(crate) fn show(ui: &mut Ui, view: &SidebarView<'_>) -> Option<Action> {
     let mut action = None;
     ui.with_layout(Layout::bottom_up(Align::Min), |ui| {
         let palette = theme::palette(ui.ctx());
+        if view.last_check.is_some() {
+            // "Checked N min ago" moves on by itself.
+            ui.ctx().request_repaint_after(Duration::from_secs(30));
+        }
         ui.label(
             RichText::new(check_status(
                 view.snapshot.checking,
@@ -78,7 +83,12 @@ pub(crate) fn show(ui: &mut Ui, view: &SidebarView<'_>) -> Option<Action> {
                                 item.badge(&count).badge_tone(ProgressTone::Warning)
                             }
                         };
-                        if item.show(ui, *view.screen == screen).clicked() {
+                        let mut response = item.show(ui, *view.screen == screen);
+                        if let Some(error) = &row.error {
+                            response =
+                                response.on_hover_text(format!("The last check failed: {error}"));
+                        }
+                        if response.clicked() {
                             action = Some(Action::Navigate(screen));
                         }
                     }
@@ -90,13 +100,6 @@ pub(crate) fn show(ui: &mut Ui, view: &SidebarView<'_>) -> Option<Action> {
                     }
 
                     sidebar_heading(ui, "Publishing");
-                    if view.snapshot.publishing.is_empty() {
-                        ui.label(
-                            RichText::new("No repository is built on this computer.")
-                                .small()
-                                .color(palette.text_secondary),
-                        );
-                    }
                     for name in &view.snapshot.publishing {
                         let screen = Screen::Publishing(name.clone());
                         if SidebarItem::new(icons::CLOUD_ARROW_UP, name)
@@ -105,6 +108,13 @@ pub(crate) fn show(ui: &mut Ui, view: &SidebarView<'_>) -> Option<Action> {
                         {
                             action = Some(Action::Navigate(screen));
                         }
+                    }
+                    if SidebarItem::new(icons::FOLDER_PLUS, "Publish a folder")
+                        .show(ui, false)
+                        .on_hover_text("Create a repository from a folder of this computer")
+                        .clicked()
+                    {
+                        action = Some(Action::PublishFolder);
                     }
                 });
         });

@@ -615,7 +615,10 @@ fn edit_profile(
 }
 
 /// Puts `before` back as the active profile, unless another profile became active.
-fn undo_profile(before: Profile, change: Change) -> impl FnOnce(&ViewerContext) + Send + 'static {
+pub(crate) fn undo_profile(
+    before: Profile,
+    change: Change,
+) -> impl FnOnce(&ViewerContext) + Send + 'static {
     move |viewer| {
         let restored = viewer.mutate(Some(change), |state| {
             state.client.update_active_profile(|profile| {

@@ -8,7 +8,9 @@ use a3s_viewer::{Screen, SecondaryWindow, SheetKind, WelcomeSetup, WindowRequest
 use egui::{Key, Modifiers};
 use egui_kittest::kittest::Queryable as _;
 
-use crate::support::{Start, fixture, set_status};
+use a3s_types::local::{TreeLeaf, TreeNode};
+
+use crate::support::{Start, fixture, profile_with_group, set_status};
 
 #[test]
 fn sidebar_rows_change_the_screen() {
@@ -70,12 +72,31 @@ fn sheets_open_in_order_and_close() {
 
 #[test]
 fn play_says_update_while_the_profile_has_updates() {
-    let mut fixture = fixture(Start::default());
+    // Only a group with an enabled mod makes Play update its repository first.
+    let mut profile = profile_with_group("Default", "Alpha");
+    if let Some(TreeNode::Directory(group)) = profile.tree.children.first_mut() {
+        group.add_child(TreeNode::Leaf(TreeLeaf {
+            selected: true,
+            ..TreeLeaf::new("@ace")
+        }));
+    }
+    let mut fixture = fixture(Start {
+        profiles: Some(vec![profile]),
+        ..Start::default()
+    });
     let harness = &mut fixture.harness;
     harness.get_by_label_contains("Update and play");
 
     set_status(harness.state().viewer(), "Alpha", RepositoryStatus::Ok);
     harness.run();
+    assert!(harness.query_by_label_contains("Update and play").is_none());
+    harness.get_by_label_contains("Play");
+}
+
+#[test]
+fn play_ignores_updates_of_groups_without_enabled_mods() {
+    let mut fixture = fixture(Start::default());
+    let harness = &mut fixture.harness;
     assert!(harness.query_by_label_contains("Update and play").is_none());
     harness.get_by_label_contains("Play");
 }

@@ -4,7 +4,8 @@
 use std::collections::BTreeSet;
 
 use a3s_types::constants::RepositoryStatus;
-use a3s_types::local::{Repository, TreeDirectory};
+use a3s_types::local::Repository;
+use a3s_viewer_context::launch::enabled_modset_repositories;
 use a3s_viewer_context::{AppState, RepositoryRuntime};
 
 /// The sidebar badge of a repository.
@@ -29,6 +30,9 @@ pub(crate) enum Badge {
 pub(crate) struct RepositoryRow {
     pub(crate) name: String,
     pub(crate) badge: Badge,
+
+    /// Why the last check failed, if it did.
+    pub(crate) error: Option<String>,
 }
 
 /// The frame's copy of the state.
@@ -46,7 +50,8 @@ pub(crate) struct Snapshot {
     /// The active profile.
     pub(crate) active_profile: String,
 
-    /// A repository of the active profile's addon groups has updates.
+    /// A repository with an enabled mod of the active profile has updates: Play updates it
+    /// first.
     pub(crate) profile_has_updates: bool,
 
     /// A repository check is running.
@@ -58,9 +63,13 @@ impl Snapshot {
         let client = &state.client;
         let repositories: Vec<RepositoryRow> = client
             .repositories()
-            .map(|repository| RepositoryRow {
-                name: repository.name.clone(),
-                badge: badge(repository, &state.repositories.runtime(&repository.name)),
+            .map(|repository| {
+                let runtime = state.repositories.runtime(&repository.name);
+                RepositoryRow {
+                    name: repository.name.clone(),
+                    badge: badge(repository, &runtime),
+                    error: runtime.last_check_error.map(|error| error.message),
+                }
             })
             .collect();
         let publishing = client
@@ -73,10 +82,12 @@ impl Snapshot {
             })
             .map(|repository| repository.name.clone())
             .collect();
-        let profile_repositories = client
+        let profile_repositories: BTreeSet<String> = client
             .active_profile()
-            .map(|profile| group_repositories(&profile.tree))
-            .unwrap_or_default();
+            .map(enabled_modset_repositories)
+            .unwrap_or_default()
+            .into_iter()
+            .collect();
         let profile_has_updates = repositories.iter().any(|row| {
             matches!(row.badge, Badge::Updates(_)) && profile_repositories.contains(&row.name)
         });
@@ -121,17 +132,4 @@ fn changed_addons(repository: &Repository, runtime: &RepositoryRuntime) -> usize
         })
         .collect::<BTreeSet<_>>()
         .len()
-}
-
-/// The repositories the addon groups of a profile tree were made from.
-fn group_repositories(tree: &TreeDirectory) -> BTreeSet<String> {
-    let mut names = BTreeSet::new();
-    let mut pending = vec![tree];
-    while let Some(directory) = pending.pop() {
-        if let Some(name) = &directory.modset_repository_name {
-            names.insert(name.clone());
-        }
-        pending.extend(directory.directories());
-    }
-    names
 }

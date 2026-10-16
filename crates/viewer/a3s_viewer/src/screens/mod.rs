@@ -1,6 +1,6 @@
 //! The content area: one module per screen of the sidebar.
 
-mod activity;
+pub(crate) mod activity;
 mod mods;
 mod publishing;
 mod repository;

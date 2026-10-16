@@ -84,6 +84,15 @@ pub(super) fn show(ui: &mut Ui, name: &str, cx: &mut ScreenCx<'_>) {
         )
     });
     let mut state = shared.lock();
+    let has_source = view
+        .repository
+        .path
+        .as_deref()
+        .is_some_and(|path| !path.trim().is_empty());
+    if !has_source {
+        settings::choose_source(ui, &view, &mut state.settings, cx);
+        return;
+    }
     refresh_when_needed(ui, &view, &mut state, cx);
 
     ui.horizontal(|ui| {
@@ -163,7 +172,12 @@ fn primary_action(ui: &mut Ui, view: &View, cx: &mut ScreenCx<'_>) {
             );
         }
         _ => {
-            let label = format!("Publish revision {}", publishing.next_revision());
+            let verb = if view.repository.upload_protocol.is_some() {
+                "Publish"
+            } else {
+                "Build"
+            };
+            let label = format!("{verb} revision {}", publishing.next_revision());
             if primary_button(ui, &label).clicked() {
                 send(
                     cx,

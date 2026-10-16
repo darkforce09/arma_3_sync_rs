@@ -12,7 +12,7 @@ use a3s_ui::frames;
 use a3s_ui::widgets::{button, form_row, popup_button, segmented};
 use a3s_updater::apply::{CheckOutcome, source_for_preference, text};
 use a3s_updater::{DiagnosticLog, UpdateContext, UpdateSession};
-use a3s_viewer_context::{Change, TaskKey, TaskKind, ViewerContext};
+use a3s_viewer_context::{TaskKey, TaskKind, ViewerContext};
 use egui::Ui;
 
 use super::{PaneCx, note};
@@ -163,8 +163,6 @@ impl GeneralPane {
                     &FREQUENCIES,
                 )
             });
-            frames::group_separator(ui);
-            notify_row(ui, cx);
         });
         ui.add_space(12.0);
 
@@ -277,36 +275,6 @@ impl GeneralPane {
                 self.update = UpdateCheck::Done("The check stopped unexpectedly.".to_owned());
             }
         }
-    }
-}
-
-/// "Notify when an event is published": the update notification of every repository, on when
-/// all of them notify.
-fn notify_row(ui: &mut Ui, cx: &mut PaneCx<'_>) {
-    let (names, all_notify) = {
-        let state = cx.viewer.read();
-        let repositories: Vec<_> = state.client.repositories().collect();
-        (
-            repositories
-                .iter()
-                .map(|r| r.name.clone())
-                .collect::<Vec<_>>(),
-            !repositories.is_empty() && repositories.iter().all(|r| r.notify),
-        )
-    };
-    let mut on = all_notify;
-    let changed = ui
-        .add_enabled_ui(!names.is_empty(), |ui| {
-            toggle_row(ui, "Notify when an event is published", &mut on)
-        })
-        .inner
-        .changed();
-    if changed {
-        cx.save(Some(Change::Repository), |client| {
-            names
-                .iter()
-                .try_for_each(|name| client.set_notify(name, on))
-        });
     }
 }
 

@@ -101,6 +101,20 @@ pub fn ensure_scan(viewer: &ViewerContext) -> Result<bool, ContextError> {
     Ok(true)
 }
 
+/// Scans the active profile again, e.g. after mods were copied into its folders by hand.
+pub fn rescan(viewer: &ViewerContext) -> Result<bool, ContextError> {
+    files_changed(viewer.cx());
+    ensure_scan(viewer)
+}
+
+/// The files of the addon folders changed: the last scan is dropped, and a scan running now is
+/// not kept, so the next [`ensure_scan`] or launch scans again.
+pub(crate) fn files_changed(cx: &Cx) {
+    let mut state = cx.state().write();
+    state.profiles.scan = None;
+    state.profiles.files_generation += 1;
+}
+
 /// Starts the scan task; a running scan is left alone.
 pub(super) fn start(cx: &Cx) -> Result<(), ContextError> {
     match cx.spawn_task(TaskKey::new(TaskKind::AddonScan), true, run) {
@@ -122,7 +136,14 @@ async fn run(task: TaskCtx) -> Result<(), TaskError> {
 
 async fn scan_active(task: &TaskCtx) -> Result<(), TaskError> {
     let cx = &task.cx;
-    let Some(profile) = cx.state().read().client.active_profile().cloned() else {
+    let (profile, generation) = {
+        let state = cx.state().read();
+        (
+            state.client.active_profile().cloned(),
+            state.profiles.files_generation,
+        )
+    };
+    let Some(profile) = profile else {
         cx.state().write().profiles.scan = None;
         return Ok(());
     };
@@ -138,6 +159,10 @@ async fn scan_active(task: &TaskCtx) -> Result<(), TaskError> {
         return Err(TaskError::Cancelled);
     }
     let mut state = cx.state().write();
+    if state.profiles.files_generation != generation {
+        // Files changed while it ran; the next ensure_scan scans again.
+        return Ok(());
+    }
     // The launch order lists every addon found, as the Java client keeps it after a scan.
     // Mirrors ui/main/AddonsPanel.java:731-738 and service/AddonService.java:374-417
     let registry = &scan.registry;

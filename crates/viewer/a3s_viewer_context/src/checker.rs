@@ -304,6 +304,11 @@ pub(crate) fn apply_results(cx: &Cx, trigger: CheckTrigger, results: &mut [Repos
             }
             state.repositories.runtime_mut(&result.name).status = update.status;
             result.status = Some(update.status);
+            if result.outcome == CheckOutcome::Ok
+                && let Err(err) = crate::profiles::refresh_modset_groups(state, &result.name)
+            {
+                failures.push((format!("Updating the groups of {}", result.name), err));
+            }
         }
     }
     for (context, err) in failures {

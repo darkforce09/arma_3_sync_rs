@@ -59,11 +59,13 @@ pub(crate) fn protocol_input(protocol: &Protocol) -> ProtocolInput {
     }
 }
 
-/// Adding a repository, or editing the one named here.
+/// Adding a repository, editing the one named here, or creating one to publish from a folder
+/// of this computer.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Mode {
     Add,
     Edit(String),
+    Publish,
 }
 
 /// The proxy fields; the proxy serves every repository.
@@ -143,6 +145,15 @@ impl RepositoryForm {
             error: None,
             cancel: CancellationToken::new(),
         }
+    }
+
+    /// The sheet creating a repository published from a folder of this computer: the address
+    /// players download from, and the source folder.
+    pub(crate) fn publish(viewer: &ViewerContext) -> Self {
+        let mut form = Self::add(viewer);
+        form.mode = Mode::Publish;
+        form.folder = None;
+        form
     }
 
     /// The sheet editing the connection of `name`; `None` when it does not exist.
@@ -245,8 +256,11 @@ impl RepositoryForm {
         let (title, ok) = match &self.mode {
             Mode::Add => ("Add repository", "Add"),
             Mode::Edit(_) => ("Edit connection", "Save"),
+            Mode::Publish => ("Publish a folder", "Create"),
         };
-        let ready = !self.name.trim().is_empty() && !self.address.trim().is_empty();
+        let ready = !self.name.trim().is_empty()
+            && !self.address.trim().is_empty()
+            && (self.mode != Mode::Publish || self.folder.is_some());
         let action = Dialog::new("a3s_viewer::sheet::repository", title)
             .ok_label(ok)
             .ok_enabled(ready && self.fetch.is_none())
@@ -256,12 +270,13 @@ impl RepositoryForm {
             DialogAction::None => Shown::Open,
             DialogAction::Ok => match self.save(viewer) {
                 Ok(name) => {
-                    let text = match &self.mode {
-                        Mode::Add => format!("Added {name}"),
-                        Mode::Edit(_) => format!("Saved {name}"),
+                    let (text, screen) = match &self.mode {
+                        Mode::Add => (format!("Added {name}"), Screen::Repository(name)),
+                        Mode::Edit(_) => (format!("Saved {name}"), Screen::Repository(name)),
+                        Mode::Publish => (format!("Created {name}"), Screen::Publishing(name)),
                     };
                     toasts.success(text);
-                    Shown::Closed(Some(SheetOutcome::Navigate(Screen::Repository(name))))
+                    Shown::Closed(Some(SheetOutcome::Navigate(screen)))
                 }
                 Err(err) => {
                     self.error = Some(err);
@@ -295,28 +310,37 @@ impl RepositoryForm {
         let ctx = ui.ctx().clone();
         let palette = theme::palette(&ctx);
         ui.set_width(480.0);
-        ui.label("Paste the auto-config link your group shared; it fills in everything else.");
-        ui.add_space(6.0);
-        frames::group(ui, |ui| {
-            let changed = text_row(
-                ui,
-                "Auto-config link",
-                &mut self.autoconfig_url,
-                "https://…/.a3s/autoconfig",
-                false,
+        let publishing = self.mode == Mode::Publish;
+        if publishing {
+            ui.label(
+                "Players download the repository from the address below. Arma3Sync builds it \
+                 in the source folder.",
             );
-            if changed && a3s_types::autoconfig_url::parse_import_url(&self.autoconfig_url).is_ok()
-            {
-                self.start_fetch(viewer, &ctx);
-            }
-        });
-        if self.fetch.is_some() {
-            ui.horizontal(|ui| {
-                ui.spinner();
-                ui.label("Reading the auto-config…");
+        } else {
+            ui.label("Paste the auto-config link your group shared; it fills in everything else.");
+            ui.add_space(6.0);
+            frames::group(ui, |ui| {
+                let changed = text_row(
+                    ui,
+                    "Auto-config link",
+                    &mut self.autoconfig_url,
+                    "https://…/.a3s/autoconfig",
+                    false,
+                );
+                if changed
+                    && a3s_types::autoconfig_url::parse_import_url(&self.autoconfig_url).is_ok()
+                {
+                    self.start_fetch(viewer, &ctx);
+                }
             });
-        } else if let Some(error) = &self.fetch_error {
-            ui.label(RichText::new(error).color(palette.status_danger));
+            if self.fetch.is_some() {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label("Reading the auto-config…");
+                });
+            } else if let Some(error) = &self.fetch_error {
+                ui.label(RichText::new(error).color(palette.status_danger));
+            }
         }
         ui.add_space(8.0);
         frames::group(ui, |ui| {
@@ -341,10 +365,14 @@ impl RepositoryForm {
             frames::group_separator(ui);
             form_row(ui, "Anonymous", |ui| toggle(ui, &mut self.anonymous));
             frames::group_separator(ui);
-            form_row(ui, "Download folder", |ui| {
+            let folder_label = if publishing {
+                "Source folder"
+            } else {
+                "Download folder"
+            };
+            form_row(ui, folder_label, |ui| {
                 if button(ui, "Choose…").clicked() {
-                    self.picker
-                        .open(&ctx, "Download folder", self.folder.as_deref());
+                    self.picker.open(&ctx, folder_label, self.folder.as_deref());
                 }
                 let text = self
                     .folder
@@ -484,6 +512,10 @@ impl RepositoryForm {
                     .client
                     .set_default_download_location(&name, None, folder.clone())
             }),
+            Mode::Publish => viewer.mutate(Some(Change::Repository), |state| {
+                state.client.create_repository(&name, &input)?;
+                state.client.set_repository_path(&name, folder.clone())
+            }),
             Mode::Edit(original) => viewer
                 .mutate(Some(Change::Repository), |state| {
                     state.client.set_repository_protocol(original, &input)?;
@@ -504,6 +536,10 @@ impl RepositoryForm {
         stored.map_err(|err| err.user_message())?;
         if self.proxy.changed {
             self.save_proxy(viewer)?;
+        }
+        if self.mode == Mode::Publish {
+            // The server may hold nothing yet; the Publishing screen reads it.
+            return Ok(name);
         }
         let check = Command::Repositories(repositories::Command::Check {
             names: vec![name.clone()],

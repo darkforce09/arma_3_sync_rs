@@ -268,6 +268,7 @@ fn detail_text(
             Some(UploadStage::Deleting) => percent("Removing old files", p),
             None => "Connecting…".to_owned(),
         },
+        StepDetail::ServedDirectly => "Not needed: the server serves the source folder".to_owned(),
         StepDetail::Uploaded { files, bytes, .. } => format!(
             "{} uploaded ({})",
             count_text(*files, "file", "files"),

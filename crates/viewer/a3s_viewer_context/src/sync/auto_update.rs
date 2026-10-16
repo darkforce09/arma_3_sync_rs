@@ -83,6 +83,7 @@ async fn run(
             }
         }
     }
+    crate::profiles::files_changed(&cx);
     cx.emit(AppEvent::Changed(Change::Repository));
 
     let error = match report.end {

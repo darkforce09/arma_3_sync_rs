@@ -181,11 +181,30 @@ fn header(ui: &mut Ui, view: &View, primary: &Primary, cx: &mut ScreenCx<'_>) {
                 details.push_str(&format!(" · {}", count_text(mods, "mod", "mods")));
             }
             ui.label(RichText::new(details).small().color(palette.text_secondary));
+            let folder = view
+                .repository
+                .default_download_location
+                .as_deref()
+                .filter(|folder| !folder.is_empty())
+                .map_or_else(
+                    || "No download folder".to_owned(),
+                    |folder| format!("Downloads to {folder}"),
+                );
+            ui.add(
+                Label::new(RichText::new(folder).small().color(palette.text_secondary)).truncate(),
+            );
         });
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.menu_button(RichText::new(icons::DOTS_THREE_CIRCLE).size(18.0), |ui| {
                 if ui.button("Edit connection…").clicked() {
                     cx.actions.push(Action::EditRepository(name.to_owned()));
+                }
+                if ui.button("Download settings…").clicked() {
+                    cx.actions.push(Action::DownloadSettings(name.to_owned()));
+                }
+                if ui.button("Publish from this computer…").clicked() {
+                    cx.actions
+                        .push(Action::Navigate(Screen::Publishing(name.to_owned())));
                 }
                 if ui.button("Check now").clicked() {
                     send(
@@ -248,10 +267,36 @@ fn primary_action(ui: &mut Ui, name: &str, primary: &Primary, cx: &mut ScreenCx<
     }
 }
 
-/// A failed comparison, and failed files of the last download.
+/// A failed check, a failed comparison, and failed files of the last download.
 fn notices(ui: &mut Ui, view: &View, cx: &mut ScreenCx<'_>) {
     let palette = theme::palette(ui.ctx());
     let name = view.repository.name.as_str();
+    if let Some(error) = &view.runtime.last_check_error
+        && !view.runtime.checking
+    {
+        ui.add_space(12.0);
+        frames::group(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(icons::WARNING).color(palette.status_danger));
+                ui.add(
+                    Label::new(format!("Cannot check the repository: {}", error.message)).wrap(),
+                );
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if button(ui, "Edit connection…").clicked() {
+                        cx.actions.push(Action::EditRepository(name.to_owned()));
+                    }
+                    if button(ui, "Check again").clicked() {
+                        send(
+                            cx,
+                            Command::Repositories(repositories::Command::Check {
+                                names: vec![name.to_owned()],
+                            }),
+                        );
+                    }
+                });
+            });
+        });
+    }
     if let Some(PlanState {
         result: Err(error), ..
     }) = &view.plan

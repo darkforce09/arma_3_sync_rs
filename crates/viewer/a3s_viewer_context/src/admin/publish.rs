@@ -141,6 +141,9 @@ pub enum StepDetail {
         /// Progress of a check or delete stage.
         percent: Option<u8>,
     },
+    /// No upload: there is no upload connection, and the server, which serves the source
+    /// folder itself, holds every file.
+    ServedDirectly,
     /// The upload finished.
     Uploaded {
         /// Files uploaded.
@@ -499,11 +502,7 @@ async fn upload(task: &TaskCtx, name: &str) -> Result<(), StepEnd> {
     let repository = repository(&cx, name)?;
     let proxy = cx.state().read().client.proxy().clone();
     let Some(protocol) = repository.upload_protocol.clone() else {
-        let err = UploadError::UploadProtocolNotSet;
-        return Err(StepEnd::Failed(EventError::new(
-            err.kind(),
-            err.user_message(),
-        )));
+        return served_directly(&cx, name);
     };
     let options = transport_options(&protocol, &proxy).map_err(|err| {
         StepEnd::Failed(EventError::new(ErrorKind::InvalidInput, err.to_string()))
@@ -588,6 +587,32 @@ async fn upload(task: &TaskCtx, name: &str) -> Result<(), StepEnd> {
         Err(err) => Err(StepEnd::Failed(EventError::new(
             err.kind(),
             err.user_message(),
+        ))),
+    }
+}
+
+/// Without an upload connection the build counts as published when the server, which then
+/// serves the source folder itself, holds every file of it.
+fn served_directly(cx: &Cx, name: &str) -> Result<(), StepEnd> {
+    let verified = cx
+        .state()
+        .read()
+        .admin
+        .repositories
+        .get(name)
+        .and_then(|publishing| publishing.run.as_ref())
+        .map(|run| run.step(PublishStep::Verify).detail.clone());
+    match verified {
+        Some(StepDetail::Verified { missing: 0, .. }) => {
+            update(cx, name, PublishStep::Upload, |state| {
+                state.detail = StepDetail::ServedDirectly;
+            });
+            Ok(())
+        }
+        _ => Err(StepEnd::Failed(EventError::new(
+            UploadError::UploadProtocolNotSet.kind(),
+            "The server does not hold this build and there is no upload connection. Set one \
+             in Settings, or serve the source folder at the repository's address.",
         ))),
     }
 }

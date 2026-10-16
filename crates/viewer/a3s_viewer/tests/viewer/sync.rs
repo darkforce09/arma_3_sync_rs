@@ -9,7 +9,7 @@ use a3s_foundation::error::ErrorKind;
 use a3s_sync::{EventError, SyncEvent, TransferProgress};
 use a3s_test_servers::Fixture as Server;
 use a3s_types::AutoConfig;
-use a3s_types::local::Repository;
+use a3s_types::local::{Profile, Repository};
 use a3s_viewer::{Screen, SheetKind, Shell};
 use a3s_viewer_context::sync::{DownloadRecord, DownloadResult};
 use a3s_viewer_context::{TaskError, TaskKey, TaskKind};
@@ -124,9 +124,12 @@ fn update_downloads_the_repository() {
     let destination = tempfile::tempdir().expect("destination");
     let mut repository = Repository::new("Local", server.protocol.clone());
     repository.default_download_location = Some(destination.path().display().to_string());
+    let mut profile = Profile::new("Default");
+    profile.addon_search_directories = vec![destination.path().display().to_string()];
 
     let mut fixture = fixture(Start {
         repositories: vec![repository],
+        profiles: Some(vec![profile]),
         ..Start::default()
     });
     let harness = &mut fixture.harness;
@@ -157,6 +160,20 @@ fn update_downloads_the_repository() {
             .is_none()
     });
     harness.get_by_label_contains("Up to date");
+    // The mods folder is scanned again, so the new mods count as installed.
+    wait_until(harness, "the scan of the new mods", |shell| {
+        shell
+            .viewer()
+            .read()
+            .profiles
+            .scan
+            .as_ref()
+            .is_some_and(|scan| {
+                scan.registry
+                    .keys()
+                    .any(|key| key.eq_ignore_ascii_case("@Mod_A"))
+            })
+    });
 }
 
 #[test]

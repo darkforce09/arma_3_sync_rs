@@ -74,6 +74,9 @@ fn menu(ui: &mut Ui, actions: &mut Vec<Action>) {
         {
             actions.push(Action::CheckNow);
         }
+        if ui.button("Rescan mods folders").clicked() {
+            actions.push(Action::Rescan);
+        }
         if ui
             .add(Button::new("Settings…").shortcut_text(ctx.format_shortcut(&shortcuts::SETTINGS)))
             .clicked()

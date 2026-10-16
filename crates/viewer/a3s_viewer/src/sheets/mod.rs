@@ -1,6 +1,7 @@
 //! Sheets: short modal tasks over the dimmed main window, shown one at a time in queue order.
 
 pub(crate) mod add_repository;
+pub(crate) mod download_settings;
 mod exit;
 mod launcher_preset;
 mod load_warnings;
@@ -16,6 +17,7 @@ use a3s_tools::preset::ImportResult;
 use a3s_viewer_context::ViewerContext;
 
 use self::add_repository::{Mode, RepositoryForm};
+use self::download_settings::DownloadSettings;
 pub(crate) use self::exit::ExitPrompt;
 use self::path_list::PathList;
 pub use self::path_list::PathListKind;
@@ -45,6 +47,12 @@ pub enum SheetKind {
     /// Editing a repository's connection.
     EditRepository,
 
+    /// Creating a repository published from a folder of this computer.
+    PublishFolder,
+
+    /// Where and how a repository downloads.
+    DownloadSettings,
+
     /// Files that failed in the last download of a repository.
     UpdateIssues,
 
@@ -70,6 +78,7 @@ pub(crate) enum Sheet {
     LoadWarnings(Vec<String>),
     Exit(ExitPrompt),
     Repository(Box<RepositoryForm>),
+    DownloadSettings(DownloadSettings),
     UpdateIssues(UpdateIssues),
     LauncherPreset(Box<ImportResult>),
     Server(Box<ServerSheet>),
@@ -86,9 +95,19 @@ impl Sheet {
         Self::Repository(Box::new(RepositoryForm::add(viewer)))
     }
 
+    /// The sheet creating a repository to publish from a folder of this computer.
+    pub(crate) fn publish_folder(viewer: &ViewerContext) -> Self {
+        Self::Repository(Box::new(RepositoryForm::publish(viewer)))
+    }
+
     /// The Upload connection sheet of `repository`.
     pub(crate) fn upload_connection(viewer: &ViewerContext, repository: &str) -> Self {
         Self::UploadConnection(Box::new(UploadConnection::new(viewer, repository)))
+    }
+
+    /// The Download settings sheet of `repository`.
+    pub(crate) fn download_settings(repository: &str) -> Self {
+        Self::DownloadSettings(DownloadSettings::new(repository))
     }
 
     /// The sheet editing the `kind` list of `repository`.
@@ -101,6 +120,15 @@ impl Sheet {
         RepositoryForm::edit(viewer, name).map(|form| Self::Repository(Box::new(form)))
     }
 
+    /// Whether `other` is the same sheet: the same kind, and for Update issues the same
+    /// repository.
+    fn same_as(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::UpdateIssues(a), Self::UpdateIssues(b)) => a.repository() == b.repository(),
+            _ => self.kind() == other.kind(),
+        }
+    }
+
     fn kind(&self) -> SheetKind {
         match self {
             Self::Welcome(_) => SheetKind::Welcome,
@@ -109,7 +137,9 @@ impl Sheet {
             Self::Repository(form) => match form.mode() {
                 Mode::Add => SheetKind::AddRepository,
                 Mode::Edit(_) => SheetKind::EditRepository,
+                Mode::Publish => SheetKind::PublishFolder,
             },
+            Self::DownloadSettings(_) => SheetKind::DownloadSettings,
             Self::UpdateIssues(_) => SheetKind::UpdateIssues,
             Self::LauncherPreset(_) => SheetKind::LauncherPreset,
             Self::Server(sheet) if sheet.adds() => SheetKind::AddServer,
@@ -152,21 +182,17 @@ pub(crate) struct Sheets {
 }
 
 impl Sheets {
-    /// Queues `sheet` after the others; a sheet of the same kind already queued is kept and
-    /// the new one dropped.
+    /// Queues `sheet` after the others; the same sheet already queued is kept and the new one
+    /// dropped.
     pub(crate) fn push(&mut self, sheet: Sheet) {
-        if !self
-            .queue
-            .iter()
-            .any(|queued| queued.kind() == sheet.kind())
-        {
+        if !self.queue.iter().any(|queued| queued.same_as(&sheet)) {
             self.queue.push_back(sheet);
         }
     }
 
-    /// Shows `sheet` before the others, replacing a queued sheet of the same kind.
+    /// Shows `sheet` before the others, replacing the same sheet when it is queued.
     pub(crate) fn push_front(&mut self, sheet: Sheet) {
-        self.queue.retain(|queued| queued.kind() != sheet.kind());
+        self.queue.retain(|queued| !queued.same_as(&sheet));
         self.queue.push_front(sheet);
     }
 
@@ -188,6 +214,7 @@ impl Sheets {
             Sheet::LoadWarnings(warnings) => load_warnings::show(ctx, warnings),
             Sheet::Exit(prompt) => exit::show(ctx, prompt),
             Sheet::Repository(form) => form.show(ctx, viewer, toasts),
+            Sheet::DownloadSettings(sheet) => sheet.show(ctx, viewer, toasts),
             Sheet::UpdateIssues(issues) => issues.show(ctx, viewer, toasts),
             Sheet::LauncherPreset(result) => launcher_preset::show(ctx, result, viewer, toasts),
             Sheet::Server(sheet) => sheet.show(ctx, viewer, toasts),

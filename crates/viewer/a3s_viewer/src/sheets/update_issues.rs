@@ -33,6 +33,11 @@ pub(crate) struct UpdateIssues {
 }
 
 impl UpdateIssues {
+    /// The repository whose failed files it lists.
+    pub(crate) fn repository(&self) -> &str {
+        &self.repository
+    }
+
     pub(crate) fn new(repository: impl Into<String>, game_starting: bool) -> Self {
         Self {
             repository: repository.into(),

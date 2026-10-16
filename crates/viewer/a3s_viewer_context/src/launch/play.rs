@@ -59,6 +59,7 @@ fn has_selected_leaf(directory: &TreeDirectory) -> bool {
 
 async fn run(task: TaskCtx, update_first: bool) -> Result<(), TaskError> {
     let cx = task.cx.clone();
+    use_joined_server_preset(&cx);
     if update_first {
         update(&task).await;
         if task.cancel.is_cancelled() {
@@ -162,6 +163,32 @@ fn game_events(cx: &Cx, started: oneshot::Sender<Result<(), EventError>>) -> Eve
         }
         cx.emit(AppEvent::Launch(Event::Game(event)));
     })
+}
+
+/// Enables exactly the preset group of the server the launch joins, when it has one, so the
+/// game starts with the mods the server expects.
+// Mirrors ui/main/LaunchPanel.java:221-257,270
+fn use_joined_server_preset(cx: &Cx) {
+    let mut state = cx.state().write();
+    let configuration = state.client.configuration();
+    let Some(group) = configuration
+        .server_name
+        .as_ref()
+        .and(configuration.default_modset.clone())
+    else {
+        return;
+    };
+    match crate::profiles::use_group_preset(&mut state, &group) {
+        Ok(true) => {
+            drop(state);
+            cx.emit(AppEvent::Changed(crate::event::Change::AddonSelection));
+        }
+        Ok(false) => {}
+        Err(err) => tracing::warn!(
+            "Cannot enable the server preset {group}: {}",
+            err.user_message()
+        ),
+    }
 }
 
 /// Emits [`Event::MissingAddons`] for selected addons that are not on this computer.

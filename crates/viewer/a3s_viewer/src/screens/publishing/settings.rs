@@ -47,6 +47,12 @@ pub(super) fn show(ui: &mut Ui, view: &View, state: &mut SettingsState, cx: &mut
             let text = repository.path.clone().unwrap_or_else(|| "None".to_owned());
             ui.add(Label::new(text).truncate());
         });
+        frames::group_separator(ui);
+        form_row(ui, "Publishing from this computer", |ui| {
+            if button(ui, "Stop").clicked() {
+                stop_publishing(cx, repository);
+            }
+        });
     });
 
     section_title(ui, "Upload");
@@ -222,6 +228,73 @@ fn store(
         .mutate(Some(Change::Repository), |state| f(&mut state.client))
     {
         cx.toasts.error(err.user_message());
+    }
+}
+
+/// Before a source folder is chosen: what publishing does, and the folder dialog.
+pub(super) fn choose_source(
+    ui: &mut Ui,
+    view: &View,
+    state: &mut SettingsState,
+    cx: &mut ScreenCx<'_>,
+) {
+    let name = view.name();
+    if let Some(folder) = state.picker.poll() {
+        set_source(cx, name, &folder);
+    }
+    let palette = theme::palette(ui.ctx());
+    ui.with_layout(Layout::top_down(Align::Center), |ui| {
+        ui.add_space((ui.available_height() / 4.0).max(24.0));
+        ui.label(
+            RichText::new(a3s_ui::icon::icons::CLOUD_ARROW_UP)
+                .size(40.0)
+                .color(palette.text_secondary),
+        );
+        ui.add_space(8.0);
+        ui.label(RichText::new(format!("Publish {name} from this computer")).heading());
+        ui.label(
+            RichText::new(
+                "Choose the folder that holds the repository's mods. Arma3Sync builds the \
+                 repository in it and uploads it to the server.",
+            )
+            .color(palette.text_secondary),
+        );
+        ui.add_space(12.0);
+        if a3s_ui::widgets::primary_button(ui, "Choose source folder…").clicked() {
+            state.picker.open(ui.ctx(), "Source folder", None);
+        }
+    });
+}
+
+/// Stops publishing `repository` from this computer: forgets its source folder, with Undo.
+fn stop_publishing(cx: &mut ScreenCx<'_>, repository: &Repository) {
+    let name = repository.name.clone();
+    let previous = repository.path.clone();
+    let stored = cx.viewer.mutate(Some(Change::Repository), |state| {
+        state.client.set_repository_path(&name, None)?;
+        admin::forget(state, &name);
+        Ok::<(), ServiceError>(())
+    });
+    match stored {
+        Ok(()) => {
+            cx.toasts.undoable(
+                format!("Stopped publishing {name}"),
+                move |viewer: &ViewerContext| {
+                    let restored = viewer.mutate(Some(Change::Repository), |state| {
+                        state.client.set_repository_path(&name, previous)
+                    });
+                    match restored {
+                        Ok(()) => refresh(viewer, &name),
+                        Err(err) => tracing::warn!("Cannot undo: {}", err.user_message()),
+                    }
+                },
+            );
+            cx.actions
+                .push(Action::Navigate(crate::shell::Screen::Repository(
+                    repository.name.clone(),
+                )));
+        }
+        Err(err) => cx.toasts.error(err.user_message()),
     }
 }
 
