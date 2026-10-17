@@ -1,7 +1,8 @@
 //! Headless tests of the main window (routing, sheets, the Play button, toasts, quitting, the
-//! Mods, Servers and Publishing screens, the player sync loop), of the Settings window and of
-//! the tool windows.
+//! Mods, Servers, Game and Publishing screens, the player sync loop), of the Settings window
+//! and of the tool windows.
 
+mod game;
 mod mods;
 mod publishing;
 mod repository;

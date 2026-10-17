@@ -1,12 +1,12 @@
-//! Game: the Arma 3 folder, how the game starts, BattlEye, the in-game name and the launch
-//! options of one profile, with the command line they give.
+//! The Game screen: the Arma 3 folder, how the game starts, BattlEye, the in-game name and every
+//! launch option of the active profile on one page, with the command line they give.
 
 use std::cell::OnceCell;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc;
 
-use a3s_addons::{AddonRegistry, ScanOptions, scan};
+use a3s_addons::AddonRegistry;
+use a3s_foundation::error::UserFacing as _;
 use a3s_foundation::paths::Os;
 use a3s_launch::command::command_line;
 use a3s_launch::executable::{battleye_toggle_path, file_name, is_battleye};
@@ -18,84 +18,24 @@ use a3s_platform::detect::ARMA3_X64_EXE;
 use a3s_platform::folders::{arma3_documents_dir, game_profile_names};
 use a3s_types::constants::MaxMemoryValue;
 use a3s_types::local::{Configuration, GameStart, LauncherOptions, Profile};
-use a3s_ui::dialog::{Dialog, DialogAction, DialogButton};
 use a3s_ui::frames;
+use a3s_ui::icon::icons;
+use a3s_ui::theme;
 use a3s_ui::widgets::{button, form_row, popup_button, toggle};
 use a3s_viewer_context::Change;
+use a3s_viewer_context::profiles::ScanKey;
 use egui::{Label, Response, RichText, TextEdit, Ui};
 
-use super::{PaneCx, group_heading, note};
+use super::ScreenCx;
 use crate::desktop::Desktop;
 use crate::fields::{labelled_row, toggle_row};
 use crate::picker::{FilePicker, FolderPicker};
 
-/// A "Customize…" sheet of the Game pane.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Customize {
-    Performance,
-    Developer,
-}
-
-/// What an addon scan was made from; a change scans again.
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct ScanKey {
-    profile: String,
-    search_directories: Vec<String>,
-    arma3_exe_path: Option<String>,
-}
-
-/// The addons of the shown profile, scanned on a named thread for the command-line preview.
+/// The state of the Game screen, kept across frames.
 #[derive(Default)]
-struct Addons {
-    key: Option<ScanKey>,
-    registry: AddonRegistry,
-    pending: Option<mpsc::Receiver<AddonRegistry>>,
-}
-
-impl Addons {
-    /// The registry of `profile`, scanning again when its folders changed; empty until the
-    /// first scan finished.
-    fn registry(&mut self, ctx: &egui::Context, profile: &Profile) -> &AddonRegistry {
-        if let Some(receiver) = &self.pending
-            && let Ok(registry) = receiver.try_recv()
-        {
-            self.registry = registry;
-            self.pending = None;
-        }
-        let key = ScanKey {
-            profile: profile.name.clone(),
-            search_directories: profile.addon_search_directories.clone(),
-            arma3_exe_path: profile.launcher_options.arma3_exe_path.clone(),
-        };
-        if self.key.as_ref() != Some(&key) {
-            self.key = Some(key);
-            let (sender, receiver) = mpsc::channel();
-            let profile = profile.clone();
-            let ctx = ctx.clone();
-            let spawned = std::thread::Builder::new()
-                .name("a3s-addon-scan".to_owned())
-                .spawn(move || {
-                    sender
-                        .send(scan(&profile, &ScanOptions::default()).registry)
-                        .ok();
-                    ctx.request_repaint();
-                });
-            match spawned {
-                Ok(_) => self.pending = Some(receiver),
-                Err(err) => tracing::warn!("Cannot scan the addons: {err}"),
-            }
-        }
-        &self.registry
-    }
-}
-
-#[derive(Default)]
-pub(super) struct GamePane {
-    /// The profile shown; the active one until another is chosen.
-    profile: Option<String>,
+pub(crate) struct GameScreen {
     folder_picker: FolderPicker,
     mission_picker: FilePicker,
-    customize: Option<Customize>,
 
     /// The extra parameters while their field has the focus.
     extra_parameters: Option<String>,
@@ -105,52 +45,41 @@ pub(super) struct GamePane {
 
     /// The Steam client, looked up once.
     steam: OnceCell<Option<SteamCommand>>,
-    addons: Addons,
 
     /// The memory allocators of the Arma 3 `Dll` folder, by the executable they were read for.
     allocators: Option<(Option<String>, Vec<String>)>,
 }
 
-impl GamePane {
-    pub(super) fn show(&mut self, ui: &mut Ui, cx: &mut PaneCx<'_>) {
-        let (names, active, configuration) = {
+impl GameScreen {
+    pub(crate) fn show(&mut self, ui: &mut Ui, cx: &mut ScreenCx<'_>) {
+        let (profile, configuration, registry) = {
             let state = cx.viewer.read();
+            let registry = ScanKey::of_active(&state.client)
+                .and_then(|key| {
+                    state
+                        .profiles
+                        .scan
+                        .as_ref()
+                        .filter(|scan| scan.key == key)
+                        .map(|scan| scan.registry.clone())
+                })
+                .unwrap_or_default();
             (
-                state.client.profile_names(),
-                state.client.active_profile_name().to_owned(),
+                state.client.active_profile().cloned(),
                 state.client.configuration().clone(),
+                registry,
             )
         };
-        let mut name = self
-            .profile
-            .clone()
-            .filter(|name| names.contains(name))
-            .unwrap_or(active);
-        let Some(mut profile) = cx.viewer.read().client.profile(&name).cloned() else {
-            note(ui, "There is no profile to edit.");
+        let Some(mut profile) = profile else {
+            super::empty_state(
+                ui,
+                icons::GAME_CONTROLLER,
+                "No profile",
+                "Create a profile in Settings to set up the game.",
+            );
             return;
         };
         let before = profile.clone();
-
-        labelled_row(ui, "Profile", |ui| {
-            let options: Vec<(String, &str)> = names
-                .iter()
-                .map(|name| (name.clone(), name.as_str()))
-                .collect();
-            popup_button(
-                ui,
-                "a3s_viewer::settings::game_profile",
-                &mut name,
-                &options,
-            )
-        });
-        if name != profile.name {
-            self.profile = Some(name);
-            self.extra_parameters = None;
-            return;
-        }
-        self.profile = Some(name.clone());
-
         if let Some(dir) = self.folder_picker.poll() {
             profile.launcher_options.arma3_exe_path =
                 Some(dir.join(ARMA3_X64_EXE).display().to_string());
@@ -159,76 +88,58 @@ impl GamePane {
             profile.launcher_options.mission_file_path = Some(file.display().to_string());
             profile.launcher_options.mission_file = true;
         }
-
-        group_heading(ui, "Arma 3");
-        frames::group(ui, |ui| self.game_rows(ui, cx, &mut profile));
-        group_heading(ui, "Options");
-        frames::group(ui, |ui| {
-            option_rows(ui, &mut profile.launcher_options);
-            frames::group_separator(ui);
-            form_row(ui, "Performance", |ui| {
-                if button(ui, "Customize…").clicked() {
-                    self.customize = Some(Customize::Performance);
-                }
-            });
-            frames::group_separator(ui);
-            form_row(ui, "Developer", |ui| {
-                if button(ui, "Customize…").clicked() {
-                    self.customize = Some(Customize::Developer);
-                }
-            });
-        });
-
-        let closed = match self.customize {
-            Some(Customize::Performance) => {
-                let allocators =
-                    self.allocators(profile.launcher_options.arma3_exe_path.as_deref());
-                sheet(ui.ctx(), "Performance", |ui| {
-                    performance_rows(ui, &mut profile.launcher_options, &allocators);
-                })
-            }
-            Some(Customize::Developer) => sheet(ui.ctx(), "Developer", |ui| {
-                self.developer_rows(ui, &mut profile);
-            }),
-            None => false,
-        };
-        if closed {
-            self.customize = None;
-            if let Some(text) = self.extra_parameters.take() {
-                profile.additional_parameters = (!text.trim().is_empty()).then_some(text);
-            }
-        }
-
-        group_heading(ui, "Command line");
+        let allocators = self.allocators(profile.launcher_options.arma3_exe_path.as_deref());
         let steam = self
             .steam
             .get_or_init(|| cx.desktop.env.as_ref().and_then(find_steam_command))
             .clone();
-        let registry = self.addons.registry(ui.ctx(), &profile);
-        let preview = command_preview(&profile, &configuration, registry, steam);
-        frames::group(ui, |ui| {
-            if preview.is_empty() {
-                note(ui, "No parameters.");
-            } else {
-                ui.add(
-                    Label::new(RichText::new(preview).monospace())
-                        .wrap()
-                        .selectable(true),
-                );
-            }
-        });
+
+        egui::ScrollArea::vertical()
+            .auto_shrink(false)
+            .show(ui, |ui| {
+                ui.columns(2, |columns| {
+                    let [left, right] = columns else {
+                        return;
+                    };
+                    group_heading(left, "Arma 3");
+                    frames::group(left, |ui| self.game_rows(ui, cx, &mut profile));
+                    group_heading(left, "Options");
+                    frames::group(left, |ui| option_rows(ui, &mut profile.launcher_options));
+                    group_heading(right, "Performance");
+                    performance_rows(right, &mut profile.launcher_options, &allocators);
+                    group_heading(right, "Developer");
+                    self.developer_rows(right, &mut profile);
+                });
+                group_heading(ui, "Command line");
+                let preview = command_preview(&profile, &configuration, &registry, steam);
+                frames::group(ui, |ui| {
+                    if preview.is_empty() {
+                        note(ui, "No parameters.");
+                    } else {
+                        ui.add(
+                            Label::new(RichText::new(preview).monospace())
+                                .wrap()
+                                .selectable(true),
+                        );
+                    }
+                });
+            });
 
         if profile != before {
-            cx.save(Some(Change::Profile), |client| {
-                client.update_profile(&name, |stored| {
+            let name = profile.name.clone();
+            let saved = cx.viewer.mutate(Some(Change::Profile), |state| {
+                state.client.update_profile(&name, |stored| {
                     *stored = profile;
                     true
                 })
             });
+            if let Err(err) = saved {
+                cx.toasts.error(err.user_message());
+            }
         }
     }
 
-    fn game_rows(&mut self, ui: &mut Ui, cx: &mut PaneCx<'_>, profile: &mut Profile) {
+    fn game_rows(&mut self, ui: &mut Ui, cx: &mut ScreenCx<'_>, profile: &mut Profile) {
         let options = &mut profile.launcher_options;
         let exe = options
             .arma3_exe_path
@@ -403,19 +314,6 @@ fn dll_names(folder: &Path) -> Vec<String> {
     names
 }
 
-/// Shows a "Customize…" sheet; whether it was closed.
-fn sheet(ctx: &egui::Context, title: &str, add_contents: impl FnOnce(&mut Ui)) -> bool {
-    let action = Dialog::new(("a3s_viewer::settings::customize", title), title)
-        .show_ok(false)
-        .cancel_label("Done")
-        .default_button(Some(DialogButton::Cancel))
-        .show(ctx, |ui| {
-            ui.set_width(380.0);
-            add_contents(ui);
-        });
-    action != DialogAction::None
-}
-
 // The explanations mirror ui/main/LauncherOptionsPanel.java:693-713
 fn option_rows(ui: &mut Ui, options: &mut LauncherOptions) {
     let rows: [(&str, &str, &mut bool); 6] = [
@@ -557,7 +455,7 @@ fn game_profiles(desktop: &Desktop) -> Vec<String> {
 
 /// The command the game would start with, for display: the command Play plans
 /// ([`plan_launch`]) when the executable is set and usable, the parameters alone otherwise.
-pub(super) fn command_preview(
+pub(crate) fn command_preview(
     profile: &Profile,
     configuration: &Configuration,
     registry: &AddonRegistry,
@@ -585,4 +483,17 @@ pub(super) fn command_preview(
             mod_path_style: ModPathStyle::native(),
         })),
     }
+}
+
+/// A line of secondary text.
+fn note(ui: &mut Ui, text: impl Into<String>) {
+    let color = theme::palette(ui.ctx()).text_secondary;
+    ui.add(Label::new(RichText::new(text.into()).color(color)).wrap());
+}
+
+/// A heading above a group.
+fn group_heading(ui: &mut Ui, text: &str) {
+    ui.add_space(8.0);
+    ui.label(RichText::new(text).strong());
+    ui.add_space(2.0);
 }

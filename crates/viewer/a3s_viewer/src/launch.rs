@@ -11,9 +11,8 @@ use a3s_types::local::TreeNode;
 use a3s_viewer_context::{Command, ViewerContext, launch};
 
 use crate::sheets::{PlayCheck, Sheet, Sheets};
-use crate::shell::Action;
+use crate::shell::{Action, Screen};
 use crate::toasts::Toaster;
-use crate::windows::SettingsPane;
 
 /// What the Play button asks for.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -49,11 +48,7 @@ pub(crate) fn request(
         Some(_) => None,
     };
     if let Some(problem) = problem {
-        toasts.action(
-            problem,
-            "Choose folder…",
-            Action::OpenSettings(SettingsPane::Game),
-        );
+        toasts.action(problem, "Choose folder…", Action::Navigate(Screen::Game));
         return;
     }
     if !play.checked

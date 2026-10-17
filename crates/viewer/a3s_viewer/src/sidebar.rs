@@ -58,6 +58,10 @@ pub(crate) fn show(ui: &mut Ui, view: &SidebarView<'_>) -> Option<Action> {
                             Screen::Servers,
                             SidebarItem::new(icons::HARD_DRIVES, "Servers"),
                         ),
+                        (
+                            Screen::Game,
+                            SidebarItem::new(icons::GAME_CONTROLLER, "Game"),
+                        ),
                         (Screen::Activity, {
                             let item = SidebarItem::new(icons::PULSE, "Activity");
                             if view.running_tasks > 0 {

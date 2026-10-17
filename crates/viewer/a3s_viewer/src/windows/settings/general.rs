@@ -26,15 +26,17 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// The appearance choice, stored in the preferences' look-and-feel field: the Java client's
 /// dark look ("Noire") reads as Dark, its other named looks as Light, and the default look as
 /// Auto (follow the system).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum Appearance {
     Light,
     Dark,
+    #[default]
     Auto,
 }
 
 impl Appearance {
-    const ALL: [Self; 3] = [Self::Light, Self::Dark, Self::Auto];
+    /// Every choice, in display order.
+    pub(crate) const ALL: [Self; 3] = [Self::Light, Self::Dark, Self::Auto];
 
     /// The appearance a stored look stands for.
     pub(crate) fn from_look(look: LookAndFeel) -> Self {
@@ -48,7 +50,8 @@ impl Appearance {
         }
     }
 
-    fn look(self) -> LookAndFeel {
+    /// The look stored for this appearance.
+    pub(crate) fn look(self) -> LookAndFeel {
         match self {
             Self::Light => LookAndFeel::LafMetal,
             Self::Dark => LookAndFeel::LafNoire,
@@ -65,7 +68,8 @@ impl Appearance {
         }
     }
 
-    fn label(self) -> &'static str {
+    /// The appearance's name.
+    pub(crate) fn label(self) -> &'static str {
         match self {
             Self::Light => "Light",
             Self::Dark => "Dark",

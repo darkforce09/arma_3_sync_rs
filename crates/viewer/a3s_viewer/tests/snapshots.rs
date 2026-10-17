@@ -362,14 +362,25 @@ fn settings_general_dark() {
     );
 }
 
-#[test]
-fn settings_game_light() {
-    settings_snapshot("settings_game_light", SettingsPane::Game, ThemeMode::Light);
+fn game_snapshot(name: &str, mode: ThemeMode) {
+    let mut fixture = fixture_with(Start::default(), |builder| {
+        builder.with_theme(mode.into()).wgpu()
+    });
+    theme::set_mode(&fixture.harness.ctx, mode);
+    fixture.harness.get_by_label("Game").click();
+    fixture.harness.run();
+    assert_eq!(*fixture.harness.state().screen(), Screen::Game);
+    fixture.harness.snapshot(name);
 }
 
 #[test]
-fn settings_game_dark() {
-    settings_snapshot("settings_game_dark", SettingsPane::Game, ThemeMode::Dark);
+fn game_light() {
+    game_snapshot("game_light", ThemeMode::Light);
+}
+
+#[test]
+fn game_dark() {
+    game_snapshot("game_dark", ThemeMode::Dark);
 }
 
 #[test]

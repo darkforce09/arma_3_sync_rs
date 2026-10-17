@@ -26,7 +26,7 @@ use crate::sheets::{
 use crate::sidebar::{self, SidebarView};
 use crate::snapshot::Snapshot;
 use crate::toasts::Toaster;
-use crate::windows::{SecondaryWindow, SecondaryWindows, SettingsPane};
+use crate::windows::{Appearance, SecondaryWindow, SecondaryWindows, SettingsPane};
 use crate::{screens, shortcuts, toolbar};
 
 /// How narrow and how wide the sidebar can be dragged, in points.
@@ -40,6 +40,9 @@ pub enum Screen {
 
     /// Favourite servers.
     Servers,
+
+    /// The game and its launch options for the active profile.
+    Game,
 
     /// Running and recent transfers.
     Activity,
@@ -57,6 +60,7 @@ impl Screen {
         match self {
             Self::Mods => "Mods".to_owned(),
             Self::Servers => "Servers".to_owned(),
+            Self::Game => "Game".to_owned(),
             Self::Activity => "Activity".to_owned(),
             Self::Repository(name) => name.clone(),
             Self::Publishing(name) => format!("Publish {name}"),
@@ -79,6 +83,7 @@ pub(crate) enum Action {
     SelectProfile(String),
     Open(SecondaryWindow),
     OpenSettings(SettingsPane),
+    SetAppearance(Appearance),
     CheckNow,
     About,
     CancelCheck,
@@ -129,6 +134,9 @@ pub struct Shell {
     toasts: Toaster,
     windows: SecondaryWindows,
     screens: ScreenStates,
+
+    /// The desktop the Game screen and the Settings window integrate with.
+    desktop: Desktop,
     requests: mpsc::Receiver<WindowRequest>,
     tray_available: bool,
     hidden: bool,
@@ -158,6 +166,7 @@ impl Shell {
             sheets,
             toasts: Toaster::default(),
             windows: SecondaryWindows::new(Desktop::system(None)),
+            desktop: Desktop::system(None),
             screens: ScreenStates::default(),
             requests: setup.requests,
             tray_available: false,
@@ -177,10 +186,11 @@ impl Shell {
         }
     }
 
-    /// The desktop the Settings window integrates with (autostart, shortcuts, the Arma 3 user
-    /// folder, the logs); the real one by default.
+    /// The desktop the Game screen and the Settings window integrate with (autostart,
+    /// shortcuts, Steam, the Arma 3 user folder, the logs); the real one by default.
     pub fn set_desktop(&mut self, desktop: Desktop) {
-        self.windows.set_desktop(desktop);
+        self.windows.set_desktop(desktop.clone());
+        self.desktop = desktop;
     }
 
     /// Where the window leaves an installed update to start once it closed.
@@ -325,6 +335,7 @@ impl Shell {
                     search: &self.search,
                     toasts: &mut self.toasts,
                     sheets: &mut self.sheets,
+                    desktop: &self.desktop,
                     actions: Vec::new(),
                 };
                 screens::show(ui, &self.screen, &mut self.screens, &mut screen);
@@ -380,6 +391,17 @@ impl Shell {
         self.apply_with(ctx, action, &snapshot);
     }
 
+    /// Stores `appearance` in the preferences and applies it, as the General pane of Settings
+    /// does.
+    fn set_appearance(&mut self, ctx: &egui::Context, appearance: Appearance) {
+        let mut preferences = self.viewer.read().client.preferences().clone();
+        preferences.look_and_feel = appearance.look();
+        match self.viewer.set_preferences(preferences) {
+            Ok(()) => ctx.set_theme(appearance.theme()),
+            Err(err) => self.toasts.error(err.user_message()),
+        }
+    }
+
     fn apply_with(&mut self, ctx: &egui::Context, action: Action, snapshot: &Snapshot) {
         match action {
             Action::Navigate(screen) => self.screen = screen,
@@ -420,6 +442,7 @@ impl Shell {
             Action::OpenSettings(pane) => self.windows.open_settings(ctx, pane),
             Action::CheckNow => self.check_now(snapshot),
             Action::About => self.sheets.push(Sheet::About),
+            Action::SetAppearance(appearance) => self.set_appearance(ctx, appearance),
             Action::StopAutoRestart => {
                 let game = self
                     .viewer

@@ -9,6 +9,8 @@ use a3s_viewer_context::launch::enabled_modset_repositories;
 use a3s_viewer_context::sync::{self, NodeStatus};
 use a3s_viewer_context::{AppState, RepositoryRuntime};
 
+use crate::windows::Appearance;
+
 /// The sidebar badge of a repository.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Badge {
@@ -61,6 +63,9 @@ pub(crate) struct Snapshot {
 
     /// The game runs and starts again when it closes (the profile's auto-restart).
     pub(crate) restarting: bool,
+
+    /// The appearance chosen in the preferences.
+    pub(crate) appearance: Appearance,
 }
 
 impl Snapshot {
@@ -112,6 +117,7 @@ impl Snapshot {
             profiles: client.profile_names(),
             active_profile: client.active_profile_name().to_owned(),
             profile_has_updates,
+            appearance: Appearance::from_look(client.preferences().look_and_feel),
         }
     }
 }

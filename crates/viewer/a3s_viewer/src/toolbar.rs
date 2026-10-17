@@ -3,13 +3,13 @@
 
 use a3s_ui::frames;
 use a3s_ui::icon::icons;
-use a3s_ui::widgets::{popup_button, primary_button};
+use a3s_ui::widgets::primary_button;
 use egui::{Align, Button, Id, Layout, RichText, TextEdit, Ui};
 
 use crate::shell::Action;
 use crate::shortcuts;
 use crate::snapshot::Snapshot;
-use crate::windows::SecondaryWindow;
+use crate::windows::{Appearance, SecondaryWindow, SettingsPane};
 
 /// The id of the search field, for the focus shortcut.
 pub(crate) fn search_id() -> Id {
@@ -50,18 +50,27 @@ pub(crate) fn show(
                 actions.push(Action::StopAutoRestart);
             }
             let mut profile = snapshot.active_profile.clone();
-            let options: Vec<(String, &str)> = snapshot
-                .profiles
-                .iter()
-                .map(|name| (name.clone(), name.as_str()))
-                .collect();
-            if popup_button(ui, "a3s_viewer::profile", &mut profile, &options)
-                .on_hover_text("Profile")
-                .changed()
-            {
+            let mut manage = false;
+            egui::ComboBox::from_id_salt("a3s_viewer::profile")
+                .selected_text(profile.as_str())
+                .show_ui(ui, |ui| {
+                    for name in &snapshot.profiles {
+                        if ui.selectable_label(*name == profile, name).clicked() {
+                            profile = name.clone();
+                        }
+                    }
+                    ui.separator();
+                    manage = ui.button("Manage profiles…").clicked();
+                })
+                .response
+                .on_hover_text("Profile");
+            if profile != snapshot.active_profile {
                 actions.push(Action::SelectProfile(profile));
             }
-            menu(ui, &mut actions);
+            if manage {
+                actions.push(Action::OpenSettings(SettingsPane::Profiles));
+            }
+            menu(ui, snapshot, &mut actions);
             ui.add(
                 TextEdit::singleline(search)
                     .id(search_id())
@@ -73,7 +82,7 @@ pub(crate) fn show(
     actions
 }
 
-fn menu(ui: &mut Ui, actions: &mut Vec<Action>) {
+fn menu(ui: &mut Ui, snapshot: &Snapshot, actions: &mut Vec<Action>) {
     let ctx = ui.ctx().clone();
     ui.menu_button(RichText::new(icons::DOTS_THREE_CIRCLE).size(18.0), |ui| {
         if ui
@@ -91,10 +100,20 @@ fn menu(ui: &mut Ui, actions: &mut Vec<Action>) {
         {
             actions.push(Action::Open(SecondaryWindow::Settings));
         }
-        ui.menu_button("Tools", |ui| {
-            for tool in SecondaryWindow::TOOLS {
-                if ui.button(tool.title()).clicked() {
-                    actions.push(Action::Open(tool));
+        ui.separator();
+        for tool in SecondaryWindow::TOOLS {
+            if ui.button(format!("{}…", tool.title())).clicked() {
+                actions.push(Action::Open(tool));
+            }
+        }
+        ui.separator();
+        ui.menu_button("Appearance", |ui| {
+            for appearance in Appearance::ALL {
+                if ui
+                    .radio(snapshot.appearance == appearance, appearance.label())
+                    .clicked()
+                {
+                    actions.push(Action::SetAppearance(appearance));
                 }
             }
         });

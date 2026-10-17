@@ -4,7 +4,6 @@
 
 mod companion_apps;
 mod data;
-mod game;
 mod general;
 mod network;
 mod profiles;
@@ -31,9 +30,6 @@ pub enum SettingsPane {
     #[default]
     General,
 
-    /// The game of one profile: folder, start, in-game name and launch options.
-    Game,
-
     /// Profiles: create, duplicate, rename, remove, desktop shortcut.
     Profiles,
 
@@ -49,9 +45,8 @@ pub enum SettingsPane {
 
 impl SettingsPane {
     /// Every pane, in list order.
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 5] = [
         Self::General,
-        Self::Game,
         Self::Profiles,
         Self::Network,
         Self::CompanionApps,
@@ -62,7 +57,6 @@ impl SettingsPane {
     pub fn label(self) -> &'static str {
         match self {
             Self::General => "General",
-            Self::Game => "Game",
             Self::Profiles => "Profiles",
             Self::Network => "Network",
             Self::CompanionApps => "Companion apps",
@@ -73,7 +67,6 @@ impl SettingsPane {
     fn icon(self) -> &'static str {
         match self {
             Self::General => icons::GEAR_SIX,
-            Self::Game => icons::GAME_CONTROLLER,
             Self::Profiles => icons::USER_CIRCLE,
             Self::Network => icons::GLOBE,
             Self::CompanionApps => icons::HEADSET,
@@ -89,7 +82,6 @@ pub struct SettingsWindow {
     desktop: Desktop,
     toasts: Toaster,
     general: general::GeneralPane,
-    game: game::GamePane,
     profiles: profiles::ProfilesPane,
     network: network::NetworkPane,
     companion_apps: companion_apps::CompanionAppsPane,
@@ -104,7 +96,6 @@ impl SettingsWindow {
             desktop,
             toasts: Toaster::with_id(Id::new("a3s_viewer::settings::toasts")),
             general: general::GeneralPane::default(),
-            game: game::GamePane::default(),
             profiles: profiles::ProfilesPane::default(),
             network: network::NetworkPane::default(),
             companion_apps: companion_apps::CompanionAppsPane::default(),
@@ -165,7 +156,6 @@ impl SettingsWindow {
         };
         match self.pane {
             SettingsPane::General => self.general.show(ui, &mut cx),
-            SettingsPane::Game => self.game.show(ui, &mut cx),
             SettingsPane::Profiles => self.profiles.show(ui, &mut cx),
             SettingsPane::Network => self.network.show(ui, &cx),
             SettingsPane::CompanionApps => self.companion_apps.show(ui, &mut cx),

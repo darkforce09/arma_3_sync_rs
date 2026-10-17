@@ -18,7 +18,7 @@ use a3s_types::local::{
     TreeNode,
 };
 use a3s_types::{Changelog, Changelogs, Protocol, ProtocolType};
-use a3s_viewer::{RequestSender, SecondaryWindow, Shell, ShellSetup, WelcomeSetup};
+use a3s_viewer::{Desktop, RequestSender, SecondaryWindow, Shell, ShellSetup, WelcomeSetup};
 use a3s_viewer_context::launch::{GameLauncher, LaunchEnvironment};
 use a3s_viewer_context::tools::Platform;
 use a3s_viewer_context::{AppState, ContextOptions, ViewerContext};
@@ -111,7 +111,7 @@ pub fn fixture_with(
     set_status(&viewer, "Beta", RepositoryStatus::Ok);
     // The harness steps frames itself; the channel's repaint requests go to a spare context.
     let (requests, receiver) = a3s_viewer::channel(&egui::Context::default());
-    let shell = Shell::new(
+    let mut shell = Shell::new(
         viewer,
         ShellSetup {
             load_warnings: start.load_warnings,
@@ -120,6 +120,8 @@ pub fn fixture_with(
             hidden: false,
         },
     );
+    // No test reads the Steam or Arma 3 folders of the machine it runs on.
+    shell.set_desktop(Desktop::isolated(&dir.path().join("desktop")));
     let builder = Harness::builder()
         .with_size(SIZE)
         .with_pixels_per_point(1.0)

@@ -1,6 +1,7 @@
 //! The content area: one module per screen of the sidebar.
 
 pub(crate) mod activity;
+mod game;
 mod mods;
 mod publishing;
 mod repository;
@@ -12,9 +13,11 @@ use a3s_ui::theme;
 use a3s_viewer_context::ViewerContext;
 use egui::{Align, Layout, RichText, Ui};
 
+use self::game::GameScreen;
 use self::mods::ModsScreen;
 use self::repository::RepositoryScreen;
 use self::servers::ServersScreen;
+use crate::desktop::Desktop;
 use crate::sheets::Sheets;
 use crate::shell::{Action, Screen};
 use crate::toasts::Toaster;
@@ -25,6 +28,7 @@ pub(crate) struct ScreenStates {
     mods: ModsScreen,
     servers: ServersScreen,
     repository: RepositoryScreen,
+    game: GameScreen,
 }
 
 /// What a screen works with besides its `Ui` and its own state.
@@ -36,6 +40,9 @@ pub(crate) struct ScreenCx<'a> {
     pub(crate) toasts: &'a mut Toaster,
     pub(crate) sheets: &'a mut Sheets,
 
+    /// The desktop the game is found on (Steam, the Arma 3 user folder).
+    pub(crate) desktop: &'a Desktop,
+
     /// What the screen asks the window to do, applied after the frame.
     pub(crate) actions: Vec<Action>,
 }
@@ -45,6 +52,7 @@ pub(crate) fn show(ui: &mut Ui, screen: &Screen, states: &mut ScreenStates, cx: 
     match screen {
         Screen::Mods => states.mods.show(ui, cx),
         Screen::Servers => states.servers.show(ui, cx),
+        Screen::Game => states.game.show(ui, cx),
         Screen::Activity => activity::show(ui, cx),
         Screen::Repository(name) => states.repository.show(ui, name, cx),
         Screen::Publishing(name) => publishing::show(ui, name, cx),

@@ -13,18 +13,20 @@ The window (`Shell`):
 
 - Unified toolbar: screen title, search field (⌘/Ctrl+F; it narrows the lists of the current
   screen: the Mods tree, the servers, Activity, a repository's changes, the Publishing events
-  and the mods players get), the menu (Check now, Rescan mods folders, Settings, Tools, About
-  Arma3Sync, Quit), the profile pop-up and the Play button ("Update and play"
-  while a repository with an enabled mod of the active profile has updates). Play starts the
+  and the mods players get), the menu (Check now, Rescan mods folders, Settings, Server keys,
+  Radio plugin, Game log, Appearance Light / Dark / Auto as the General pane stores it, About
+  Arma3Sync, Quit), the profile pop-up (the profiles, then "Manage profiles…", which opens
+  Settings at Profiles) and the Play button ("Update and play" while a repository with an
+  enabled mod of the active profile has updates). Play starts the
   context's Launch task (after downloading the enabled mods of those repositories for "Update
-  and play"); without a usable Arma 3 executable a toast offers "Choose folder…" (Settings >
-  Game). Before starting, mods enabled twice stop it with an explanation, and enabled mods not
+  and play"); without a usable Arma 3 executable a toast offers "Choose folder…" (the Game
+  screen). Before starting, mods enabled twice stop it with an explanation, and enabled mods not
   on this computer ask first ("Update and play" when a repository has them, "Play without
   them", Cancel). Once the game started, the "game launch" preference hides the window to the
   tray, minimizes it, quits or does nothing; while it restarts by itself, "Stop restarting"
   ends that.
 - Source-list sidebar (resizable; long names end in "…" and show whole on hover): Library
-  (Mods, Servers, Activity), Repositories with badges from the runtime state (the top-level
+  (Mods, Servers, Game, Activity), Repositories with badges from the runtime state (the top-level
   folders a download changes, from the current comparison, else the addons changed in the
   changelogs when a newer revision is out; "…" while checking, "!" after a failed check, with
   its reason as tooltip) and Add repository, Publishing (repositories with a local source
@@ -110,8 +112,15 @@ The window (`Shell`):
   (Copy), the question before an update while Arma 3 runs, the Play check, the export of a
   launcher preset, and About (version, licence, project page, credits, "Log files…").
 - Toasts (egui-toast) for the context's events, including an Undo kind that runs a callback and
-  an action kind whose button asks the window for an action (e.g. "Choose folder…" opens
-  Settings at the Game pane, and "Show" on "Updates available" opens the repository).
+  an action kind whose button asks the window for an action (e.g. "Choose folder…" opens the
+  Game screen, and "Show" on "Updates available" opens the repository).
+- Game screen, for the active profile, everything on one page: Arma 3 folder, start through
+  Steam or the executable (Linux; the profile's `game_start`, which Play uses), BattlEye,
+  in-game name (the Arma 3 profiles next to the Arma 3 user folder), the common flags and
+  "Restart when it closes", the performance options (the memory allocators of the Arma 3 `Dll`
+  folder) and the developer options, each explained in its tooltip, and the command line
+  planned by `a3s_launch::plan_launch` (the same planning as Play) over the profile's addon
+  scan.
 - Servers screen: the favourite servers with address, preset and a saved-password mark; Join
   stores the server (and its preset) in the configuration's `server_name`/`default_modset` and
   enables exactly the preset group's mods (with Undo); Play enables them again before
@@ -126,12 +135,6 @@ The window (`Shell`):
     (`a3s_updater`) and, when a newer version exists, "Install and restart" (download, verify
     and install; the window then saves, quits, and `run` starts the new version once the
     single-instance lock is released).
-  - Game, per profile: Arma 3 folder, start through Steam or the executable (Linux; the
-    profile's `game_start`, which Play uses), BattlEye, in-game name (the Arma 3 profiles next
-    to the Arma 3 user folder), common flags and "Restart when it closes", "Customize…" sheets
-    for performance (the memory allocators of the Arma 3 `Dll` folder) and developer options,
-    each option explained in its tooltip, and the command line planned by
-    `a3s_launch::plan_launch` (the same planning as Play) over a background addon scan.
   - Profiles: add, rename (double-click), duplicate, remove with Undo, desktop shortcut.
   - Network: the proxy. Companion apps: external applications, also by dropping a program
     onto the pane. Data: Java data import, auto-config import and export (a sheet chooses the

@@ -8,7 +8,7 @@ use a3s_repo_files::services::ClientData;
 use a3s_types::constants::RepositoryStatus;
 use a3s_types::local::{Profile, TreeDirectory, TreeLeaf, TreeNode};
 use a3s_ui::icon::icons;
-use a3s_viewer::{SettingsPane, SheetKind, Shell};
+use a3s_viewer::{Screen, SheetKind, Shell};
 use egui::accesskit::Role;
 use egui::{Key, Modifiers};
 use egui_kittest::Harness;
@@ -199,7 +199,7 @@ fn play_without_arma_3_offers_to_choose_it() {
     harness.run();
     harness.get_by_label("Choose folder…").click();
     harness.run();
-    assert_eq!(harness.state().settings_pane(), Some(SettingsPane::Game));
+    assert_eq!(*harness.state().screen(), Screen::Game);
 }
 
 /// A file dropped on the window.

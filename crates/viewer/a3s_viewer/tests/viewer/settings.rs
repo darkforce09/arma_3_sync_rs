@@ -151,20 +151,3 @@ fn proxy_fields_are_written_when_valid() {
     assert_eq!(protocol.url, "proxy.lan");
     assert_eq!(protocol.port, "1080");
 }
-
-#[test]
-fn the_command_preview_follows_the_options() {
-    let mut fixture = settings(SettingsStart::pane(SettingsPane::Game));
-    let harness = &mut fixture.harness;
-    assert!(harness.query_by_label_contains("-window").is_none());
-
-    harness.get_by_label("Windowed").click();
-    harness.run();
-    harness.get_by_label_contains("-window");
-    let written = fixture.reload();
-    let options = &written
-        .profile("Default")
-        .expect("profile")
-        .launcher_options;
-    assert!(options.window_mode);
-}
