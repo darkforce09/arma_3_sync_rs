@@ -11,7 +11,8 @@ Operating-system integration of the client, one module per concern:
   and the log-export folder.
 - `process`: "is Arma 3 / TeamSpeak / Steam running" (`tasklist` on Windows, `/proc` on Linux).
 - `reveal`: show a file or folder in the system file manager, the file selected (Explorer,
-  Finder, the `org.freedesktop.FileManager1` D-Bus service, else its folder through `xdg-open`).
+  Finder, the `org.freedesktop.FileManager1` D-Bus service, else its folder through `xdg-open`),
+  and open a file with the application the system associates with it (`open_file`).
 - `autostart`: start with the OS (per-user `Run` value, XDG autostart entry, macOS LaunchAgent).
 - `shortcut`: desktop shortcuts (`.lnk` on Windows, `.desktop` on Linux).
 - `single_instance`: one client per configuration folder; a second start asks the first to come to

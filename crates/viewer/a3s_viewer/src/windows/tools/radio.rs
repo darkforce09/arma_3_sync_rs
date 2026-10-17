@@ -1,8 +1,10 @@
-//! The Radio plugin window: installs the TFAR or ACRE 2 plugin of the mods into `TeamSpeak` 3.
+//! The Radio plugin window: installs the TFAR or ACRE 2 plugin of the mods into `TeamSpeak` 3, or
+//! opens the `.ts3_plugin` package of a TFAR 1.0 mod with `TeamSpeak`'s own installer.
 
 use std::time::{Duration, Instant};
 
 use a3s_foundation::error::UserFacing as _;
+use a3s_platform::reveal::open_file;
 use a3s_tools::radio::{InstallerIssue, IssueKind, RadioMod};
 use a3s_ui::frames;
 use a3s_ui::theme::ProgressTone;
@@ -73,6 +75,25 @@ impl RadioWindow {
         };
         self.details(ui, &inspection);
         ui.add_space(8.0);
+        if let Some(package) = &inspection.package {
+            ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                if primary_button(ui, "Install with TeamSpeak")
+                    .on_hover_text("Opens the package with TeamSpeak's own plugin installer.")
+                    .clicked()
+                {
+                    let env = cx.state().read().tools.platform.env.clone();
+                    let opened = env.map_or(Err(a3s_platform::Error::Unsupported), |env| {
+                        open_file(&env, package)
+                    });
+                    match opened {
+                        Ok(()) => self.toasts.info("TeamSpeak's plugin installer opens"),
+                        Err(err) => self.toasts.error(err.user_message()),
+                    }
+                }
+            });
+            self.toasts.show(ui, viewer);
+            return;
+        }
         if inspection.ts3_running {
             warning_row(ui, "TeamSpeak 3 is running. Quit it to install the plugin.");
         } else if let Err(issue) = &inspection.plan {
@@ -138,19 +159,33 @@ impl RadioWindow {
 
     fn details(&mut self, ui: &mut Ui, inspection: &RadioInspection) {
         frames::group(ui, |ui| {
-            form_row(ui, "Plugin in mod", |ui| match &inspection.mod_dir {
-                Some(dir) => {
-                    let version = inspection
-                        .mod_version
-                        .as_deref()
-                        .unwrap_or("Unknown version");
-                    ui.label(format!("{version} · {}", file_name(dir)))
-                        .on_hover_text(dir.display().to_string());
-                }
-                None => {
-                    ui.weak("Mod not found in the mod folders");
+            form_row(ui, "Plugin in mod", |ui| {
+                match (&inspection.mod_dir, &inspection.package) {
+                    (Some(dir), Some(_)) => {
+                        ui.label(format!("{} · TeamSpeak package", file_name(dir)))
+                            .on_hover_text(dir.display().to_string());
+                    }
+                    (Some(dir), None) => {
+                        let version = inspection
+                            .mod_version
+                            .as_deref()
+                            .unwrap_or("Unknown version");
+                        ui.label(format!("{version} · {}", file_name(dir)))
+                            .on_hover_text(dir.display().to_string());
+                    }
+                    (None, _) => {
+                        ui.weak("Mod not found in the mod folders");
+                    }
                 }
             });
+            if let (Some(dir), Some(package)) = (&inspection.mod_dir, &inspection.package) {
+                frames::group_separator(ui);
+                form_row(ui, "Package", |ui| {
+                    let shown = package.strip_prefix(dir).unwrap_or(package);
+                    ui.label(shown.display().to_string())
+                        .on_hover_text(package.display().to_string());
+                });
+            }
             frames::group_separator(ui);
             form_row(ui, "TeamSpeak 3", |ui| {
                 if button(ui, "Change…").clicked() {
@@ -198,7 +233,7 @@ fn issue_text(issue: &InstallerIssue) -> String {
     match &issue.kind {
         IssueKind::Unsupported => "Installing the plugin is not supported here.".to_owned(),
         IssueKind::Arma3DirMissing => {
-            "Choose the Arma 3 executable in Settings › Game; TFAR copies its settings there."
+            "Choose the Arma 3 folder on the Game screen; TFAR copies its settings there."
                 .to_owned()
         }
         IssueKind::Ts3DirMissing => "Choose the TeamSpeak 3 folder.".to_owned(),

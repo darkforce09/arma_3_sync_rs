@@ -1,10 +1,12 @@
 //! The TFAR and ACRE 2 installer wizards' logic: TS3 detection, the system
-//! specifications panel, first-page validation and the second-page copy steps.
+//! specifications panel, first-page validation and the second-page copy steps, and the
+//! `.ts3_plugin` package of TFAR 1.0 mods.
 //!
 //! Platform lookups (the TS3 registry entry, the process list) come in through plain inputs and
 //! [`Ts3ProcessProbe`].
 
 mod install;
+mod package;
 mod specs;
 pub mod strings;
 mod ts3;
@@ -15,6 +17,7 @@ pub use install::{
     Acre2Report, ERROR_TITLE, InstallStepError, STATUS_FAIL, STATUS_OK, TfarReport, install_acre2,
     install_tfar, step_status,
 };
+pub use package::tfar_package;
 pub use specs::{HostInfo, SystemSpecs, os_label, plugin_label, system_specs, ts3_label};
 pub use ts3::{
     TS3_EXE_32, TS3_EXE_64, Ts3Arch, arma3_dir_from_exe, existing_or_empty, is_ts3_32bit,

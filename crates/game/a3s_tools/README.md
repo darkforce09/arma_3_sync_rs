@@ -11,7 +11,8 @@ The logic behind the Java client's game tools, without any UI:
 - `radio`: the TFAR and ACRE 2 installer wizards: TeamSpeak 3 detection, the system
   specifications labels, first-page validation (`validate_tfar`, `validate_acre2`), the copy steps
   (`install_tfar`, `install_acre2`), the plugin dll version (`plugin_version`, from its Windows
-  version resource) and the wizard texts (`radio::strings`).
+  version resource), the wizard texts (`radio::strings`) and the `.ts3_plugin` package of a TFAR
+  1.0 mod (`tfar_package`).
 - `preset`: Arma 3 Launcher HTML presets for the addon-groups panel. `compare` / `import_preset`
   read a preset and match its Workshop mods and CDLCs against the local addons;
   `add_imported_group` turns the result into a checked addon group. `generate` collects a

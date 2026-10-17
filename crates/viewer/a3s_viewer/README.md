@@ -146,7 +146,9 @@ The window (`Shell`):
     key behind a disclosure, and "Copy N keys".
   - Radio plugin: TFAR or ACRE 2; the plugin in the mod, the TeamSpeak 3 folder (stored or
     detected, "Change…") and version, the installed plugin, a warning while TeamSpeak runs
-    or the folders are incomplete, and "Install plugin" / "Update plugin".
+    or the folders are incomplete, and "Install plugin" / "Update plugin"; a TFAR 1.0 mod (its
+    plugin shipped as `teamspeak/*.ts3_plugin` packages) shows its package and "Install with
+    TeamSpeak", which opens it with TeamSpeak's own installer.
   - Game log: the newest RPT log followed live (or an older one from the file pop-up),
     monospace and coloured by line type, a filter field, "Errors only", "Show in folder"; the
     view follows the end unless scrolled up.

@@ -7,7 +7,7 @@ use a3s_repo_files::services::ServiceError;
 use a3s_tools::radio::{
     Acre2Form, Acre2Plan, HostInfo, InstallerIssue, RadioMod, TfarForm, TfarPlan, Ts3ProcessProbe,
     UNKNOWN, arma3_dir_from_exe, install_acre2, install_tfar, plugin_label, plugin_version,
-    ts3_label, validate_acre2, validate_tfar,
+    tfar_package, ts3_label, validate_acre2, validate_tfar,
 };
 use a3s_types::local::Profile;
 
@@ -37,6 +37,10 @@ pub struct RadioInspection {
 
     /// The mod folder holding the plugin, among the active profile's addons.
     pub mod_dir: Option<PathBuf>,
+
+    /// The `.ts3_plugin` package of a TFAR 1.0 mod (no loose plugin folder): `TeamSpeak`'s own
+    /// installer installs it, so no copy plan applies.
+    pub package: Option<PathBuf>,
 
     /// The version of the mod's plugin dll.
     pub mod_version: Option<String>,
@@ -198,7 +202,14 @@ fn inspect(
         .as_deref()
         .map(|dir| dir.display().to_string())
         .unwrap_or_default();
-    let mod_dir = find_radio_mod(radio, addons);
+    let (mod_dir, package) = match find_radio_mod(radio, addons) {
+        Some(dir) => (Some(dir), None),
+        None if radio == RadioMod::Tfar => match find_tfar_package(addons) {
+            Some((dir, package)) => (Some(dir), Some(package)),
+            None => (None, None),
+        },
+        None => (None, None),
+    };
     let plugin_dir = mod_dir
         .as_deref()
         .map(|dir| dir.join(plugin_folder(radio)).display().to_string())
@@ -256,6 +267,7 @@ fn inspect(
         radio,
         mod_version: mod_dll.as_deref().and_then(plugin_version),
         mod_dir,
+        package,
         ts3_version: ts3_label(&ts3_text),
         ts3_dir,
         installed,
@@ -291,6 +303,16 @@ fn find_radio_mod(radio: RadioMod, addons: &AddonScan) -> Option<PathBuf> {
                 .iter()
                 .any(|dll| dir.join(plugin_folder(radio)).join(dll).is_file())
         })
+}
+
+/// The first addon of the profile's addon scan that ships the TFAR plugin as a `TeamSpeak`
+/// package, with the package.
+fn find_tfar_package(addons: &AddonScan) -> Option<(PathBuf, PathBuf)> {
+    addons
+        .registry
+        .addons()
+        .map(|addon| Path::new(&addon.path).join(&addon.name))
+        .find_map(|dir| tfar_package(&dir).map(|package| (dir, package)))
 }
 
 fn same_bytes(a: &Path, b: &Path) -> bool {

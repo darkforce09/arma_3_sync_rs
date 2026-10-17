@@ -8,7 +8,7 @@ use a3s_tools::radio::{
     Acre2Form, Acre2Plan, HostInfo, InstallStepError, IssueKind, RadioMod, TS3_EXE_32, TS3_EXE_64,
     TfarForm, TfarPlan, Ts3Arch, Ts3ProcessProbe, UNKNOWN, arma3_dir_from_exe, existing_or_empty,
     install_acre2, install_tfar, os_label, parse_ts3_version, plugin_label, stored_or_detected,
-    ts3_arch, ts3_label, ts3_version, validate_acre2, validate_tfar,
+    tfar_package, ts3_arch, ts3_label, ts3_version, validate_acre2, validate_tfar,
 };
 
 fn touch(path: &Path) {
@@ -507,4 +507,37 @@ fn file_version_reads_the_fixed_file_info() {
     assert_eq!(a3s_tools::radio::file_version(b"MZ no resource"), None);
     let truncated = &dll_with_version()[..30];
     assert_eq!(a3s_tools::radio::file_version(truncated), None);
+}
+
+#[test]
+fn tfar_package_prefers_the_current_release() {
+    let dir = tempfile::tempdir().unwrap();
+    let tfar = dir.path().join("@TFAR");
+    touch(&tfar.join("teamspeak/task_force_radio_3.1Compat.ts3_plugin"));
+    touch(&tfar.join("teamspeak/task_force_radio.ts3_plugin"));
+    assert_eq!(
+        tfar_package(&tfar),
+        Some(tfar.join("teamspeak/task_force_radio.ts3_plugin"))
+    );
+}
+
+#[test]
+fn tfar_package_falls_back_to_the_first_package_by_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let tfar = dir.path().join("@TFAR");
+    touch(&tfar.join("teamspeak/task_force_radio_3.6Compat.ts3_plugin"));
+    touch(&tfar.join("teamspeak/task_force_radio_3.1Compat.ts3_plugin"));
+    touch(&tfar.join("teamspeak/readme.txt"));
+    assert_eq!(
+        tfar_package(&tfar),
+        Some(tfar.join("teamspeak/task_force_radio_3.1Compat.ts3_plugin"))
+    );
+}
+
+#[test]
+fn a_mod_without_packages_has_no_tfar_package() {
+    let dir = tempfile::tempdir().unwrap();
+    let tfar = dir.path().join("@task_force_radio");
+    touch(&tfar.join("plugins/task_force_radio_win64.dll"));
+    assert_eq!(tfar_package(&tfar), None);
 }

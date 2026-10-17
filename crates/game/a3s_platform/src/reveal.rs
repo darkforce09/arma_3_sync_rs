@@ -1,4 +1,5 @@
-//! Showing a file or folder in the system file manager.
+//! Showing a file or folder in the system file manager, and opening a file with the application
+//! the system associates with it.
 
 use std::collections::VecDeque;
 use std::ffi::OsString;
@@ -19,6 +20,33 @@ use crate::Error;
 pub fn show_in_folder(env: &PlatformEnv, path: &Path) -> crate::Result<()> {
     let path = std::path::absolute(path).map_err(|source| Error::io(path, source))?;
     let mut attempts = launchers(env.os(), &path)?;
+    let child = spawn_next(&mut attempts, &path)?;
+    std::thread::Builder::new()
+        .name("a3s-reveal".to_owned())
+        .spawn(move || reap(child, attempts, &path))
+        .map(drop)
+        .map_err(|source| Error::Io { path: None, source })
+}
+
+/// Opens the file `path` with the application the system associates with it.
+///
+/// For example a `.ts3_plugin` package opens with `TeamSpeak`'s package installer. The launcher
+/// is `explorer` on Windows, `open` on macOS and `xdg-open` elsewhere. Returns once it started;
+/// the `a3s-reveal` thread reaps it.
+pub fn open_file(env: &PlatformEnv, path: &Path) -> crate::Result<()> {
+    let path = std::path::absolute(path).map_err(|source| Error::io(path, source))?;
+    let program = match env.os() {
+        Os::Windows => "explorer",
+        Os::MacOs => "open",
+        Os::Linux | Os::OtherUnix => "xdg-open",
+        Os::Other => return Err(Error::Unsupported),
+    };
+    let mut command = Command::new(program);
+    command
+        .arg(&path)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    let mut attempts = VecDeque::from([command]);
     let child = spawn_next(&mut attempts, &path)?;
     std::thread::Builder::new()
         .name("a3s-reveal".to_owned())
