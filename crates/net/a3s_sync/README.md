@@ -7,7 +7,9 @@ write the download report.
 
 Use `SyncSession` to check a repository, change the selection and run downloads (a paused run
 resumes on the next call), or `sync_repository` for an unattended synchronization (automatic
-updates, command line). Client data (repository, configuration with the proxy, SHA-1 cache) is
+updates, command line). `plan::StatusTree` says what a download does to every file and folder
+of a planned tree (up to date, update, not downloaded, removed, with the bytes each needs), for
+the UI. Client data (repository, configuration with the proxy, SHA-1 cache) is
 read and written only through the caller's `SyncStore`; `MemoryStore` serves tests and dry
 runs. Every connection uses the configured proxy (`a3s_transport::proxy`).
 

@@ -18,9 +18,13 @@ exit: `prepare_exit`, `save_on_exit` (on failure the UI asks whether to exit any
 user stays, calls `start_background` again), then `shutdown`.
 
 The user's downloads are `sync` commands: `Compare` checks a repository against its download
-folder and publishes the changes (`sync::Downloads::plans`), keeping the checked session so
-`Download` starts at once; a `sync::Selection` limits it to some of the changes (every change
-but some top-level folders, or only some paths). While Arma 3 runs, `Download` does not start
+folder and publishes what a download does to every file and folder (`sync::Downloads::plans`,
+a `sync::StatusTree`), keeping the checked session so `Download` starts at once; a
+`sync::Selection` limits it (everything but some paths, or only some paths). A check asked for
+by the user compares again every repository compared before, so files changed on disk show at
+an unchanged revision; `sync::plan_is_stale` says when a comparison is out of date (another
+server revision, or made before the addon scan that auto-discovery uses). Auto-discovery finds
+addon folders through the active profile's addon scan. While Arma 3 runs, `Download` does not start
 and emits `sync::Event::GameRunning` instead; `DownloadAnyway` starts it (automatic updates
 wait for the next check). `Pause` cancels and keeps the session for `Resume` (with its event
 and selection), `Stop` discards it, `Retry` downloads failed files again. A lost connection is

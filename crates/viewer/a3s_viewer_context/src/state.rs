@@ -1,3 +1,5 @@
+use std::time::SystemTime;
+
 use a3s_repo_files::services::ClientData;
 use a3s_sync::{EventError, RemoteMetadata};
 use a3s_types::constants::RepositoryStatus;
@@ -75,6 +77,9 @@ pub struct RepositoryRuntime {
     /// A check of this repository is running.
     pub checking: bool,
 
+    /// When the last check of this repository ended (succeeded or failed).
+    pub last_checked: Option<SystemTime>,
+
     /// The report of the last download.
     pub download_report: Option<String>,
 
@@ -90,6 +95,7 @@ impl Default for RepositoryRuntime {
             metadata: RemoteMetadata::default(),
             last_check_error: None,
             checking: false,
+            last_checked: None,
             download_report: None,
             last_index_file_transferred: 0,
         }

@@ -1,6 +1,8 @@
 //! The check of repositories asked for by the user.
 
-use crate::checker::{CheckTrigger, apply_results, check_many};
+use crate::checker::{
+    CheckOutcome, CheckTrigger, RepositoryCheckResult, apply_results, check_many,
+};
 use crate::error::ContextError;
 use crate::event::AppEvent;
 use crate::tasks::{Cx, TaskError, TaskKey, TaskKind};
@@ -34,10 +36,32 @@ pub(super) fn start(cx: &Cx, names: Vec<String>) -> Result<(), ContextError> {
         if task.cancel.is_cancelled() {
             return Err(TaskError::Cancelled);
         }
+        compare_again(&cx, &results);
         tracing::info!("Synchronization with repositories done.");
         Ok(())
     })?;
     Ok(())
+}
+
+/// Compares again each checked repository that was compared before, so a check the user asked
+/// for also finds files changed on disk at an unchanged revision. Running, paused and failed
+/// downloads keep their sessions ([`crate::sync::compare`] skips them).
+fn compare_again(cx: &Cx, results: &[RepositoryCheckResult]) {
+    for result in results {
+        let compared = cx
+            .state()
+            .read()
+            .sync
+            .downloads
+            .plans
+            .contains_key(&result.name);
+        if result.outcome == CheckOutcome::Ok
+            && compared
+            && let Err(err) = crate::sync::compare(cx, &result.name)
+        {
+            tracing::warn!("Cannot compare repository {}: {err}", result.name);
+        }
+    }
 }
 
 /// Cancels the running check, if any.

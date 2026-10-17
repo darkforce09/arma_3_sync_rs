@@ -14,13 +14,14 @@ use a3s_types::AutoConfig;
 use a3s_types::constants::RepositoryStatus;
 use a3s_types::local::{Profile, Repository, TreeLeaf, TreeNode};
 use a3s_viewer::{Screen, SheetKind, Shell};
-use a3s_viewer_context::sync::{DownloadRecord, DownloadResult};
+use a3s_viewer_context::sync::{self, DownloadRecord, DownloadResult, NodeStatus};
 use a3s_viewer_context::{Command, TaskError, TaskKey, TaskKind, repositories};
+use egui::accesskit::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable as _;
 
 use crate::support::{
-    RecordingLauncher, Start, fixture, offline_platform, profile_with_group, set_status,
+    RecordingLauncher, Start, fixture, mutate, offline_platform, profile_with_group, set_status,
 };
 
 /// How long a test waits for background work.
@@ -319,16 +320,23 @@ fn unticked_mods_are_neither_downloaded_nor_removed() {
     harness.get_by_label("Local").click();
     harness.run_ok();
     let start = Instant::now();
-    while harness.query_by_label("@old").is_none() {
+    while harness
+        .query_by_role_and_label(Role::CheckBox, "@old")
+        .is_none()
+    {
         assert!(start.elapsed() < TIMEOUT, "the comparison did not finish");
         harness.step();
         std::thread::sleep(Duration::from_millis(20));
     }
-    harness.get_by_label("@Mod_A").click();
+    harness
+        .get_by_role_and_label(Role::CheckBox, "@Mod_A")
+        .click();
     harness.run();
-    harness.get_by_label("@old").click();
+    harness
+        .get_by_role_and_label(Role::CheckBox, "@old")
+        .click();
     harness.run();
-    harness.get_by_label_contains(" of ").click();
+    harness.get_by_label_contains("Update ").click();
     harness.step();
 
     wait_until(harness, "the download", |shell| {
@@ -404,7 +412,7 @@ fn update_and_play_downloads_only_the_enabled_mods() {
             .is_some()
     });
     set_status(harness.state().viewer(), "Local", RepositoryStatus::Updated);
-    harness.run();
+    harness.step();
     harness.get_by_label_contains("Update and play").click();
     harness.step();
 
@@ -490,4 +498,154 @@ fn a_finished_download_shows_its_report() {
     harness.run();
     assert_eq!(harness.state().sheet(), Some(SheetKind::DownloadReport));
     harness.get_by_label_contains("--- Download report ---");
+}
+
+/// The Java-built sample repository at `stage` (`1_initial`, `3_modified`).
+fn sample(stage: &str) -> std::path::PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../tests/fixtures/java_built/ftp_zip")
+        .join(stage)
+        .join("repo")
+}
+
+/// The status of `path` in the current comparison of `repository`.
+fn status_of(shell: &Shell, repository: &str, path: &str) -> Option<NodeStatus> {
+    let state = shell.viewer().read();
+    let plan = state
+        .sync
+        .downloads
+        .plans
+        .get(repository)?
+        .result
+        .as_ref()
+        .ok()?;
+    plan.tree.get(path).map(|node| node.status)
+}
+
+/// Opens `name` and downloads all of it into its folder, until the comparison after the
+/// download says it is up to date.
+fn download_all(harness: &mut Harness<'static, Shell>, name: &str) {
+    harness.get_by_label(name).click();
+    harness.run_ok();
+    harness.get_by_label("Update").click();
+    harness.step();
+    wait_until(harness, "the download", |shell| {
+        !shell.viewer().read().sync.downloads.recent.is_empty()
+    });
+    wait_until(harness, "the comparison after the download", |shell| {
+        status_of(shell, name, "@Mod_A") == Some(NodeStatus::UpToDate)
+    });
+}
+
+/// A repository downloading into `folder`, with `folder` as the profile's mods folder.
+fn local_repository(server: &Server, folder: &Path) -> Start {
+    let mut repository = Repository::new("Local", server.protocol.clone());
+    repository.default_download_location = Some(folder.display().to_string());
+    let mut profile = Profile::new("Default");
+    profile.addon_search_directories = vec![folder.display().to_string()];
+    Start {
+        repositories: vec![repository],
+        profiles: Some(vec![profile]),
+        ..Start::default()
+    }
+}
+
+#[test]
+fn an_installed_mod_with_changed_files_is_listed_with_them() {
+    let runtime = server_runtime();
+    let server = ftp_repository(&runtime);
+    let destination = tempfile::tempdir().expect("destination");
+    let mut fixture = fixture(local_repository(&server, destination.path()));
+    let harness = &mut fixture.harness;
+    download_all(harness, "Local");
+
+    copy_tree(&sample("3_modified"), &server.base);
+    check(harness, "Local");
+    wait_until(harness, "the comparison with the new revision", |shell| {
+        status_of(shell, "Local", "@Mod_A") == Some(NodeStatus::Update)
+    });
+    let shell = harness.state();
+    assert_eq!(
+        status_of(shell, "Local", "@Mod_A/addons/mod_a.pbo"),
+        Some(NodeStatus::Update)
+    );
+    assert_eq!(
+        status_of(shell, "Local", "@Mod_A/mod.cpp"),
+        Some(NodeStatus::UpToDate)
+    );
+    assert_eq!(
+        status_of(shell, "Local", "@mod_b"),
+        Some(NodeStatus::Update)
+    );
+    assert_eq!(
+        status_of(shell, "Local", "@Mod_D"),
+        Some(NodeStatus::NotDownloaded)
+    );
+    harness.get_by_role_and_label(Role::CheckBox, "@Mod_A");
+}
+
+#[test]
+fn check_now_finds_a_file_changed_on_disk_at_the_same_revision() {
+    let runtime = server_runtime();
+    let server = ftp_repository(&runtime);
+    let destination = tempfile::tempdir().expect("destination");
+    let mut fixture = fixture(local_repository(&server, destination.path()));
+    let harness = &mut fixture.harness;
+    download_all(harness, "Local");
+
+    std::fs::write(
+        destination.path().join("@Mod_A/mod.cpp"),
+        b"changed by hand",
+    )
+    .expect("edit a downloaded file");
+    check(harness, "Local");
+    wait_until(harness, "the comparison after the check", |shell| {
+        status_of(shell, "Local", "@Mod_A/mod.cpp") == Some(NodeStatus::Update)
+    });
+    assert_eq!(
+        status_of(harness.state(), "Local", "@Mod_A"),
+        Some(NodeStatus::Update)
+    );
+}
+
+#[test]
+fn auto_discover_counts_mods_found_in_another_mods_folder() {
+    let runtime = server_runtime();
+    let server = ftp_repository(&runtime);
+    let first = tempfile::tempdir().expect("first folder");
+    let empty = tempfile::tempdir().expect("empty folder");
+    let mut fixture = fixture(local_repository(&server, first.path()));
+    let harness = &mut fixture.harness;
+    download_all(harness, "Local");
+
+    // The download folder changes to an empty one; the mods stay in the profile's folder.
+    let folder = empty.path().display().to_string();
+    mutate(harness.state().viewer(), move |state| {
+        state
+            .client
+            .update_repository("Local", |stored| {
+                stored.default_download_location = Some(folder);
+                stored.no_auto_discover = false;
+                Ok(true)
+            })
+            .expect("store");
+        sync::forget(state, "Local");
+    });
+    wait_until(harness, "the comparison with auto-discover", |shell| {
+        let state = shell.viewer().read();
+        state
+            .sync
+            .downloads
+            .plans
+            .get("Local")
+            .is_some_and(|plan| plan.addon_scan)
+    });
+    assert_eq!(
+        status_of(harness.state(), "Local", "@Mod_A"),
+        Some(NodeStatus::UpToDate)
+    );
+    assert_eq!(
+        status_of(harness.state(), "Local", "@mod_b"),
+        Some(NodeStatus::UpToDate)
+    );
 }

@@ -17,7 +17,7 @@ use a3s_ui::theme::ProgressTone;
 use a3s_ui::widgets::{CheckState, CheckTreeModel, default_tree_icon};
 use a3s_viewer_context::AppState;
 use a3s_viewer_context::profiles::AddonScan;
-use a3s_viewer_context::sync::{ChangeKind, PlanState};
+use a3s_viewer_context::sync::{self, NodeStatus, PlanState};
 
 use super::edit;
 
@@ -492,25 +492,20 @@ fn local_by_folder(scan: &AddonScan, folders: &[String]) -> Vec<(Option<usize>, 
 /// name, from its comparison with the download folder; empty when there is none or the server
 /// has a newer revision since.
 fn update_sizes(state: &AppState, repository: &str) -> HashMap<String, u64> {
-    let current = state
-        .repositories
-        .runtime(repository)
-        .metadata
-        .server_revision();
     let Some(PlanState {
-        server_revision,
-        result: Ok(plan),
+        result: Ok(plan), ..
     }) = state.sync.downloads.plans.get(repository)
     else {
         return HashMap::new();
     };
-    if *server_revision != current {
+    if sync::plan_is_stale(state, repository) {
         return HashMap::new();
     }
-    plan.changes
+    plan.tree
+        .roots
         .iter()
-        .filter(|change| change.kind != ChangeKind::Removed)
-        .map(|change| (change.name.to_lowercase(), change.size))
+        .filter(|node| matches!(node.status, NodeStatus::Update | NodeStatus::NotDownloaded))
+        .map(|node| (node.name.to_lowercase(), node.download_size))
         .collect()
 }
 

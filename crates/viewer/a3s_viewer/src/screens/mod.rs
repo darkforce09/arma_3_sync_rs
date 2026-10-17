@@ -13,6 +13,7 @@ use a3s_viewer_context::ViewerContext;
 use egui::{Align, Layout, RichText, Ui};
 
 use self::mods::ModsScreen;
+use self::repository::RepositoryScreen;
 use self::servers::ServersScreen;
 use crate::sheets::Sheets;
 use crate::shell::{Action, Screen};
@@ -23,6 +24,7 @@ use crate::toasts::Toaster;
 pub(crate) struct ScreenStates {
     mods: ModsScreen,
     servers: ServersScreen,
+    repository: RepositoryScreen,
 }
 
 /// What a screen works with besides its `Ui` and its own state.
@@ -44,7 +46,7 @@ pub(crate) fn show(ui: &mut Ui, screen: &Screen, states: &mut ScreenStates, cx: 
         Screen::Mods => states.mods.show(ui, cx),
         Screen::Servers => states.servers.show(ui, cx),
         Screen::Activity => activity::show(ui, cx),
-        Screen::Repository(name) => repository::show(ui, name, cx),
+        Screen::Repository(name) => states.repository.show(ui, name, cx),
         Screen::Publishing(name) => publishing::show(ui, name, cx),
     }
 }
@@ -85,6 +87,12 @@ fn time_left_text(remaining: Duration) -> String {
             (seconds % 3600) / 60
         ),
     }
+}
+
+/// A Java date (milliseconds since the epoch) as `Oct 10, 2026`, in UTC.
+pub(crate) fn date_text(millis: i64) -> Option<String> {
+    chrono::DateTime::from_timestamp_millis(millis)
+        .map(|date| date.format("%b %-d, %Y").to_string())
 }
 
 /// How long ago `then` was, as `5 min ago`.

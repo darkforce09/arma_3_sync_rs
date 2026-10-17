@@ -53,7 +53,7 @@ async fn run(
                 repository_name: name.clone(),
                 event_name: None,
                 protocol: repository.protocol.clone(),
-                addons: Arc::clone(&state.sync.addons),
+                addons: super::addon_locator(&state).0,
                 removed_files: RemovedFiles::Trash,
             },
             arma3_exe_path: state

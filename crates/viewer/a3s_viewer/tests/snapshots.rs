@@ -35,7 +35,7 @@ use a3s_viewer_context::admin::{
     StepStatus,
 };
 use a3s_viewer_context::sync::{
-    AddonChange, ChangeKind, DownloadRecord, DownloadResult, PlanState, SyncPlan,
+    DownloadRecord, DownloadResult, NodeStatus, PlanState, StatusNode, StatusTree, SyncPlan,
 };
 use a3s_viewer_context::{TaskError, TaskKey, TaskKind};
 use egui_kittest::kittest::Queryable as _;
@@ -130,14 +130,19 @@ fn show_repository(fixture: &mut Fixture) {
             "Alpha".to_owned(),
             PlanState {
                 server_revision: Some(2),
+                addon_scan: false,
                 result: Ok(SyncPlan {
                     download_size: 1_320_000_000,
                     file_count: 14,
-                    changes: vec![
-                        change("@ace", ChangeKind::Updated, 1_200_000_000),
-                        change("@new", ChangeKind::New, 120_000_000),
-                        change("@old", ChangeKind::Removed, 0),
-                    ],
+                    delete_count: 1,
+                    tree: Arc::new(StatusTree {
+                        roots: vec![
+                            node("@ace", NodeStatus::Update, 1_200_000_000, 12),
+                            node("@cba", NodeStatus::UpToDate, 0, 0),
+                            node("@new", NodeStatus::NotDownloaded, 120_000_000, 2),
+                            node("@old", NodeStatus::Removed, 0, 0),
+                        ],
+                    }),
                 }),
             },
         );
@@ -213,11 +218,18 @@ fn show_activity(fixture: &mut Fixture) {
     fixture.harness.get_by_label("Activity").click();
 }
 
-fn change(name: &str, kind: ChangeKind, size: u64) -> AddonChange {
-    AddonChange {
+/// A top-level folder of a status tree with `files` to download of `size` bytes in all.
+fn node(name: &str, status: NodeStatus, size: u64, files: usize) -> StatusNode {
+    StatusNode {
         name: name.to_owned(),
-        kind,
-        size,
+        path: name.to_owned(),
+        status,
+        is_folder: true,
+        hidden: false,
+        download_size: size,
+        files_to_download: files,
+        files_to_remove: usize::from(status == NodeStatus::Removed),
+        children: Vec::new(),
     }
 }
 

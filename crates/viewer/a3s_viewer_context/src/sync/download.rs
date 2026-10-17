@@ -18,6 +18,7 @@ use a3s_sync::pipeline::{
     CheckError, CheckRequest, RunEnd, RunReport, StoreChanges, StoreError, SyncStore,
     UserconfigAction, UserconfigOutcome, copy_userconfig,
 };
+use a3s_sync::plan::StatusTree;
 use a3s_sync::{EventError, EventSender, Outcome, Phase, SyncEvent, SyncSession};
 use a3s_types::constants::RepositoryStatus;
 
@@ -103,11 +104,15 @@ pub struct PlanState {
     /// The server revision the comparison was made against; a newer one makes it stale.
     pub server_revision: Option<i32>,
 
+    /// The comparison found addon folders through the profile's addon scan (auto-discover);
+    /// one made without it is redone once the scan is there ([`super::plan_is_stale`]).
+    pub addon_scan: bool,
+
     /// What a download would change, or why the comparison failed.
     pub result: Result<SyncPlan, EventError>,
 }
 
-/// What a download of the whole repository would change.
+/// What a download of the whole repository would do.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SyncPlan {
     /// Bytes to download.
@@ -116,41 +121,18 @@ pub struct SyncPlan {
     /// Files to download.
     pub file_count: usize,
 
-    /// One entry per top-level folder or file that changes, in tree order.
-    pub changes: Vec<AddonChange>,
+    /// Files and folders to remove.
+    pub delete_count: usize,
+
+    /// Every file and folder of the repository with what a download does to it.
+    pub tree: Arc<StatusTree>,
 }
 
 impl SyncPlan {
     /// Whether a download has nothing to do.
     pub fn is_up_to_date(&self) -> bool {
-        self.changes.is_empty() && self.file_count == 0
+        self.tree.is_up_to_date()
     }
-}
-
-/// A top-level folder (normally a mod) or file that a download changes.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AddonChange {
-    /// Its name.
-    pub name: String,
-
-    /// What happens to it.
-    pub kind: ChangeKind,
-
-    /// Bytes to download for it (0 when removed).
-    pub size: u64,
-}
-
-/// What a download does to a top-level folder or file.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ChangeKind {
-    /// Not on disk yet.
-    New,
-
-    /// On disk, with changed files.
-    Updated,
-
-    /// No longer in the repository; it goes to the Trash.
-    Removed,
 }
 
 /// Which part of a repository a download takes.
@@ -160,8 +142,8 @@ pub enum Selection {
     #[default]
     All,
 
-    /// Everything but these top-level folders or files (the names of [`AddonChange`]s): they
-    /// are neither downloaded nor removed.
+    /// Everything but these paths below the repository root (folders with everything they
+    /// hold): they are neither downloaded nor removed.
     Skip(Vec<String>),
 
     /// Only these paths below the repository root, folders with everything they hold.
@@ -384,9 +366,9 @@ async fn run_compare(task: TaskCtx, name: String) -> Result<(), TaskError> {
     let store = state_store(&cx);
     let events = task.sync_events();
     match check(&cx, &task, &name, None, &store, &events).await {
-        Ok(mut session) => {
+        Ok((mut session, addon_scan)) => {
             session.select_all();
-            publish_plan(&cx, &name, session, KeptReason::Compared).await;
+            publish_plan(&cx, &name, session, KeptReason::Compared, addon_scan);
             Ok(())
         }
         Err(CheckError::Cancelled) => Err(TaskError::Cancelled),
@@ -398,6 +380,7 @@ async fn run_compare(task: TaskCtx, name: String) -> Result<(), TaskError> {
                 name,
                 PlanState {
                     server_revision,
+                    addon_scan: false,
                     result: Err(error),
                 },
             );
@@ -428,7 +411,7 @@ async fn run_download(
     let mut session = match kept {
         Some(kept) => kept.session,
         None => match check(&cx, &task, &name, event.clone(), &store, &events).await {
-            Ok(session) => session,
+            Ok((session, _)) => session,
             Err(CheckError::Cancelled) => return Err(TaskError::Cancelled),
             Err(err) => {
                 let error = EventError::new(err.kind(), err.user_message());
@@ -524,7 +507,7 @@ async fn run_download(
     )
     .await
     {
-        Ok(mut second) => {
+        Ok((mut second, addon_scan)) => {
             second.select_all();
             let metadata = second.metadata().clone();
             let synced = {
@@ -540,7 +523,7 @@ async fn run_download(
                 Some(Ok((status, second))) => {
                     set_status(&cx, &name, status);
                     if event.is_none() {
-                        publish_plan(&cx, &name, second, KeptReason::Compared).await;
+                        publish_plan(&cx, &name, second, KeptReason::Compared, addon_scan);
                     }
                 }
                 Some(Err(err)) => tracing::warn!("Failed to save repository {name}: {err}"),
@@ -624,7 +607,8 @@ fn set_reconnecting(cx: &Cx, name: &str, attempt: Option<u32>) {
     cx.emit(AppEvent::Changed(Change::Repository));
 }
 
-/// Checks `name` with its stored protocol; extra local files go to the Trash.
+/// Checks `name` with its stored protocol; extra local files go to the Trash. Also says
+/// whether auto-discovery could use the profile's addon scan.
 async fn check(
     cx: &Cx,
     task: &TaskCtx,
@@ -632,23 +616,27 @@ async fn check(
     event: Option<String>,
     store: &Arc<dyn SyncStore>,
     events: &EventSender,
-) -> Result<SyncSession, CheckError> {
-    let request = {
+) -> Result<(SyncSession, bool), CheckError> {
+    let (request, addon_scan) = {
         let state = cx.state().read();
         let repository = state
             .client
             .repository(name)
             .map_err(|_not_found| CheckError::Store(StoreError::repository_not_found(name)))?;
-        CheckRequest {
+        let (addons, addon_scan) = super::addon_locator(&state);
+        let request = CheckRequest {
             repository_name: name.to_owned(),
             event_name: event,
             protocol: repository.protocol.clone(),
-            addons: Arc::clone(&state.sync.addons),
+            addons,
             removed_files: RemovedFiles::Trash,
-        }
+        };
+        (request, addon_scan)
     };
     tracing::info!("Checking repository {name} against its download folder");
-    SyncSession::check(request, Arc::clone(store), &task.cancel, events).await
+    SyncSession::check(request, Arc::clone(store), &task.cancel, events)
+        .await
+        .map(|session| (session, addon_scan))
 }
 
 /// The kept session of `name` for `event`, unless the server has a newer revision since.
@@ -684,7 +672,7 @@ fn select_only(session: &mut SyncSession, paths: &[String]) {
     session.refresh_summary();
 }
 
-/// Selects everything but the top-level nodes `names`.
+/// Selects everything but the paths `names` (folders with everything they hold).
 fn skip(session: &mut SyncSession, names: &[String]) {
     session.select_all();
     for name in names {
@@ -693,12 +681,10 @@ fn skip(session: &mut SyncSession, names: &[String]) {
     session.refresh_summary();
 }
 
-/// Stores the session's plan as the comparison of `name` and keeps the session.
-async fn publish_plan(cx: &Cx, name: &str, session: SyncSession, reason: KeptReason) {
-    // Whether a folder is new is a file system question: off the async threads.
-    let Some((plan, session)) = blocking(move || (plan_of(&session), session)).await else {
-        return;
-    };
+/// Stores the session's plan as the comparison of `name` and keeps the session; `addon_scan`
+/// says whether its check found addon folders through the profile's addon scan.
+fn publish_plan(cx: &Cx, name: &str, session: SyncSession, reason: KeptReason, addon_scan: bool) {
+    let plan = plan_of(&session);
     {
         let mut state = cx.state().write();
         if state.client.repository(name).is_err() {
@@ -709,6 +695,7 @@ async fn publish_plan(cx: &Cx, name: &str, session: SyncSession, reason: KeptRea
             name.to_owned(),
             PlanState {
                 server_revision: metadata.server_revision(),
+                addon_scan,
                 result: Ok(plan),
             },
         );
@@ -723,36 +710,9 @@ async fn publish_plan(cx: &Cx, name: &str, session: SyncSession, reason: KeptRea
     cx.emit(AppEvent::Changed(Change::Repository));
 }
 
-/// What downloading the session's selection changes, by top-level node.
+/// What downloading the whole session does, with the status of every file and folder.
 fn plan_of(session: &SyncSession) -> SyncPlan {
     let summary = session.summary();
-    let mut changes = Vec::new();
-    for node in &session.tree().root.children {
-        let name = node.name();
-        let kind = if node.updated() {
-            let on_disk = node.local_path().is_some_and(|path| path.exists());
-            if on_disk {
-                ChangeKind::Updated
-            } else {
-                ChangeKind::New
-            }
-        } else if node.deleted() {
-            ChangeKind::Removed
-        } else {
-            continue;
-        };
-        let size = summary
-            .download_tasks
-            .iter()
-            .filter(|task| is_below(&task.relative_path, name))
-            .map(|task| task.download_size())
-            .fold(0, u64::saturating_add);
-        changes.push(AddonChange {
-            name: name.to_owned(),
-            kind,
-            size,
-        });
-    }
     SyncPlan {
         download_size: summary.total_download_size,
         file_count: summary
@@ -760,7 +720,8 @@ fn plan_of(session: &SyncSession) -> SyncPlan {
             .iter()
             .filter(|task| !matches!(task.kind, a3s_sync::DownloadTaskKind::Directory))
             .count(),
-        changes,
+        delete_count: summary.delete_tasks.len(),
+        tree: Arc::new(StatusTree::from_plan(session.tree())),
     }
 }
 

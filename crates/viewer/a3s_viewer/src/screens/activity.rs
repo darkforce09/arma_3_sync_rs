@@ -37,38 +37,67 @@ pub(crate) fn listed(kind: TaskKind) -> bool {
     )
 }
 
-pub(super) fn show(ui: &mut Ui, cx: &mut ScreenCx<'_>) {
-    let running: Vec<Running> = {
-        let tasks: Vec<TaskInfo> = cx
-            .viewer
-            .running_tasks()
-            .into_iter()
-            .filter(|task| listed(task.key.kind))
-            .collect();
-        let state = cx.viewer.read();
-        tasks
-            .into_iter()
-            .filter_map(|task| {
-                let repository = task.key.repository.clone()?;
-                let snapshot = cx.viewer.task_snapshot(task.id).unwrap_or_default();
-                let files = state
-                    .sync
-                    .downloads
-                    .active_files
-                    .get(&repository)
-                    .cloned()
-                    .unwrap_or_default();
-                let reconnecting = state.sync.downloads.reconnecting.get(&repository).copied();
-                Some(Running {
-                    task,
-                    repository,
-                    snapshot,
-                    files,
-                    reconnecting,
-                })
+/// The running repository tasks that `keep` accepts (by kind and repository), with what the
+/// screen shows of them.
+fn running(cx: &ScreenCx<'_>, keep: impl Fn(TaskKind, &str) -> bool) -> Vec<Running> {
+    let tasks: Vec<TaskInfo> = cx.viewer.running_tasks();
+    let state = cx.viewer.read();
+    tasks
+        .into_iter()
+        .filter_map(|task| {
+            let repository = task.key.repository.clone()?;
+            if !keep(task.key.kind, &repository) {
+                return None;
+            }
+            let snapshot = cx.viewer.task_snapshot(task.id).unwrap_or_default();
+            let files = state
+                .sync
+                .downloads
+                .active_files
+                .get(&repository)
+                .cloned()
+                .unwrap_or_default();
+            let reconnecting = state.sync.downloads.reconnecting.get(&repository).copied();
+            Some(Running {
+                task,
+                repository,
+                snapshot,
+                files,
+                reconnecting,
             })
-            .collect()
+        })
+        .collect()
+}
+
+/// The download of `repository` as this screen shows it, for the Repository screen: the
+/// running transfer with Pause and Stop, else the paused download with Resume, else the last
+/// result with its report.
+pub(super) fn repository_download(ui: &mut Ui, repository: &str, cx: &mut ScreenCx<'_>) {
+    let transfers = running(cx, |kind, name| {
+        matches!(kind, TaskKind::Download | TaskKind::AutoUpdate) && name == repository
+    });
+    if !transfers.is_empty() {
+        for transfer in &transfers {
+            running_card(ui, transfer, cx);
+        }
+        return;
+    }
+    let (paused, last) = {
+        let state = cx.viewer.read();
+        (
+            state.sync.downloads.paused(repository),
+            state.sync.downloads.last_result(repository).cloned(),
+        )
     };
+    if let Some(remaining) = paused {
+        frames::group(ui, |ui| paused_row(ui, repository, remaining, cx));
+    } else if let Some(record) = last {
+        frames::group(ui, |ui| recent_row(ui, &record, SystemTime::now(), cx));
+    }
+}
+
+pub(super) fn show(ui: &mut Ui, cx: &mut ScreenCx<'_>) {
+    let running = running(cx, |kind, _| listed(kind));
     let (paused, recent) = {
         let state = cx.viewer.read();
         (
@@ -208,6 +237,22 @@ fn running_card(ui: &mut Ui, transfer: &Running, cx: &mut ScreenCx<'_>) {
             if let Some(remaining) = transfer.remaining {
                 line.push_str(&format!(" · {}", time_left_text(remaining)));
             }
+            if let Some(connections) = snapshot.active_connections {
+                line.push_str(&format!(
+                    " · {}",
+                    count_text(
+                        usize::try_from(connections).unwrap_or(usize::MAX),
+                        "connection",
+                        "connections"
+                    )
+                ));
+            }
+            if let Some(disk) = snapshot.disk_usage {
+                line.push_str(&format!(
+                    " · disk {}",
+                    a3s_foundation::format::speed(i64::try_from(disk).unwrap_or(i64::MAX))
+                ));
+            }
             ui.label(RichText::new(line).small().color(palette.text_secondary));
         }
         let files: Vec<&str> = if transfer.files.is_empty() {
@@ -268,16 +313,6 @@ const WAITING_SHOWN_AFTER: u32 = 15;
 fn details(ui: &mut Ui, transfer: &Running) {
     let snapshot = &transfer.snapshot;
     let rows: Vec<(&str, String)> = [
-        (
-            "Connections",
-            snapshot.active_connections.map(|n| n.to_string()),
-        ),
-        (
-            "Writing to disk",
-            snapshot.disk_usage.map(|bytes| {
-                a3s_foundation::format::speed(i64::try_from(bytes).unwrap_or(i64::MAX))
-            }),
-        ),
         (
             "Files",
             snapshot.total.map(|(_, files)| {

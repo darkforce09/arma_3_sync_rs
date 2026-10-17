@@ -223,6 +223,7 @@ async fn run_check(
         Err(RemoteError::Cancelled) => CheckOutcome::Cancelled,
         Err(err) => CheckOutcome::Failed(EventError::from_remote(err)),
     };
+    let now = cx.clock().now();
     update_runtime(cx, &target.name, |runtime| {
         runtime.checking = false;
         match &outcome {
@@ -230,10 +231,12 @@ async fn run_check(
             CheckOutcome::Ok => {
                 runtime.metadata = metadata;
                 runtime.last_check_error = None;
+                runtime.last_checked = Some(now);
             }
             CheckOutcome::Failed(error) => {
                 runtime.metadata = metadata;
                 runtime.last_check_error = Some(error.clone());
+                runtime.last_checked = Some(now);
             }
         }
     });

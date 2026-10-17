@@ -1,6 +1,7 @@
 //! Source-list sidebar: section headings and selectable rows with an icon and an optional
 //! badge. Show them inside [`crate::frames::sidebar_frame`].
 
+use egui::text::{LayoutJob, TextWrapping};
 use egui::{
     Align2, CornerRadius, FontId, Rect, Response, Sense, Ui, WidgetInfo, WidgetType, pos2, vec2,
 };
@@ -91,18 +92,12 @@ impl<'a> SidebarItem<'a> {
             FontId::proportional(ICON_SIZE),
             icon_color,
         );
-        painter.text(
-            pos2(left + ICON_SIZE + 8.0, rect.center().y),
-            Align2::LEFT_CENTER,
-            self.label,
-            egui::TextStyle::Body.resolve(ui.style()),
-            text_color,
-        );
-
+        // The badge first: the label is cut with "…" before it.
+        let mut label_right = rect.right() - 8.0;
         if let Some(badge) = self.badge {
             let font = egui::TextStyle::Small.resolve(ui.style());
             let right = pos2(rect.right() - 8.0, rect.center().y);
-            if let Some(tone) = self.badge_tone {
+            let badge_rect = if let Some(tone) = self.badge_tone {
                 let color = palette.status_color(tone);
                 let galley = painter.layout_no_wrap(badge.to_owned(), font, color);
                 let pill = Rect::from_center_size(
@@ -117,15 +112,42 @@ impl<'a> SidebarItem<'a> {
                     galley,
                     color,
                 );
+                pill
             } else {
                 let color = if selected {
                     palette.state_selection_fg
                 } else {
                     palette.text_secondary
                 };
-                painter.text(right, Align2::RIGHT_CENTER, badge, font, color);
-            }
+                painter.text(right, Align2::RIGHT_CENTER, badge, font, color)
+            };
+            label_right = badge_rect.left() - 6.0;
         }
-        response
+        let label_left = left + ICON_SIZE + 8.0;
+        let mut job = LayoutJob::simple_singleline(
+            self.label.to_owned(),
+            egui::TextStyle::Body.resolve(ui.style()),
+            text_color,
+        );
+        job.wrap = TextWrapping {
+            max_width: (label_right - label_left).max(0.0),
+            max_rows: 1,
+            break_anywhere: true,
+            overflow_character: Some('…'),
+        };
+        let galley = painter.layout_job(job);
+        let elided = galley.elided;
+        painter.galley(
+            Align2::LEFT_CENTER
+                .anchor_size(pos2(label_left, rect.center().y), galley.size())
+                .min,
+            galley,
+            text_color,
+        );
+        if elided {
+            response.on_hover_text(self.label)
+        } else {
+            response
+        }
     }
 }

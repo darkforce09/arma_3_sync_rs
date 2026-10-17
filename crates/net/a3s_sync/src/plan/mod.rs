@@ -11,11 +11,13 @@
 //! 6. [`add_extra_local_files`]: local content missing remotely, as `deleted` nodes;
 //! 7. [`PlanTree::recompute_changed`].
 //!
-//! [`PlanSummary`] then turns a selection into download and delete tasks.
+//! [`PlanSummary`] then turns a selection into download and delete tasks, and [`StatusTree`] says
+//! what a download does to every file and folder.
 
 mod destination;
 mod extra;
 mod local_state;
+mod status;
 mod summary;
 
 use std::collections::HashMap;
@@ -34,6 +36,7 @@ use crate::remote::RemoteMetadata;
 pub use destination::assign_destinations;
 pub use extra::add_extra_local_files;
 pub use local_state::{HashStats, compute_local_sha1, is_hidden_path, mark_hidden, mark_updated};
+pub use status::{NodeStatus, StatusNode, StatusTotals, StatusTree};
 pub use summary::{
     PlanSummary, ReportTotals, downloaded_compressed, resumed_size, resumed_tasks,
     select_all_except_root,

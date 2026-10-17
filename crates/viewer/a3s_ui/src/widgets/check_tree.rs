@@ -37,6 +37,9 @@ const EXPANDER_WIDTH: f32 = 16.0;
 /// Gap between the icon and the label.
 const ICON_GAP: f32 = 4.0;
 
+/// Gap between the label, the detail and the pill.
+const DETAIL_GAP: f32 = 10.0;
+
 /// What a row's checkbox shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum CheckState {
@@ -128,6 +131,12 @@ pub trait CheckTreeModel {
 
     /// A status pill at the right end of the row, e.g. a mod's sync state.
     fn pill(&self, _key: &Self::Key) -> Option<(String, ProgressTone)> {
+        None
+    }
+
+    /// Secondary text right-aligned before the pill, e.g. a size; the label is clipped before
+    /// it.
+    fn detail(&self, _key: &Self::Key) -> Option<String> {
         None
     }
 
@@ -602,11 +611,28 @@ impl CheckTree {
             );
             x += icon_width;
         }
-        let text_pos = Align2::LEFT_CENTER.anchor_size(pos2(x, rect.center().y), galley.size());
-        painter.galley(text_pos.min, galley, text_color);
+        // Right to left: the pill, the detail, then the label clipped before them.
+        let mut label_limit = rect.right();
         if let Some((text, tone)) = model.pill(key) {
-            paint_status_pill(ui, pos2(rect.right() - 4.0, rect.center().y), &text, tone);
+            let pill =
+                paint_status_pill(ui, pos2(rect.right() - 4.0, rect.center().y), &text, tone);
+            label_limit = pill.left();
         }
+        if let Some(detail) = model.detail(key) {
+            let detail_rect = painter.text(
+                pos2(label_limit - DETAIL_GAP, rect.center().y),
+                Align2::RIGHT_CENTER,
+                detail,
+                egui::TextStyle::Body.resolve(ui.style()),
+                def.palette.text_secondary,
+            );
+            label_limit = detail_rect.left();
+        }
+        let text_pos = Align2::LEFT_CENTER.anchor_size(pos2(x, rect.center().y), galley.size());
+        let clip = Rect::from_min_max(rect.min, pos2(label_limit - DETAIL_GAP, rect.max.y));
+        painter
+            .with_clip_rect(clip.intersect(painter.clip_rect()))
+            .galley(text_pos.min, galley, text_color);
         if drop_hovered {
             ui.painter().rect_stroke(
                 rect.shrink(1.0),

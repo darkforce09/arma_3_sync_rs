@@ -29,6 +29,9 @@ use crate::toasts::Toaster;
 use crate::windows::{SecondaryWindow, SecondaryWindows, SettingsPane};
 use crate::{screens, shortcuts, toolbar};
 
+/// How narrow and how wide the sidebar can be dragged, in points.
+const SIDEBAR_SIZE_RANGE: std::ops::RangeInclusive<f32> = 180.0..=360.0;
+
 /// A screen of the content area, chosen in the sidebar.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Screen {
@@ -283,8 +286,9 @@ impl Shell {
                 ));
             });
         let sidebar = egui::Panel::left("a3s_viewer::sidebar")
-            .exact_size(frames::SIDEBAR_WIDTH)
-            .resizable(false)
+            .default_size(frames::SIDEBAR_WIDTH)
+            .size_range(SIDEBAR_SIZE_RANGE)
+            .resizable(true)
             .show_separator_line(false)
             .frame(frames::sidebar_frame(def))
             .show(ui, |ui| {

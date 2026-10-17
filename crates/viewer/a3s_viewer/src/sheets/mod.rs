@@ -2,6 +2,7 @@
 
 mod about;
 pub(crate) mod add_repository;
+mod changelog;
 pub(crate) mod download_settings;
 mod exit;
 mod game_running;
@@ -22,6 +23,7 @@ use a3s_tools::preset::ImportResult;
 use a3s_viewer_context::ViewerContext;
 
 use self::add_repository::{Mode, RepositoryForm};
+use self::changelog::ChangelogSheet;
 use self::download_settings::DownloadSettings;
 pub(crate) use self::exit::ExitPrompt;
 pub(crate) use self::game_running::GameRunning;
@@ -72,6 +74,9 @@ pub enum SheetKind {
     /// The report of a finished download.
     DownloadReport,
 
+    /// The last builds of a repository.
+    Changelog,
+
     /// An update asks first because Arma 3 is running.
     GameRunning,
 
@@ -107,6 +112,7 @@ pub(crate) enum Sheet {
     DownloadSettings(DownloadSettings),
     UpdateIssues(UpdateIssues),
     Report(ReportSheet),
+    Changelog(ChangelogSheet),
     GameRunning(GameRunning),
     PlayCheck(PlayCheck),
     LauncherPreset(Box<ImportResult>),
@@ -138,6 +144,15 @@ impl Sheet {
     /// The report of a finished download of `repository`.
     pub(crate) fn report(repository: &str, text: &str) -> Self {
         Self::Report(ReportSheet::new(repository, text))
+    }
+
+    /// The Changelog sheet of `repository`, whose local revision is `local_revision`.
+    pub(crate) fn changelog(
+        repository: &str,
+        local_revision: i32,
+        changelogs: Vec<a3s_types::Changelog>,
+    ) -> Self {
+        Self::Changelog(ChangelogSheet::new(repository, local_revision, changelogs))
     }
 
     /// The Download settings sheet of `repository`.
@@ -178,6 +193,7 @@ impl Sheet {
             Self::DownloadSettings(_) => SheetKind::DownloadSettings,
             Self::UpdateIssues(_) => SheetKind::UpdateIssues,
             Self::Report(_) => SheetKind::DownloadReport,
+            Self::Changelog(_) => SheetKind::Changelog,
             Self::GameRunning(_) => SheetKind::GameRunning,
             Self::PlayCheck(_) => SheetKind::PlayCheck,
             Self::LauncherPreset(_) => SheetKind::LauncherPreset,
@@ -264,6 +280,7 @@ impl Sheets {
             Sheet::DownloadSettings(sheet) => sheet.show(ctx, viewer, toasts),
             Sheet::UpdateIssues(issues) => issues.show(ctx, viewer, toasts),
             Sheet::Report(report) => report.show(ctx, toasts),
+            Sheet::Changelog(sheet) => sheet.show(ctx, toasts),
             Sheet::GameRunning(sheet) => sheet.show(ctx, viewer, toasts),
             Sheet::PlayCheck(check) => check.show(ctx),
             Sheet::LauncherPreset(result) => launcher_preset::show(ctx, result, viewer, toasts),

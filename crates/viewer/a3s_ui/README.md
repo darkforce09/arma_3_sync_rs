@@ -7,9 +7,10 @@ Theme, icons and reusable egui widgets for the Arma3Sync viewer.
 - `icon`: the Phosphor icon font (MIT; icons are text glyphs, `icon::icons::PLAY`) and the
   application icon PNG.
 - `widgets`: macOS form controls (form row, toggle switch, segmented control, pop-up button),
-  sidebar rows, status pill and step rows, thin progress bar, tri-state check tree (with an
-  optional status pill and tooltip per row, and rows the model lets be dragged onto others),
-  check list, button helpers.
+  sidebar rows (long labels end in "…" and show whole on hover), status pill and step rows, thin
+  progress bar, tri-state check tree (with an optional status pill, right-aligned detail such as
+  a size, and tooltip per row, and rows the model lets be dragged onto others), check list,
+  button helpers.
 - `frames`: grouped box, unified toolbar, sidebar, status bar and pane divider.
 - `dialog`: the OK/Cancel and progress dialog bases.
 - `gallery`: shows everything; run it with `cargo run -p a3s_ui --example demo`.

@@ -23,12 +23,13 @@ The window (`Shell`):
   them", Cancel). Once the game started, the "game launch" preference hides the window to the
   tray, minimizes it, quits or does nothing; while it restarts by itself, "Stop restarting"
   ends that.
-- Source-list sidebar: Library (Mods, Servers, Activity), Repositories with badges from the
-  runtime state (changed-addon count when updated, "…" while checking, "!" after a failed
-  check, with its reason as tooltip) and Add repository, Publishing (repositories with a local
-  source folder, and "Publish a folder", which creates one), and the last check time (with
-  Stop while a check asked for by the user runs). Each row routes to a screen under
-  `screens/`.
+- Source-list sidebar (resizable; long names end in "…" and show whole on hover): Library
+  (Mods, Servers, Activity), Repositories with badges from the runtime state (the top-level
+  folders a download changes, from the current comparison, else the addons changed in the
+  changelogs when a newer revision is out; "…" while checking, "!" after a failed check, with
+  its reason as tooltip) and Add repository, Publishing (repositories with a local source
+  folder, and "Publish a folder", which creates one), and the last check time (with Stop while
+  a check asked for by the user runs). Each row routes to a screen under `screens/`.
 - Mods screen: All / Enabled / Load order. The tree shows the active profile's addon groups
   (from repositories, events and the user) with a status pill per mod (Ready, Update with its
   download size when the repository's comparison is current, Not installed with its size,
@@ -48,23 +49,33 @@ The window (`Shell`):
   the order the game loads them; dragging saves the priority list. A preset dropped or
   imported opens a sheet comparing it with the local mods (missing ones with their Workshop id
   and "Open in Steam"), whose "Enable matched" adds a group with the matched mods.
-- Repository screen: header with the URL, revision, mod count and download folder, the "…"
-  menu (Edit connection, Download settings, Publish from this computer, Check now, Remove
-  repository with an Undo toast), a notice with the reason of a failed check, one primary
-  button ("Update <size>", "Update N of M · <size>" when some changes are unticked, "Resume
-  <size>", "Up to date"), event cards with "Download" (only the event's mods) and "Use preset",
-  the changes a download makes (new, updated, removed to the Trash, with sizes), each ticked to
-  be part of the next Update (Select all, Select none; an unticked removed folder stays, and
-  "Keep this folder" in its context menu keeps it for good), and the collapsed changelog of
-  the revisions not downloaded yet. While Arma 3 runs, Update asks first. Opening it compares
-  the repository with its download folder when the last comparison is older than the server
-  revision.
+- Repository screen: the whole repository on one screen. The header has the URL, revision, build
+  date, mod count and download folder (Change…), the "…" menu (Edit connection, Download
+  settings, Publish from this computer, Remove repository with an Undo toast) and one primary
+  button ("Update <size>" of the ticked items, "Download <size>" when nothing is on disk yet,
+  "Nothing selected", "Resume <size>", "Updating… N%", "Up to date"). One status line says
+  "Checking the repository…" or "Comparing with your download folder…" with a spinner, else
+  when it was checked and what a download does ("1 to update (2 files, 237.05 KB) · 14 up to
+  date"), next to Check now (checks and compares again) and Changelog (the last 10 builds). The
+  running or paused download of the repository shows under it as on the Activity screen (Pause,
+  Stop, Resume; then the result with Report and Show issues), then notices (a failed check or
+  comparison) and one row per event (Download only its mods, Use preset). The toolbar has Select
+  all, Select none, Expand all / Collapse all, the switches "Use copies in other mods folders"
+  (auto-discover) and "Remove extra files" (exact match, never in the game folder), and
+  Settings…; the switches and Change… wait while a download runs or is paused. The body is the
+  tree of every top-level folder and file of the repository, each with a checkbox, a status
+  pill (Up to date, Update, Not downloaded, Removed, Downloading) and the files and bytes it
+  needs, every folder opening to all its files with their own status; ticks (also on single
+  files) choose what the next Update downloads, an unticked removed folder stays, and "Keep
+  this folder" in its context menu keeps it for good. While Arma 3 runs, Update asks first.
+  Opening it compares the repository with its download folder when the last comparison is
+  missing or out of date.
 - Event presets, from the Mods screen or an event card, go through the context's
   `profiles::use_event_preset` (the event's required mods enabled, every other mod disabled)
   with an Undo toast.
 - Activity screen: running downloads (progress, bytes, speed, time left, current files, Pause
-  and Stop; "Waiting for the server" after 15 s without data; the automatic retries after a
-  lost connection; Details: connections, disk writes, files, the current file), paused
+  and Stop, connections and disk writes; "Waiting for the server" after 15 s without data; the
+  automatic retries after a lost connection; Details: files, the current file), paused
   downloads (Resume, Stop) and the recent results ("Report", "Show issues").
 - Publishing screen (a repository with a source folder on this computer; without one it asks
   for the folder), with a Publish / Events / Settings segment and one primary button
@@ -90,8 +101,7 @@ The window (`Shell`):
   a folder (the same form with the address players download from and a source folder instead
   of the auto-config link and the download folder), Download settings of one repository
   (download folder, notify, download updates automatically, connections up to the server's cap,
-  speed limit, timeouts, removing files that are not in the repository except in the game
-  folder, using copies in other mods folders, the folders kept when updating; stored at once),
+  speed limit, timeouts, the folders kept when updating; stored at once),
   Update issues (one sheet per repository; one plain line per failed file, Retry, Retry all,
   Copy report, Play anyway; during "Update and play" the game starts anyway and the sheet
   offers no Play), the Arma 3 Launcher preset comparison, Add server and Edit server, Upload

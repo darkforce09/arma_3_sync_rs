@@ -4,6 +4,7 @@ mod auto_update;
 mod download;
 
 use std::fmt;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use a3s_sync::EventSender;
@@ -14,12 +15,16 @@ use futures::FutureExt as _;
 use futures::future::BoxFuture;
 
 use crate::event::AppEvent;
+use crate::profiles::{AddonScan, ScanKey};
+use crate::state::AppState;
 use crate::tasks::Cx;
 
+pub use a3s_sync::plan::{NodeStatus, StatusNode, StatusTotals, StatusTree};
+
 pub use self::download::{
-    AddonChange, ChangeKind, DownloadRecord, DownloadResult, Downloads, PlanState, RECENT_LIMIT,
-    RECONNECT_ATTEMPTS, RECONNECT_DELAY, Selection, SyncPlan, compare, download,
-    download_selection, forget, pause, resume, retry, stop,
+    DownloadRecord, DownloadResult, Downloads, PlanState, RECENT_LIMIT, RECONNECT_ATTEMPTS,
+    RECONNECT_DELAY, Selection, SyncPlan, compare, download, download_selection, forget, pause,
+    resume, retry, stop,
 };
 
 /// Synchronization commands.
@@ -120,27 +125,69 @@ pub enum Event {
 }
 
 /// Synchronization state.
+#[derive(Default)]
 pub struct State {
-    /// Where existing addon folders are, for auto-discovery during synchronizations.
-    pub addons: Arc<dyn AddonLocator + Send + Sync>,
-
     /// The user's comparisons, paused downloads and recent results.
     pub downloads: Downloads,
-}
-
-impl Default for State {
-    fn default() -> Self {
-        Self {
-            addons: Arc::new(NoAddons),
-            downloads: Downloads::default(),
-        }
-    }
 }
 
 impl fmt::Debug for State {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("State").finish_non_exhaustive()
     }
+}
+
+/// Where auto-discovery finds addon folders: the active profile's addon scan when it is
+/// current, else nowhere. The flag says whether the scan is used.
+pub(crate) fn addon_locator(state: &AppState) -> (Arc<dyn AddonLocator + Send + Sync>, bool) {
+    match current_scan(state) {
+        Some(scan) => (Arc::new(ScannedAddons(scan)), true),
+        None => (Arc::new(NoAddons), false),
+    }
+}
+
+fn current_scan(state: &AppState) -> Option<Arc<AddonScan>> {
+    let key = ScanKey::of_active(&state.client)?;
+    state
+        .profiles
+        .scan
+        .as_ref()
+        .filter(|scan| scan.key == key)
+        .map(Arc::clone)
+}
+
+/// Finds addon folders in the profile's addon scan, keyed like Java's addon map.
+struct ScannedAddons(Arc<AddonScan>);
+
+impl AddonLocator for ScannedAddons {
+    // Mirrors service/RepositoryService.java:494-498
+    fn addon_parent_dir(&self, directory_name: &str) -> Option<PathBuf> {
+        self.0
+            .registry
+            .get(directory_name)
+            .map(|addon| PathBuf::from(&addon.path))
+    }
+}
+
+/// Whether the comparison of `repository` is missing or out of date: the server has another
+/// revision, or it was made without the addon scan that auto-discovery now has.
+pub fn plan_is_stale(state: &AppState, repository: &str) -> bool {
+    let Some(plan) = state.sync.downloads.plans.get(repository) else {
+        return true;
+    };
+    let server_revision = state
+        .repositories
+        .runtime(repository)
+        .metadata
+        .server_revision();
+    if plan.server_revision != server_revision {
+        return true;
+    }
+    let auto_discover = state
+        .client
+        .repository(repository)
+        .is_ok_and(|stored| !stored.no_auto_discover);
+    auto_discover && !plan.addon_scan && current_scan(state).is_some()
 }
 
 /// Runs a headless synchronization: the seam of the background downloads.

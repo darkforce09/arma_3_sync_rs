@@ -15,6 +15,7 @@ mod plan_completion;
 mod plan_destination;
 mod plan_live;
 mod plan_safety;
+mod plan_status;
 mod plan_wog;
 mod remote;
 mod report;

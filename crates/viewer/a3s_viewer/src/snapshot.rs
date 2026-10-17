@@ -6,6 +6,7 @@ use std::collections::BTreeSet;
 use a3s_types::constants::RepositoryStatus;
 use a3s_types::local::Repository;
 use a3s_viewer_context::launch::enabled_modset_repositories;
+use a3s_viewer_context::sync::{self, NodeStatus};
 use a3s_viewer_context::{AppState, RepositoryRuntime};
 
 /// The sidebar badge of a repository.
@@ -20,8 +21,9 @@ pub(crate) enum Badge {
     /// The last check failed.
     Failed,
 
-    /// The server has a newer revision; the number of addons changed since the local revision
-    /// (0 when the changelogs do not tell).
+    /// A download changes this many top-level folders: from the current comparison with the
+    /// download folder, else the addons changed in the changelogs above the local revision (0
+    /// when they do not tell).
     Updates(usize),
 }
 
@@ -70,7 +72,7 @@ impl Snapshot {
                 let runtime = state.repositories.runtime(&repository.name);
                 RepositoryRow {
                     name: repository.name.clone(),
-                    badge: badge(repository, &runtime),
+                    badge: badge(state, repository, &runtime),
                     error: runtime.last_check_error.map(|error| error.message),
                 }
             })
@@ -114,16 +116,45 @@ impl Snapshot {
     }
 }
 
-fn badge(repository: &Repository, runtime: &RepositoryRuntime) -> Badge {
+fn badge(state: &AppState, repository: &Repository, runtime: &RepositoryRuntime) -> Badge {
     if runtime.checking {
         Badge::Checking
     } else if runtime.last_check_error.is_some() {
         Badge::Failed
+    } else if let Some(changed) = compared_changes(state, &repository.name) {
+        if changed == 0 {
+            Badge::None
+        } else {
+            Badge::Updates(changed)
+        }
     } else if runtime.status == RepositoryStatus::Updated {
         Badge::Updates(changed_addons(repository, runtime))
     } else {
         Badge::None
     }
+}
+
+/// The top-level folders and files a download changes, from the current comparison of
+/// `repository` with its download folder; `None` without one.
+fn compared_changes(state: &AppState, repository: &str) -> Option<usize> {
+    if sync::plan_is_stale(state, repository) {
+        return None;
+    }
+    let plan = state
+        .sync
+        .downloads
+        .plans
+        .get(repository)?
+        .result
+        .as_ref()
+        .ok()?;
+    Some(
+        plan.tree
+            .roots
+            .iter()
+            .filter(|node| node.status != NodeStatus::UpToDate)
+            .count(),
+    )
 }
 
 /// Distinct addons new, updated or deleted in the changelogs above the local revision.

@@ -1,6 +1,7 @@
 //! The Download settings sheet of one repository: where it downloads, whether it notifies or
-//! updates by itself, connections, speed and timeouts, how local files outside the repository
-//! are treated, and the folders kept when updating. Every change is stored at once.
+//! updates by itself, connections, speed and timeouts, and the folders kept when updating.
+//! Every change is stored at once. How local files outside the repository are treated is on
+//! the Repository screen ([`local_files_options`]).
 
 use std::path::{Path, PathBuf};
 
@@ -12,7 +13,7 @@ use a3s_ui::dialog::{Dialog, DialogAction, DialogButton};
 use a3s_ui::frames;
 use a3s_ui::icon::icons;
 use a3s_ui::theme;
-use a3s_ui::widgets::{button, form_row, popup_button};
+use a3s_ui::widgets::{button, form_row, popup_button, toggle};
 use a3s_viewer_context::{Change, ViewerContext, sync};
 use egui::{Align, DragValue, Label, Layout, Response, RichText, Ui};
 
@@ -213,50 +214,6 @@ impl DownloadSettings {
         });
 
         ui.add_space(12.0);
-        let game_folder = folder.as_deref().is_some_and(holds_game);
-        frames::group(ui, |ui| {
-            let mut exact = stored.exact_match && !game_folder;
-            let response = ui
-                .add_enabled_ui(!game_folder, |ui| {
-                    toggle_row(ui, "Remove files that aren't in the repository", &mut exact)
-                })
-                .inner
-                .on_disabled_hover_text(
-                    "The download folder holds the game; its other files are never removed.",
-                );
-            if response.changed() {
-                self.store(viewer, true, |client| {
-                    client.set_exact_match(&name, exact)?;
-                    if exact {
-                        // Mirrors ui/repository/DownloadPanel.java:1336-1340
-                        client.set_no_auto_discover(&name, true)?;
-                    }
-                    Ok(())
-                });
-            }
-            frames::group_separator(ui);
-            let mut discover = !stored.no_auto_discover && !exact;
-            let response = ui
-                .add_enabled_ui(!exact, |ui| {
-                    toggle_row(ui, "Use copies in my other mods folders", &mut discover)
-                })
-                .inner
-                .on_hover_text(
-                    "A mod already in another mods folder is updated there instead of downloaded \
-                     again.",
-                )
-                .on_disabled_hover_text(
-                    "Not with \"Remove files that aren't in the repository\": every mod goes to \
-                     the download folder.",
-                );
-            if response.changed() {
-                self.store(viewer, true, |client| {
-                    client.set_no_auto_discover(&name, !discover)
-                });
-            }
-        });
-
-        ui.add_space(12.0);
         ui.label(RichText::new("Folders kept when updating").strong());
         ui.label(
             RichText::new("Your own files in these folders are never removed.")
@@ -372,6 +329,115 @@ impl DownloadSettings {
         self.error = stored.as_ref().err().map(|err| err.user_message());
         stored.is_ok()
     }
+}
+
+/// How a download of `stored` treats local files outside the repository, as two switches: "Use
+/// copies in other mods folders" (auto-discover) and "Remove extra files" (exact match),
+/// disabled unless `enabled`. Every change is stored at once and
+/// drops the comparison; returns the error of a failed save.
+pub(crate) fn local_files_options(
+    ui: &mut Ui,
+    viewer: &ViewerContext,
+    stored: &Repository,
+    enabled: bool,
+) -> Option<String> {
+    let name = stored.name.as_str();
+    let game_folder = stored
+        .default_download_location
+        .as_deref()
+        .filter(|folder| !folder.is_empty())
+        .is_some_and(|folder| holds_game(Path::new(folder)));
+    let mut exact = stored.exact_match && !game_folder;
+    let mut discover = !stored.no_auto_discover && !exact;
+    let mut error = None;
+    let response = labelled_switch(
+        ui,
+        enabled && !exact,
+        &mut discover,
+        "Use copies in other mods folders",
+    )
+    .on_hover_text(
+        "A mod already in another mods folder is updated there instead of downloaded again.",
+    )
+    .on_disabled_hover_text(
+        "Not with \"Remove extra files\": every mod goes to the download folder.",
+    );
+    if response.changed() {
+        error = replan(viewer, name, |client| {
+            client.set_no_auto_discover(name, !discover)
+        });
+    }
+    let response = labelled_switch(
+        ui,
+        enabled && !game_folder,
+        &mut exact,
+        "Remove extra files",
+    )
+    .on_hover_text(
+        "Files and folders in the download folder that the repository does not have go to the \
+             Trash with the next update.",
+    )
+    .on_disabled_hover_text(
+        "The download folder holds the game; its other files are never removed.",
+    );
+    if response.changed() {
+        error = replan(viewer, name, |client| {
+            client.set_exact_match(name, exact)?;
+            if exact {
+                // Mirrors ui/repository/DownloadPanel.java:1336-1340
+                client.set_no_auto_discover(name, true)?;
+            }
+            Ok(())
+        });
+    }
+    error
+}
+
+/// A switch with its label after it; a click on either flips it.
+fn labelled_switch(ui: &mut Ui, enabled: bool, on: &mut bool, label: &str) -> Response {
+    ui.add_enabled_ui(enabled, |ui| {
+        ui.horizontal(|ui| {
+            let mut switch = toggle(ui, on);
+            let text = ui.add(Label::new(label).sense(egui::Sense::click()));
+            if text.clicked() {
+                *on = !*on;
+                switch.mark_changed();
+            }
+            switch.union(text)
+        })
+        .inner
+    })
+    .inner
+}
+
+/// Sets the download folder of `repository` and drops its comparison; returns the error of a
+/// failed save.
+pub(crate) fn set_download_folder(
+    viewer: &ViewerContext,
+    repository: &str,
+    folder: &Path,
+) -> Option<String> {
+    let text = folder.display().to_string();
+    replan(viewer, repository, |client| {
+        client.set_default_download_location(repository, None, Some(text))
+    })
+}
+
+/// Runs `f` on the client data and drops the comparison of `repository`, which no longer
+/// matches; returns the error of a failed save.
+fn replan<T>(
+    viewer: &ViewerContext,
+    repository: &str,
+    f: impl FnOnce(&mut ClientData) -> Result<T, ServiceError>,
+) -> Option<String> {
+    viewer
+        .mutate(Some(Change::Repository), |state| {
+            f(&mut state.client)?;
+            sync::forget(state, repository);
+            Ok::<(), ServiceError>(())
+        })
+        .err()
+        .map(|err| err.user_message())
 }
 
 /// Adds `relative` to the folders of `repository` kept when updating; returns whether it was
